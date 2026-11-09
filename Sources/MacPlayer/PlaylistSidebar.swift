@@ -20,7 +20,7 @@ final class RowThumbs {
         running += 1
         defer { running -= 1; if !waiting.isEmpty { waiting.removeFirst().resume() } }
         guard FileManager.default.fileExists(atPath: path) else { return nil }
-        let size = large ? CGSize(width: 360, height: 203) : CGSize(width: 120, height: 68)
+        let size = large ? CGSize(width: 480, height: 270) : CGSize(width: 120, height: 68)
         let still: CGImage?
         if ImageFiles.isCandidate(path) { still = await Task.detached(priority: .utility) { PhotoLoader.thumbnail(url: URL(fileURLWithPath: path), maxSize: size) }.value }
         else { still = try? await FrameGrabber.representativeImage(url: URL(fileURLWithPath: path), maxSize: size) }
@@ -43,6 +43,9 @@ struct PlaylistSidebar: View {
     @StateObject private var hoverPlaylist = Box<UUID?>(nil)
     @StateObject private var foldersOpen = Box<Bool>(false)
     @StateObject private var layout = Box<PlaylistLayout>(AppEnvironment.shared.prefs.playlistLayout)
+    @StateObject private var treeFiles = Box<TreeFiles>(AppEnvironment.shared.prefs.treeFiles)
+    @StateObject private var scale = Box<Double>(AppEnvironment.shared.prefs.previewScale)
+    @StateObject private var panelWidth = Box<CGFloat>(230)
     @StateObject private var anchor = Box<UUID?>(nil)
     @StateObject private var recentQuery = Box<String>("")
     @StateObject private var recentTick = Box<Int>(0)
@@ -96,6 +99,7 @@ struct PlaylistSidebar: View {
             if tab.value == .recent { recent } else { playlists }
         }
         .coordinateSpace(name: "macplayer.sidebar")
+        .onGeometryChange(for: CGFloat.self, of: { $0.size.width }) { panelWidth.value = $0 }
         .sheet(item: Binding(get: { model.folderPreview }, set: { if $0 == nil { model.cancelFolderPreview() } })) { _ in FolderSheet(model: model) }
     }
 
@@ -146,6 +150,7 @@ struct PlaylistSidebar: View {
                         Image(systemName: "list.bullet.indent").accessibilityLabel(L("Show as a folder tree")).tag(PlaylistLayout.tree)
                     }.pickerStyle(.segmented).labelsHidden().frame(width: 88).help(L("List, grid or folder tree"))
                 }.padding(.horizontal, 8).padding(.bottom, 6)
+                sizeBar
                 // Only a count here: this runs at every redraw. The files themselves are listed when a button is pressed.
                 let pickedCount = chosen.value.isEmpty ? 0 : p.items.reduce(0) { chosen.value.contains($1.id) ? $0 + 1 : $0 }
                 if pickedCount > 0 { selectionBar(p, count: pickedCount) }
@@ -215,7 +220,33 @@ struct PlaylistSidebar: View {
             }
         }
         if tokens.contains("select") { chosen.value = Set(first.map(\.id)) }
+        // "play": the second file is open, as if it had been double-clicked (to look at the borders of an open and a chosen file together).
+        if tokens.contains("play"), first.count > 1 { model.markPlayingForDev(first[1].id, in: id) }
         if tokens.contains("rename") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { (NSApp.delegate as? AppDelegate)?.renameFiles(at: first.map(\.path)) } }
+    }
+
+    /// The colours that tell the files apart: the one that is open (playing or shown) has a green border round its picture; the files
+    /// chosen for renaming, the Trash or removing have the accent colour round the whole row or cell, and a tick.
+    static let openColor = Color(nsColor: .systemGreen)
+
+    /// Makes the pictures of the playlist smaller or bigger. The size is remembered.
+    private var sizeBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "photo").font(.system(size: 9)).foregroundColor(.secondary).accessibilityHidden(true)
+            Slider(value: Binding(get: { scale.value }, set: { let v = PreviewSize.clamp($0); scale.value = v; AppEnvironment.shared.prefs.previewScale = v }),
+                   in: PreviewSize.range, step: PreviewSize.step)
+                .controlSize(.small)
+                .accessibilityLabel(L("Preview size"))
+            Image(systemName: "photo").font(.system(size: 15)).foregroundColor(.secondary).accessibilityHidden(true)
+        }
+        .help(L("Size of the previews in the playlist"))
+        .padding(.horizontal, 10).padding(.bottom, 6)
+    }
+
+    /// How wide a picture column of the grid is at least: `base` points at size 1, never more than the panel has room for.
+    private func columnMin(base: Double, indent: CGFloat) -> CGFloat {
+        let room = max(60, panelWidth.value - indent - 30)
+        return min(CGFloat(base * scale.value), room)
     }
 
     /// The playlist's commands, all on show (they used to be inside a menu).
@@ -425,26 +456,46 @@ struct PlaylistSidebar: View {
     }
 
     private func row(_ item: PlaylistItem, _ p: Playlist, indent: CGFloat = 0) -> some View {
-        rowContent(item, p, indent: indent)
+        let picked = chosen.value.contains(item.id)
+        return rowContent(item, p, indent: indent, showTick: picked)
+            .padding(2)
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: picked ? 2 : 0))
             .onTapGesture(count: 2) { model.play(item.id, in: p.id) }
             .tag(item.id)
     }
 
     /// What a file row looks like and answers to, apart from what a click does (the list and the tree decide that for themselves).
-    private func rowContent(_ item: PlaylistItem, _ p: Playlist, indent: CGFloat = 0) -> some View {
-        HStack(spacing: 8) {
-            RowThumb(path: item.path).frame(width: 48, height: 27).clipped()
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.title).lineLimit(1).font(.callout.weight(model.playingID == item.id ? .bold : .regular))
-                HStack(spacing: 4) {
-                    Text(Self.lengthText(item)).font(.caption).foregroundColor(.secondary)
-                    if !item.availability.isPlayable {
-                        Label(badge(item.availability), systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundColor(.orange)
-                    }
+    private func rowContent(_ item: PlaylistItem, _ p: Playlist, indent: CGFloat = 0, showTick: Bool = false) -> some View {
+        let room = max(80, panelWidth.value - indent - 36)       // what the row has, apart from its margins
+        let wanted = (48 * scale.value).rounded()
+        // A big picture leaves too little for the name beside it, so the name goes under the picture instead.
+        let stacked = room - wanted - 8 < 110
+        let w = stacked ? min(wanted, room) : wanted, h = (w * 9 / 16).rounded()
+        let open = model.playingID == item.id
+        let thumb = RowThumb(path: item.path, large: scale.value > 1.25).frame(width: w, height: h).clipped().cornerRadius(3)
+            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Self.openColor, lineWidth: open ? 3 : 0))
+        let details = VStack(alignment: .leading, spacing: 1) {
+            Text(item.title).lineLimit(1).truncationMode(.middle).font(.callout.weight(open ? .bold : .regular))
+            HStack(spacing: 4) {
+                Text(Self.lengthText(item)).font(.caption).foregroundColor(.secondary)
+                if !item.availability.isPlayable {
+                    Label(badge(item.availability), systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundColor(.orange)
                 }
             }
-            Spacer()
-            if model.playingID == item.id { Image(systemName: "speaker.wave.2.fill").foregroundColor(.accentColor).accessibilityLabel(L("Playing")) }
+        }
+        let marks = HStack(spacing: 4) {
+            if open { Image(systemName: "speaker.wave.2.fill").foregroundColor(Self.openColor).accessibilityLabel(L("Playing")) }
+            if showTick { Image(systemName: "checkmark.circle.fill").foregroundColor(.accentColor).accessibilityHidden(true) }
+        }
+        return Group {
+            if stacked {
+                VStack(alignment: .leading, spacing: 3) {
+                    thumb
+                    HStack(spacing: 6) { details; Spacer(minLength: 0); marks }
+                }
+            } else {
+                HStack(spacing: 8) { thumb; details; Spacer(); marks }
+            }
         }
         .padding(.leading, indent)
         .opacity(item.availability.isPlayable ? 1 : 0.55)
@@ -526,13 +577,17 @@ struct PlaylistSidebar: View {
 
     // MARK: Folder tree
 
-    /// Opening and closing every folder at once.
+    /// How the files of a folder are drawn (list or grid), and opening and closing every folder at once.
     private func treeBar(_ p: Playlist) -> some View {
         func all() -> [String] { FolderTree.folderPaths(for: p.items, order: p.order) }      // only when a button is pressed
         return HStack(spacing: 12) {
+            Picker("", selection: Binding(get: { treeFiles.value }, set: { treeFiles.value = $0; AppEnvironment.shared.prefs.treeFiles = $0 })) {
+                Image(systemName: "list.bullet").accessibilityLabel(L("Files as a list")).tag(TreeFiles.list)
+                Image(systemName: "square.grid.2x2").accessibilityLabel(L("Files as a grid")).tag(TreeFiles.grid)
+            }.pickerStyle(.segmented).labelsHidden().frame(width: 64).help(L("Show the files in the folders as a list or as a grid"))
             Spacer(minLength: 0)
-            Button { model.setFolders(all(), collapsed: false, in: p.id) } label: { Label(L("Open all"), systemImage: "chevron.down.2") }.help(L("Open all folders"))
-            Button { model.setFolders(all(), collapsed: true, in: p.id) } label: { Label(L("Close all"), systemImage: "chevron.up.2") }.help(L("Close all folders"))
+            Button { model.setFolders(all(), collapsed: false, in: p.id) } label: { Text(L("Open all")).lineLimit(1).fixedSize() }.help(L("Open all folders"))
+            Button { model.setFolders(all(), collapsed: true, in: p.id) } label: { Text(L("Close all")).lineLimit(1).fixedSize() }.help(L("Close all folders"))
         }
         .font(.caption).buttonStyle(.link).padding(.horizontal, 8).padding(.bottom, 6)
     }
@@ -561,11 +616,22 @@ struct PlaylistSidebar: View {
         let rows = FolderTree.rows(for: shown, order: p.order, collapsed: model.collapsedFolders[p.id] ?? [], expandAll: searching)
         let byID = Dictionary(shown.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let onScreen = rows.compactMap(\.itemID)
+        let asGrid = treeFiles.value == .grid
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(rows) { r in
-                    if r.kind == .folder { folderRow(r, p, searching: searching) }
-                    else if let item = r.itemID.flatMap({ byID[$0] }) { treeFileRow(item, p, depth: r.depth, order: onScreen) }
+                if asGrid {
+                    // The files of a folder, one after another, are one block drawn as several columns (less to scroll in a big folder).
+                    ForEach(FolderTree.blocks(rows)) { block in
+                        switch block {
+                        case .folder(let r): folderRow(r, p, searching: searching)
+                        case .files(let fileRows): treeGrid(fileRows.compactMap { $0.itemID.flatMap { byID[$0] } }, p, depth: fileRows.first?.depth ?? 0, order: onScreen)
+                        }
+                    }
+                } else {
+                    ForEach(rows) { r in
+                        if r.kind == .folder { folderRow(r, p, searching: searching) }
+                        else if let item = r.itemID.flatMap({ byID[$0] }) { treeFileRow(item, p, depth: r.depth, order: onScreen) }
+                    }
                 }
             }.padding(.vertical, 4)
         }
@@ -585,9 +651,10 @@ struct PlaylistSidebar: View {
 
     private func treeFileRow(_ item: PlaylistItem, _ p: Playlist, depth: Int, order: [UUID]) -> some View {
         let selected = chosen.value.contains(item.id)
-        return rowContent(item, p, indent: CGFloat(depth) * 14 + 18)
+        return rowContent(item, p, indent: CGFloat(depth) * 12 + 14, showTick: selected)
             .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.accentColor.opacity(0.28) : Color.clear))
+            .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.accentColor.opacity(0.22) : Color.clear))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: selected ? 2 : 0))
             .padding(.horizontal, 4)
             .contentShape(Rectangle())
             // One gesture for every click. A tap and a double tap on the same row compete, and the plain tap then never came through:
@@ -597,6 +664,14 @@ struct PlaylistSidebar: View {
             }
             .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("macplayer.sidebar")) }) { if SidebarProbe.enabled { SidebarProbe.rowFrames[item.id] = $0 } }
             .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// The files of one folder as pictures, several to a row, lined up under the folder's name.
+    private func treeGrid(_ items: [PlaylistItem], _ p: Playlist, depth: Int, order: [UUID]) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: columnMin(base: 48, indent: CGFloat(depth) * 8 + 18), maximum: 400), spacing: 4, alignment: .top)], alignment: .leading, spacing: 4) {
+            ForEach(items) { item in cell(item, p, order: order, inTree: true) }
+        }
+        .padding(.leading, CGFloat(depth) * 8 + 10).padding(.trailing, 8).padding(.vertical, 2)
     }
 
     private func folderRow(_ r: FolderTree.Row, _ p: Playlist, searching: Bool) -> some View {
@@ -611,7 +686,7 @@ struct PlaylistSidebar: View {
             Text(r.title).font(.callout.weight(.semibold)).lineLimit(1).truncationMode(.middle)
             Text("\(ids.count)").font(.caption).foregroundColor(.secondary).accessibilityLabel(LF("%d files", ids.count))
             Spacer(minLength: 4)
-            if playing && !r.isExpanded { Image(systemName: "speaker.wave.2.fill").font(.caption).foregroundColor(.accentColor).accessibilityLabel(L("Playing")) }
+            if playing && !r.isExpanded { Image(systemName: "speaker.wave.2.fill").font(.caption).foregroundColor(Self.openColor).accessibilityLabel(L("Playing")) }
             // Chooses (or lets go of) every file in the folder, also those in folders inside it.
             Button {
                 if picked == ids.count { chosen.value.subtract(ids) } else { chosen.value.formUnion(ids) }
@@ -649,7 +724,7 @@ struct PlaylistSidebar: View {
         let shown = PlaylistEditor.search(p.items, query: model.query)
         let order = shown.map(\.id)
         return ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96, maximum: 190), spacing: 8, alignment: .top)], alignment: .leading, spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: columnMin(base: 60, indent: 0), maximum: 400), spacing: 8, alignment: .top)], alignment: .leading, spacing: 10) {
                 ForEach(shown) { item in cell(item, p, order: order) }
             }.padding(8)
         }
@@ -659,7 +734,9 @@ struct PlaylistSidebar: View {
         .overlay(Group { if p.items.isEmpty { Text(L("Drop videos, photos or a folder here.")).foregroundColor(.secondary) } })
     }
 
-    private func cell(_ item: PlaylistItem, _ p: Playlist, order: [UUID]) -> some View {
+    /// One picture of the grid. In the folder tree (`inTree`) it is chosen like the tree's rows are, and cannot be dragged to another place:
+    /// the tree's order is the folders'.
+    private func cell(_ item: PlaylistItem, _ p: Playlist, order: [UUID], inTree: Bool = false) -> some View {
         let selected = chosen.value.contains(item.id), playing = model.playingID == item.id
         return VStack(alignment: .leading, spacing: 4) {
             Color.clear.aspectRatio(16.0 / 9.0, contentMode: .fit)
@@ -669,27 +746,28 @@ struct PlaylistSidebar: View {
                         .padding(.horizontal, 4).padding(.vertical, 1).background(Color.black.opacity(0.65)).cornerRadius(3).padding(3)
                 }
                 .overlay(alignment: .topLeading) {
-                    if playing { Image(systemName: "speaker.wave.2.fill").font(.caption2).foregroundColor(.white).padding(4).background(Circle().fill(Color.accentColor)).padding(3).accessibilityHidden(true) }
+                    if playing { Image(systemName: "speaker.wave.2.fill").font(.caption2).foregroundColor(.white).padding(4).background(Circle().fill(Self.openColor)).padding(3).accessibilityHidden(true) }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if !item.availability.isPlayable { Image(systemName: "exclamationmark.triangle.fill").font(.caption).foregroundColor(.orange).padding(3).accessibilityHidden(true) }
+                    HStack(spacing: 2) {
+                        if !item.availability.isPlayable { Image(systemName: "exclamationmark.triangle.fill").font(.caption).foregroundColor(.orange) }
+                        if selected { Image(systemName: "checkmark.circle.fill").font(.callout).foregroundColor(.accentColor).background(Circle().fill(Color.white).padding(2)) }
+                    }.padding(3).accessibilityHidden(true)
                 }
                 .cornerRadius(5)
-                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.accentColor, lineWidth: selected || playing ? 2 : 0))
-            Text(item.title).font(.caption.weight(playing ? .bold : .regular)).lineLimit(2).multilineTextAlignment(.leading)
+                // Green round the picture of the file that is open; the accent colour round the whole cell for a chosen file.
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Self.openColor, lineWidth: playing ? 3 : 0))
+            Text(item.title).font((inTree ? Font.caption2 : Font.caption).weight(playing ? .bold : .regular)).lineLimit(inTree ? 1 : 2).truncationMode(.middle).multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(4)
         .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Color.accentColor.opacity(0.18) : Color.clear))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.accentColor, lineWidth: selected ? 2 : 0))
         .opacity(item.availability.isPlayable ? 1 : 0.55)
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { model.play(item.id, in: p.id) }
-        .onTapGesture {
-            choose(item, order: order)
-        }
+        .modifier(CellClicks(inTree: inTree, play: { model.play(item.id, in: p.id) }, choose: { choose(item, order: order) }))
         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("macplayer.sidebar")) }) { if SidebarProbe.enabled { SidebarProbe.rowFrames[item.id] = $0 } }
-        .onDrag { NSItemProvider(object: item.id.uuidString as NSString) }
-        .onDrop(of: [.text, .fileURL], isTargeted: nil) { providers in dropOnCell(providers, item, p) }
+        .modifier(CellMoves(enabled: !inTree, item: item, drop: { providers in dropOnCell(providers, item, p) }))
         .contextMenu { itemMenu(item, p) }
         .onHover { info.hover(item, entered: $0) }
         .accessibilityElement(children: .combine)
@@ -839,4 +917,36 @@ final class ClickKeys {
 
     /// The keys held at the last press (the keys held now, if there has been none).
     var held: NSEvent.ModifierFlags { last ?? NSEvent.modifierFlags }
+}
+
+
+/// What a click on a picture does. In the grid a click chooses and a double click plays, as two gestures; in the folder tree it is one
+/// gesture (a tap and a double tap on the same row compete, and the plain tap then did not come through): each click chooses, and the
+/// second click of a double click plays.
+private struct CellClicks: ViewModifier {
+    let inTree: Bool
+    let play: () -> Void
+    let choose: () -> Void
+    func body(content: Content) -> some View {
+        if inTree {
+            content.onTapGesture { if (NSApp.currentEvent?.clickCount ?? 1) >= 2 { play() } else { choose() } }
+        } else {
+            content.onTapGesture(count: 2) { play() }.onTapGesture { choose() }
+        }
+    }
+}
+
+/// Moving a picture to another place in the playlist by dragging it (not in the folder tree).
+private struct CellMoves: ViewModifier {
+    let enabled: Bool
+    let item: PlaylistItem
+    let drop: ([NSItemProvider]) -> Bool
+    func body(content: Content) -> some View {
+        if enabled {
+            content.onDrag { NSItemProvider(object: item.id.uuidString as NSString) }
+                .onDrop(of: [.text, .fileURL], isTargeted: nil) { drop($0) }
+        } else {
+            content
+        }
+    }
 }

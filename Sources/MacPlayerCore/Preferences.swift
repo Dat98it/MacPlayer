@@ -46,6 +46,18 @@ public final class AppPreferences {
         set { store.set(newValue.rawValue, forKey: "playlistLayout") }
     }
 
+    /// How big the previews in the playlist are (see `PreviewSize`).
+    public var previewScale: Double {
+        get { PreviewSize.clamp(double("previewScale", PreviewSize.standard)) }
+        set { store.set(PreviewSize.clamp(newValue), forKey: "previewScale") }
+    }
+
+    /// In the folder tree: the files of a folder as a list (default) or as a grid of pictures.
+    public var treeFiles: TreeFiles {
+        get { string("treeFiles").flatMap(TreeFiles.init) ?? .list }
+        set { store.set(newValue.rawValue, forKey: "treeFiles") }
+    }
+
     /// "Save as new copy" is the default and stays so unless the user changes it here (design section 6).
     public var defaultSave: SaveDefault {
         get { string("defaultSave").flatMap(SaveDefault.init) ?? .newCopy }

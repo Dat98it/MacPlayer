@@ -35,6 +35,29 @@ struct FolderTreeTests {
         #expect(rows.first { $0.title == "2024/Summer/Beach" }?.path == "/V/2024/Summer/Beach", "the row stands for the deepest folder")
     }
 
+    @Test func filesNextToEachOtherInOneFolderAreGatheredIntoOneBlock() {
+        let rows = FolderTree.rows(for: sample, order: .manual)
+        let blocks = FolderTree.blocks(rows)
+        func name(_ b: FolderTree.Block) -> String {
+            switch b { case .folder(let r): return "[\(r.title)]"; case .files(let r): return r.map(\.title).joined(separator: "+") }
+        }
+        // Rome's file and Trips' own file are one level apart, so they are two blocks
+        #expect(blocks.map(name) == ["[V]", "[Trips]", "[Paris]", "a+b", "[Rome]", "c", "loose", "[Family]", "d"])
+        #expect(Set(blocks.map(\.id)).count == blocks.count, "every block has its own id")
+        let flat = blocks.flatMap { b -> [FolderTree.Row] in
+            switch b { case .folder(let r): return [r]; case .files(let r): return r }
+        }
+        #expect(flat == rows, "nothing is lost or moved")
+    }
+
+    @Test func aBigFolderIsOneBlockAndClosedFoldersHaveNone() {
+        let items = (0..<500).map { item("/V/Big/\($0).jpg") } + [item("/V/Small/x.jpg")]
+        let all = FolderTree.blocks(FolderTree.rows(for: items, order: .manual))
+        #expect(all.count == 5 && all.contains { if case .files(let r) = $0 { return r.count == 500 } else { return false } })
+        let closed = FolderTree.blocks(FolderTree.rows(for: items, order: .manual, collapsed: ["/V/Big"]))
+        #expect(closed.contains { if case .files(let r) = $0 { return r.count == 500 } else { return false } } == false)
+    }
+
     @Test func aClosedFolderKeepsItsRowButHidesWhatIsInside() {
         let rows = FolderTree.rows(for: sample, order: .manual, collapsed: ["/V/Trips"])
         #expect(rows.map(\.title) == ["V", "Trips", "Family", "d"])

@@ -545,6 +545,9 @@ final class PlaylistModel: ObservableObject {
     func toggleSlideshow() { slideshowOn.toggle(); (playingHost ?? host)?.slideshowChanged() }
     func stopSlideshow() { guard slideshowOn else { return }; slideshowOn = false; (playingHost ?? host)?.slideshowChanged() }
 
+    /// Development aid: shows a file as the open one without opening it (for looking at how the open file is marked).
+    func markPlayingForDev(_ id: UUID, in pid: UUID) { playingID = id; playingPlaylistID = pid }
+
     func stop() { slideshowOn = false; cursor = nil; cursorPlaylistID = nil; playingID = nil; playingPlaylistID = nil; playingHost = nil }
 
     /// Where the viewer stopped, so reopening the playlist continues from there.

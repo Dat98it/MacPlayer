@@ -19,6 +19,39 @@ struct PlaylistLayoutTests {
         #expect(AppPreferences(store: store).playlistLayout == .list, "an unknown value falls back to the list")
     }
 
+    @Test func treeFilesDefaultToTheListAndAreRemembered() {
+        let store = Dict()
+        let p = AppPreferences(store: store)
+        #expect(p.treeFiles == .list)
+        p.treeFiles = .grid
+        #expect(AppPreferences(store: store).treeFiles == .grid)
+        store.d["treeFiles"] = "?"
+        #expect(AppPreferences(store: store).treeFiles == .list)
+    }
+
+    @Test func previewSizeIsRememberedAndKeptInsideTheRange() {
+        let store = Dict()
+        let p = AppPreferences(store: store)
+        #expect(p.previewScale == PreviewSize.standard, "a first run gets the standard size")
+        p.previewScale = 2.25
+        #expect(AppPreferences(store: store).previewScale == 2.25, "a new run of the app reads it back")
+        p.previewScale = 10
+        #expect(p.previewScale == PreviewSize.range.upperBound)
+        p.previewScale = 0.1
+        #expect(p.previewScale == PreviewSize.range.lowerBound)
+        store.d["previewScale"] = "big"
+        #expect(AppPreferences(store: store).previewScale == PreviewSize.standard, "a value that is not a number falls back")
+        store.d["previewScale"] = Double.nan
+        #expect(AppPreferences(store: store).previewScale == PreviewSize.standard)
+    }
+
+    @Test func previewSizeSnapsToTheSteps() {
+        #expect(PreviewSize.clamp(1.4) == 1.5)
+        #expect(PreviewSize.clamp(1.12) == 1.0)
+        #expect(PreviewSize.clamp(.infinity) == PreviewSize.standard)
+        #expect(PreviewSize.range.contains(PreviewSize.standard))
+    }
+
     let ids = (0..<6).map { _ in UUID() }
 
     @Test func plainClickSelectsOnlyThatItem() {

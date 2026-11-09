@@ -24,6 +24,35 @@ public enum FolderTree {
         public var fileCount: Int { itemIDs.count }
     }
 
+    /// A stretch of the tree: one folder row, or the files that follow one another in the same folder (drawn together as a grid).
+    public enum Block: Identifiable, Equatable, Sendable {
+        case folder(Row)
+        case files([Row])
+
+        public var id: String {
+            switch self {
+            case .folder(let r): return r.id
+            case .files(let rows): return "files:" + (rows.first?.id ?? "")
+            }
+        }
+    }
+
+    /// The rows with every run of files (same folder, one after another) made into a single block. Rows keep their order.
+    public static func blocks(_ rows: [Row]) -> [Block] {
+        var out: [Block] = []
+        var run: [Row] = []
+        func flush() { if !run.isEmpty { out.append(.files(run)); run = [] } }
+        for r in rows {
+            if r.kind == .folder { flush(); out.append(.folder(r)) }
+            else {
+                if let last = run.last, last.depth != r.depth { flush() }
+                run.append(r)
+            }
+        }
+        flush()
+        return out
+    }
+
     /// Compares two folders' paths one name at a time ("Trip 2" before "Trip 10"). A folder comes after the folders inside it,
     /// which is where the tree shows them (subfolders first).
     public static func compareFolders(_ a: String, _ b: String) -> ComparisonResult {

@@ -41,6 +41,8 @@ final class AppEnvironment {
         prefs = AppPreferences(store: sandbox == nil ? DefaultsStore() : MemoryStore())
         // Development aid (sandbox only): start with a given layout, as if it had been chosen in an earlier run.
         if sandbox != nil, let l = ProcessInfo.processInfo.environment["MACPLAYER_LAYOUT"].flatMap(PlaylistLayout.init(rawValue:)) { prefs.playlistLayout = l }
+        if sandbox != nil, let v = ProcessInfo.processInfo.environment["MACPLAYER_PREVIEW_SCALE"].flatMap(Double.init) { prefs.previewScale = v }
+        if sandbox != nil, let t = ProcessInfo.processInfo.environment["MACPLAYER_TREE_FILES"].flatMap(TreeFiles.init(rawValue:)) { prefs.treeFiles = t }
         saver = SafeSaver(fs: fs, journalFolder: base.appendingPathComponent("Journals").path)
         projectStore = ProjectStore(fs: fs, recoveryFolder: base.appendingPathComponent("Recovery").path)
         playlistStore = PlaylistStore(fs: fs, folder: base.appendingPathComponent("Playlists").path)

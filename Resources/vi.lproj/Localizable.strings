@@ -938,6 +938,11 @@
 "Rename %d files" = "Đổi tên %d file";
 "Replace with (can be empty)" = "Thay bằng (có thể để trống)";
 "Show as a folder tree" = "Hiển thị dạng cây thư mục";
+"Preview size" = "Cỡ ảnh xem trước";
+"Size of the previews in the playlist" = "Cỡ ảnh xem trước của các file trong danh sách phát";
+"Show the files in the folders as a list or as a grid" = "Hiện file trong các thư mục dạng danh sách hoặc dạng lưới";
+"Files as a list" = "File dạng danh sách";
+"Files as a grid" = "File dạng lưới";
 "Sort by Folder" = "Sắp xếp theo thư mục";
 "Start at %d" = "Bắt đầu từ %d";
 "Text after the name" = "Chữ thêm vào sau tên";
