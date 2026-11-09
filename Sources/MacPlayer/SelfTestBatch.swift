@@ -130,6 +130,48 @@ extension SelfTest {
 
     // MARK: Clicking in the tree
 
+    /// A new playlist is made only after the person has typed a name for it.
+    static func newPlaylistNameFlow(app: AppDelegate) async {
+        print("-- a new playlist asks for its name")
+        let model = app.playlists
+        let before = model.playlists.count
+        let saved = PlaylistModel.nameAsker
+        defer { PlaylistModel.nameAsker = saved }
+
+        var asked: [(suggestion: String, note: String?)] = []
+        PlaylistModel.nameAsker = { suggestion, note in asked.append((suggestion, note)); return "  Chuyến đi Đà Lạt  " }
+        let id = model.createAsking()
+        check(asked.count == 1 && asked[0].note == nil, "the person is asked once")
+        check(asked.first?.suggestion == LF("Playlist %d", before + 1), "the usual name is offered as a hint")
+        check(id != nil && model.playlists.count == before + 1 && model.selectedID == id, "the playlist is made and shown")
+        check(model.playlists.first { $0.id == id }?.name == "Chuyến đi Đà Lạt", "it has the name that was typed, without the spaces around it")
+
+        PlaylistModel.nameAsker = { _, _ in nil }
+        check(model.createAsking() == nil && model.playlists.count == before + 1, "Cancel makes no playlist")
+
+        var answers = ["", "   ", "Ảnh Tết"]
+        var notes: [String?] = []
+        PlaylistModel.nameAsker = { _, note in notes.append(note); return answers.removeFirst() }
+        let third = model.createAsking()
+        check(notes.count == 3 && notes[0] == nil && notes[1] == L("A playlist needs a name.") && notes[2] == L("A playlist needs a name."), "an empty name is not accepted: the person is told and asked again")
+        check(model.playlists.first { $0.id == third }?.name == "Ảnh Tết" && model.playlists.count == before + 2, "the playlist gets the name typed at last")
+
+        answers = ["", "  "]
+        PlaylistModel.nameAsker = { _, _ in answers.isEmpty ? nil : answers.removeFirst() }
+        check(model.createAsking() == nil && model.playlists.count == before + 2, "empty names followed by Cancel make nothing")
+
+        // The menu command (⇧⌘N) goes through the same question.
+        var menuAsked = 0
+        PlaylistModel.nameAsker = { _, _ in menuAsked += 1; return "Từ menu" }
+        app.newPlaylist(nil)
+        check(menuAsked == 1 && model.playlists.contains { $0.name == "Từ menu" }, "File ▸ New Playlist asks for the name too")
+        PlaylistModel.nameAsker = { _, _ in nil }
+        app.newPlaylist(nil)
+        check(model.playlists.filter { $0.name == "Từ menu" }.count == 1 && model.playlists.count == before + 3, "and cancelling there makes nothing")
+
+        for p in model.playlists.suffix(3) { model.delete(p.id) }
+    }
+
     /// A real click (mouse down and up, with the given keys held) on the file's row, sent to the window the way the system sends it.
     @discardableResult
     private static func press(_ id: UUID, in window: NSWindow, keys: NSEvent.ModifierFlags = []) async -> Bool {

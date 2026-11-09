@@ -122,6 +122,10 @@ MacPlayer mở cả ảnh (JPEG, PNG, HEIC, TIFF, GIF, WebP, AVIF, ảnh RAW c�
 - Ảnh mở bằng ứng dụng không bị sửa cho đến khi bạn bấm lưu/thay. Kiểm thử trên thư mục ảnh thật (2.542 ảnh JPEG/HEIC/PNG/WebP/AVIF): chỉ đọc, kiểm tra từng file và ngày giờ của cả thư mục trước/sau.
 
 
+## Tạo danh sách phát mới
+
+Mọi lệnh **Danh sách phát mới** (nút "Mới", nút ở màn hình trống, nút trong bảng chọn danh sách, menu ⇧⌘N) đều hỏi tên trước khi tạo: tên để trống thì app nhắc và hỏi lại, bấm Hủy thì không tạo gì. Danh sách tự sinh khi thả file hoặc thư mục vào lúc chưa có danh sách nào vẫn lấy tên thư mục như trước.
+
 ## Chọn nhiều file, đổi tên, Thùng rác và cây thư mục
 
 - **Chọn nhiều file:** ⌘-nhấp để thêm/bớt, ⇧-nhấp để chọn một dải, hoặc "Chọn tất cả". Khi có file được chọn, một thanh hiện ra với số file đã chọn và ba nút: **Đổi tên**, **Thùng rác**, **Gỡ bỏ** (chỉ gỡ khỏi danh sách, file vẫn còn). Chuột phải vào một file đang được chọn cũng áp dụng cho cả nhóm.

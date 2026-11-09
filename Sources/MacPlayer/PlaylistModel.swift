@@ -111,6 +111,32 @@ final class PlaylistModel: ObservableObject {
         return p.id
     }
 
+    /// How the person is asked for the name of a new playlist: the suggested name goes in as a hint, and nil means they cancelled.
+    /// Tests replace it, so that no dialog opens.
+    static var nameAsker: (_ suggestion: String, _ note: String?) -> String? = { suggestion, note in
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        field.placeholderString = suggestion
+        let a = NSAlert()
+        a.messageText = L("New Playlist")
+        a.informativeText = note ?? L("Give the playlist a name.")
+        a.accessoryView = field
+        a.addButton(withTitle: L("Create")); a.addButton(withTitle: L("Cancel"))
+        a.window.initialFirstResponder = field
+        return a.runModal() == .alertFirstButtonReturn ? field.stringValue : nil
+    }
+
+    /// A playlist the person has named: they are asked first, a name made of nothing is asked for again, and Cancel makes nothing.
+    @discardableResult
+    func createAsking() -> UUID? {
+        var note: String?
+        while true {
+            guard let typed = Self.nameAsker(LF("Playlist %d", playlists.count + 1), note) else { return nil }
+            let name = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty { return create(name: name) }
+            note = L("A playlist needs a name.")
+        }
+    }
+
     func rename(_ id: UUID, to name: String) { let n = name.trimmingCharacters(in: .whitespaces); if !n.isEmpty { mutate(id) { $0.name = n } } }
 
     func duplicate(_ id: UUID) {

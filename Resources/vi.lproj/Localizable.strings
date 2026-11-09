@@ -957,3 +957,8 @@
 "…and %d more" = "…và %d file nữa";
 "Open all" = "Mở tất cả";
 "Close all" = "Đóng tất cả";
+
+/* Hỏi tên khi tạo danh sách phát mới */
+"Create" = "Tạo";
+"Give the playlist a name." = "Hãy đặt tên cho danh sách phát.";
+"A playlist needs a name." = "Danh sách phát cần có tên. Hãy nhập một tên.";

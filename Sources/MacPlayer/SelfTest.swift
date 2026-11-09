@@ -400,6 +400,7 @@ enum SelfTest {
         catch { check(fm.fileExists(atPath: ffile("keep")) && fpaths(fp1) == before, "if the Trash refuses, nothing changes: the file and the playlists stay") }
         model.delete(fp1); model.delete(fp2)
         await batchFlow(work: work, source: pl.appendingPathComponent("clip 1.mp4"), app: app)
+        await newPlaylistNameFlow(app: app)
 
         // Closing the video that is open, without opening another one.
         let cw = MainWindowController(playlists: model); app.adopt(cw)

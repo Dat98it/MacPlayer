@@ -157,7 +157,7 @@ struct PlaylistSidebar: View {
                     Image(systemName: "rectangle.stack.badge.plus").font(.system(size: 42)).foregroundColor(.accentColor).accessibilityHidden(true)
                     Text(L("No playlists yet")).font(.headline)
                     Text(L("Create a playlist, then drop videos, photos or a folder here.")).multilineTextAlignment(.center).foregroundColor(.secondary).padding(.horizontal, 20)
-                    Button { model.create() } label: { Label(L("New Playlist"), systemImage: "plus") }.buttonStyle(.borderedProminent).controlSize(.large)
+                    Button { model.createAsking() } label: { Label(L("New Playlist"), systemImage: "plus") }.buttonStyle(.borderedProminent).controlSize(.large)
                     Spacer()
                 }.frame(maxWidth: .infinity)
                 .onDrop(of: [.fileURL], isTargeted: nil) { providers in load(providers) { model.add(urls: $0) }; return true }
@@ -221,7 +221,7 @@ struct PlaylistSidebar: View {
     /// The playlist's commands, all on show (they used to be inside a menu).
     private func actionBar(_ p: Playlist) -> some View {
         LazyVGrid(columns: panelColumns(), spacing: 4) {
-            PanelButton(title: L("New"), icon: "plus", help: L("New Playlist")) { model.create() }
+            PanelButton(title: L("New"), icon: "plus", help: L("New Playlist")) { model.createAsking() }
             PanelButton(title: L("Rename"), icon: "pencil", help: L("Rename the playlist")) { nameDraft.value = p.name; renaming.value = true }
             PanelButton(title: L("Duplicate"), icon: "plus.square.on.square", help: L("Make a copy of the playlist")) { model.duplicate(p.id) }
             PanelButton(title: L("Refresh"), icon: "arrow.clockwise", help: L("Refresh Folders and Files")) {
@@ -350,7 +350,7 @@ struct PlaylistSidebar: View {
                 }.frame(maxHeight: 300)
             }
             Divider()
-            Button { pickerOpen.value = false; model.create() } label: { Label(L("New Playlist"), systemImage: "plus") }
+            Button { pickerOpen.value = false; DispatchQueue.main.async { model.createAsking() } } label: { Label(L("New Playlist"), systemImage: "plus") }
                 .buttonStyle(.borderedProminent).frame(maxWidth: .infinity)
         }.padding(12).frame(width: 290)
     }

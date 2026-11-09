@@ -218,7 +218,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         playlists.beginAddFolder(u)
     }
 
-    @objc func newPlaylist(_ sender: Any?) { playlists.host = active ?? newWindow(); playlists.create() }
+    @objc func newPlaylist(_ sender: Any?) { playlists.host = active ?? newWindow(); playlists.createAsking() }
     @objc func newWindowAction(_ sender: Any?) { newWindow() }
 
     // MARK: Project files
