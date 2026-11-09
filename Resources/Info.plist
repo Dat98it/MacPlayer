@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>local.macplayer.app</string>
+    <key>CFBundleName</key>
+    <string>MacPlayer</string>
+    <key>CFBundleDisplayName</key>
+    <string>MacPlayer</string>
+    <key>CFBundleExecutable</key>
+    <string>MacPlayer</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.2.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>vi</string>
+    </array>
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.photography</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>MacPlayer listens to the speech in your video, on this Mac only, to write subtitles. Nothing is sent anywhere.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>MacPlayer records your voice from the microphone when you ask it to record a voice-over. The recording stays on this Mac.</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Video</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.movie</string>
+                <string>public.mpeg-4</string>
+                <string>com.apple.quicktime-movie</string>
+                <string>com.apple.m4v-video</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Photo</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.image</string>
+            </array>
+        </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>MacPlayer Project</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>local.macplayer.project</string>
+            </array>
+        </dict>
+    </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>local.macplayer.project</string>
+            <key>UTTypeDescription</key>
+            <string>MacPlayer Project</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.json</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>macplayer</string>
+                    <string>macvideo</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>MacPlayer opens the videos and photos you choose on external drives. It reads only what you open.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>MacPlayer opens the videos and photos you choose in Desktop.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>MacPlayer opens the videos and photos you choose in Documents.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>MacPlayer opens the videos and photos you choose in Downloads.</string>
+</dict>
+</plist>

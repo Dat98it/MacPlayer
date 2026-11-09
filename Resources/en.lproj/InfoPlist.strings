@@ -1,0 +1,2 @@
+"NSSpeechRecognitionUsageDescription" = "MacPlayer listens to the speech in your video, on this Mac only, to write subtitles. Nothing is sent anywhere.";
+"NSMicrophoneUsageDescription" = "MacPlayer records your voice from the microphone when you ask it to record a voice-over. The recording stays on this Mac.";

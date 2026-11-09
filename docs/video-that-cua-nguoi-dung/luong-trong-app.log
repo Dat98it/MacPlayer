@@ -1,0 +1,568 @@
+== L: your own videos, in the real app
+18 files in the library
+-- 1IJDIJSSS_87D28K.MP4
+PASS  opened: 15.0 s (the file says 15.0 s), 302 samples, 19.95 fps
+PASS  the picture is read upright: 720×1280 (rotation 0°, track says 720×1280)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (4.5 vs 4.5)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 9 → 10)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 9 → 14)
+PASS  exact cut: 90 frames (wanted 91), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (720×1280)
+PASS  exact cut sound: 4.45 s for a 4.50 s span (-51 ms), shifted -25.5 ms (a frame is 50.1 ms), waveform match 0.93
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #90 from the In point (0 frames off)
+PASS  fast cut: 90 frames (wanted 90), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (720×1280)
+PASS  fast cut sound: 4.45 s for a 4.50 s span (-52 ms), shifted -25.5 ms (a frame is 50.1 ms), waveform match 0.94, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #90 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 82 frames (wanted 84), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (720×1280)
+PASS  exact cut of a mirrored picture sound: 4.51 s for a 4.50 s span (+10 ms), shifted -25.6 ms (a frame is 50.1 ms), waveform match 0.85
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 4.50 s)
+PASS  replaced original now has 90 frames (wanted 91)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (720×1280)
+-- 1IJL1VBDH_7DR920.MP4
+PASS  opened: 531.6 s (the file says 531.6 s), 15948 samples, 30.00 fps
+PASS  the picture is read upright: 856×480 (rotation 0°, track says 856×480)
+PASS  plays at normal speed (1.00)
+PASS  exact seek lands on the frame time (159.46666666666667 vs 159.46666666666667)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 12 → 13)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 12 → 17)
+PASS  exact cut: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (856×480)
+PASS  exact cut sound: 3.97 s for a 4.00 s span (-33 ms), shifted -17.1 ms (a frame is 33.3 ms), waveform match 0.97
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (856×480)
+PASS  fast cut sound: 3.97 s for a 4.00 s span (-33 ms), shifted -17.1 ms (a frame is 33.3 ms), waveform match 0.97, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (856×480)
+PASS  exact cut of a mirrored picture sound: 4.00 s for a 4.00 s span (+0 ms), shifted -17.1 ms (a frame is 33.3 ms), waveform match 0.97
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 4.00 s)
+PASS  replaced original now has 120 frames (wanted 120)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (856×480)
+-- 1IKOTE83T_5411PF.MP4
+PASS  opened: 42.1 s (the file says 42.1 s), 1265 samples, 30.00 fps
+PASS  the picture is read upright: 720×1280 (rotation 90°, track says 720×1280)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (12.6 vs 12.6)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 12 → 13)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 12 → 17)
+PASS  exact cut: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (720×1280)
+PASS  exact cut sound: 3.97 s for a 4.00 s span (-33 ms), shifted -17.2 ms (a frame is 33.3 ms), waveform match 0.94
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (720×1280)
+PASS  fast cut sound: 3.97 s for a 4.00 s span (-33 ms), shifted -17.2 ms (a frame is 33.3 ms), waveform match 0.94, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (720×1280)
+PASS  exact cut of a mirrored picture sound: 4.00 s for a 4.00 s span (-0 ms), shifted -17.2 ms (a frame is 33.3 ms), waveform match 0.95
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 4.00 s)
+PASS  replaced original now has 120 frames (wanted 120)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (720×1280)
+-- 1ILQST8N3_87D28K.MP4
+PASS  opened: 22.3 s (the file says 22.3 s), 671 samples, 30.00 fps
+PASS  the picture is read upright: 1280×720 (rotation 0°, track says 1280×720)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (6.666666666666667 vs 6.666666666666667)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 12 → 13)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 12 → 17)
+PASS  exact cut: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (1280×720)
+PASS  exact cut of a silent video stays silent
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (1280×720)
+PASS  fast cut of a silent video stays silent
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (1280×720)
+PASS  exact cut of a mirrored picture of a silent video stays silent
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 4.00 s)
+PASS  replaced original now has 120 frames (wanted 120)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (1280×720)
+-- copy_B70C57A7-B4CC-4B2D-9DAC-1BE07DD6D762.mov
+PASS  opened: 32.2 s (the file says 32.2 s), 967 samples, 30.00 fps
+PASS  the picture is read upright: 1080×1846 (rotation 0°, track says 1080×1846)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (9.633333 vs 9.633333)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 13 → 14)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 13 → 18)
+PASS  exact cut: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (1080×1846)
+PASS  exact cut sound: 3.97 s for a 4.00 s span (-34 ms), shifted -17.1 ms (a frame is 33.3 ms), waveform match 0.92
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (1080×1846)
+PASS  fast cut sound: 3.97 s for a 4.00 s span (-34 ms), shifted -17.1 ms (a frame is 33.3 ms), waveform match 0.88, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (1080×1846)
+PASS  exact cut of a mirrored picture sound: 4.00 s for a 4.00 s span (-1 ms), shifted -17.1 ms (a frame is 33.3 ms), waveform match 0.90
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 4.00 s)
+PASS  replaced original now has 120 frames (wanted 120)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (1080×1846)
+-- IMG_0014.MOV
+PASS  opened: 30.2 s (the file says 30.2 s), 1810 samples, 59.91 fps
+PASS  the picture is read upright: 1920×1080 (rotation 0°, track says 1920×1080)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (9.046666666666667 vs 9.046666666666667)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 24 → 25)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 24 → 29)
+PASS  exact cut: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (1920×1080)
+PASS  exact cut stays HDR (ITU_R_2100_HLG)
+PASS  exact cut sound: 1.99 s for a 2.00 s span (-17 ms), shifted -8.6 ms (a frame is 16.7 ms), waveform match 0.87
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (1920×1080)
+PASS  fast cut stays HDR (ITU_R_2100_HLG)
+PASS  fast cut sound: 1.98 s for a 2.00 s span (-22 ms), shifted -9.8 ms (a frame is 16.7 ms), waveform match 0.51, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (1920×1080)
+PASS  exact cut of a mirrored picture stays HDR (ITU_R_2100_HLG)
+PASS  exact cut of a mirrored picture sound: 2.00 s for a 2.00 s span (-1 ms), shifted -8.6 ms (a frame is 16.7 ms), waveform match 0.87
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 2.00 s)
+PASS  replaced original now has 120 frames (wanted 120)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (1920×1080)
+-- IMG_0299.MOV
+PASS  opened: 11.2 s (the file says 11.2 s), 675 samples, 59.95 fps
+PASS  the picture is read upright: 2160×3840 (rotation 90°, track says 2160×3840)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (3.3516666666666666 vs 3.3516666666666666)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 24 → 25)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 24 → 29)
+PASS  exact cut: 120 frames (wanted 121), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (2160×3840)
+PASS  exact cut sound: 1.98 s for a 2.00 s span (-17 ms), shifted -8.8 ms (a frame is 16.7 ms), waveform match 0.94
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (2160×3840)
+PASS  fast cut sound: 1.98 s for a 2.00 s span (-19 ms), shifted -8.8 ms (a frame is 16.7 ms), waveform match 0.94, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (2160×3840)
+PASS  exact cut of a mirrored picture sound: 2.00 s for a 2.00 s span (-1 ms), shifted -8.8 ms (a frame is 16.7 ms), waveform match 0.94
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 2.00 s)
+PASS  replaced original now has 120 frames (wanted 121)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (2160×3840)
+-- IMG_0510.mov
+PASS  opened: 29.0 s (the file says 29.0 s), 1761 samples, 59.92 fps
+PASS  the picture is read upright: 1080×1920 (rotation 90°, track says 1080×1920)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (8.69 vs 8.69)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 25 → 26)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 25 → 30)
+PASS  exact cut: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (1080×1920)
+PASS  exact cut stays HDR (ITU_R_2100_HLG)
+PASS  exact cut sound: 1.98 s for a 2.00 s span (-17 ms), shifted -8.6 ms (a frame is 16.7 ms), waveform match 0.98
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (1080×1920)
+PASS  fast cut stays HDR (ITU_R_2100_HLG)
+PASS  fast cut sound: 1.98 s for a 2.00 s span (-19 ms), shifted -8.8 ms (a frame is 16.7 ms), waveform match 0.98, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (1080×1920)
+PASS  exact cut of a mirrored picture stays HDR (ITU_R_2100_HLG)
+PASS  exact cut of a mirrored picture sound: 2.00 s for a 2.00 s span (+2 ms), shifted -8.6 ms (a frame is 16.7 ms), waveform match 0.98
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 2.00 s)
+PASS  replaced original now has 120 frames (wanted 120)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (1080×1920)
+-- IMG_1082.MOV
+PASS  opened: 27.3 s (the file says 27.3 s), 819 samples, 29.97 fps
+PASS  the picture is read upright: 1080×1920 (rotation 270°, track says 1080×1920)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (8.178333333333333 vs 8.178333333333333)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 12 → 13)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 12 → 17)
+PASS  exact cut: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (1080×1920)
+PASS  exact cut sound: 3.97 s for a 4.01 s span (-34 ms), shifted -17.1 ms (a frame is 33.4 ms), waveform match 0.72
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (1080×1920)
+PASS  fast cut sound: 3.97 s for a 4.01 s span (-36 ms), shifted -17.1 ms (a frame is 33.4 ms), waveform match 0.73, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (1080×1920)
+PASS  exact cut of a mirrored picture sound: 4.00 s for a 4.01 s span (-2 ms), shifted -17.1 ms (a frame is 33.4 ms), waveform match 0.71
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 4.00 s)
+PASS  replaced original now has 120 frames (wanted 120)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (1080×1920)
+-- IMG_2320.MOV
+PASS  opened: 50.7 s (the file says 50.7 s), 3046 samples, 60.00 fps
+PASS  the picture is read upright: 1080×1920 (rotation 270°, track says 1080×1920)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (15.216666666666667 vs 15.216666666666667)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 24 → 25)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 24 → 29)
+PASS  exact cut: 120 frames (wanted 121), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (1080×1920)
+PASS  exact cut stays HDR (ITU_R_2100_HLG)
+PASS  exact cut sound: 1.98 s for a 2.00 s span (-17 ms), shifted -8.6 ms (a frame is 16.7 ms), waveform match 0.98
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (1080×1920)
+PASS  fast cut stays HDR (ITU_R_2100_HLG)
+PASS  fast cut sound: 1.98 s for a 2.00 s span (-17 ms), shifted -8.6 ms (a frame is 16.7 ms), waveform match 0.97, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (1080×1920)
+PASS  exact cut of a mirrored picture stays HDR (ITU_R_2100_HLG)
+PASS  exact cut of a mirrored picture sound: 2.00 s for a 2.00 s span (-2 ms), shifted -8.6 ms (a frame is 16.7 ms), waveform match 0.98
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 2.00 s)
+-- IMG_2612.MOV
+PASS  opened: 117.6 s (the file says 117.6 s), 7053 samples, 59.96 fps
+PASS  the picture is read upright: 1080×1920 (rotation 90°, track says 1080×1920)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (35.27166666666667 vs 35.27166666666667)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 24 → 25)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 24 → 29)
+PASS  exact cut: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (1080×1920)
+PASS  exact cut stays HDR (ITU_R_2100_HLG)
+PASS  exact cut sound: 1.98 s for a 2.00 s span (-17 ms), shifted -8.8 ms (a frame is 16.7 ms), waveform match 0.99
+PASS  exact cut: its first frame is the frame at the In point (picture too still to tell)
+PASS  exact cut: its last frame is source frame #120 from the In point (picture too still to tell)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (1080×1920)
+PASS  fast cut stays HDR (ITU_R_2100_HLG)
+PASS  fast cut sound: 1.98 s for a 2.00 s span (-20 ms), shifted -10.0 ms (a frame is 16.7 ms), waveform match 0.68, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (picture too still to tell)
+PASS  fast cut: its last frame is source frame #120 from the In point (picture too still to tell)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (1080×1920)
+PASS  exact cut of a mirrored picture stays HDR (ITU_R_2100_HLG)
+PASS  exact cut of a mirrored picture sound: 2.00 s for a 2.00 s span (-1 ms), shifted -8.8 ms (a frame is 16.7 ms), waveform match 0.99
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 2.00 s)
+-- IMG_2631.MOV
+PASS  opened: 9.5 s (the file says 9.5 s), 571 samples, 59.94 fps
+PASS  the picture is read upright: 1080×1920 (rotation 90°, track says 1080×1920)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (2.8366666666666664 vs 2.8366666666666664)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 24 → 25)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 24 → 29)
+PASS  exact cut: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (1080×1920)
+PASS  exact cut stays HDR (ITU_R_2100_HLG)
+PASS  exact cut sound: 1.98 s for a 2.00 s span (-17 ms), shifted -8.8 ms (a frame is 16.7 ms), waveform match 0.99
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (1080×1920)
+PASS  fast cut stays HDR (ITU_R_2100_HLG)
+PASS  fast cut sound: 1.98 s for a 2.00 s span (-19 ms), shifted -8.8 ms (a frame is 16.7 ms), waveform match 0.99, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (1080×1920)
+PASS  exact cut of a mirrored picture stays HDR (ITU_R_2100_HLG)
+PASS  exact cut of a mirrored picture sound: 2.00 s for a 2.00 s span (-0 ms), shifted -8.8 ms (a frame is 16.7 ms), waveform match 0.99
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 2.00 s)
+PASS  replaced original now has 120 frames (wanted 120)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (1080×1920)
+-- IMG_2973.MOV
+PASS  opened: 2.5 s (the file says 2.5 s), 149 samples, 59.96 fps
+PASS  the picture is read upright: 1080×1920 (rotation 90°, track says 1080×1920)
+PASS  exact seek lands on the frame time (0.7333333333333333 vs 0.7333333333333333)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 25 → 26)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 25 → 30)
+PASS  exact cut: 44 frames (wanted 44), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (1080×1920)
+PASS  exact cut stays HDR (ITU_R_2100_HLG)
+PASS  exact cut sound: 0.72 s for a 0.73 s span (-17 ms), shifted -8.6 ms (a frame is 16.7 ms), waveform match 0.86
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #44 from the In point (0 frames off)
+PASS  fast cut: 44 frames (wanted 44), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (1080×1920)
+PASS  fast cut stays HDR (ITU_R_2100_HLG)
+PASS  fast cut sound: 0.72 s for a 0.73 s span (-18 ms), shifted -8.6 ms (a frame is 16.7 ms), waveform match 0.84, the sound packets are NOT a copy
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #44 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 44 frames (wanted 44), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (1080×1920)
+PASS  exact cut of a mirrored picture stays HDR (ITU_R_2100_HLG)
+PASS  exact cut of a mirrored picture sound: 0.73 s for a 0.73 s span (-1 ms), shifted -8.6 ms (a frame is 16.7 ms), waveform match 0.86
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 0.73 s)
+PASS  replaced original now has 44 frames (wanted 44)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (1080×1920)
+-- IMG_3181.MOV
+PASS  opened: 15.9 s (the file says 15.9 s), 479 samples, 30.00 fps
+PASS  the picture is read upright: 1920×1440 (rotation 0°, track says 1920×1440)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (4.766666666666667 vs 4.766666666666667)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 13 → 14)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 13 → 18)
+PASS  exact cut: 120 frames (wanted 121), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (1920×1440)
+PASS  exact cut sound: 3.97 s for a 4.00 s span (-34 ms), shifted -17.1 ms (a frame is 33.3 ms), waveform match 0.87
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (picture too still to tell)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (1920×1440)
+PASS  fast cut sound: 3.97 s for a 4.00 s span (-34 ms), shifted -17.1 ms (a frame is 33.3 ms), waveform match 0.88, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (1920×1440)
+PASS  exact cut of a mirrored picture sound: 4.00 s for a 4.00 s span (-3 ms), shifted -17.1 ms (a frame is 33.3 ms), waveform match 0.87
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 4.00 s)
+PASS  replaced original now has 120 frames (wanted 121)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (1920×1440)
+-- IMG_3945.MOV
+PASS  opened: 9.9 s (the file says 9.9 s), 598 samples, 59.99 fps
+PASS  the picture is read upright: 2160×3840 (rotation 90°, track says 2160×3840)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (2.966666666666667 vs 2.966666666666667)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 24 → 25)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 24 → 29)
+PASS  exact cut: 120 frames (wanted 121), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (2160×3840)
+PASS  exact cut stays HDR (ITU_R_2100_HLG)
+PASS  exact cut sound: 1.98 s for a 2.00 s span (-17 ms), shifted -8.8 ms (a frame is 16.7 ms), waveform match 1.00
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (2160×3840)
+PASS  fast cut stays HDR (ITU_R_2100_HLG)
+PASS  fast cut sound: 1.98 s for a 2.00 s span (-19 ms), shifted -8.8 ms (a frame is 16.7 ms), waveform match 0.99, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (2160×3840)
+PASS  exact cut of a mirrored picture stays HDR (ITU_R_2100_HLG)
+PASS  exact cut of a mirrored picture sound: 2.00 s for a 2.00 s span (-0 ms), shifted -8.8 ms (a frame is 16.7 ms), waveform match 1.00
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 2.00 s)
+PASS  replaced original now has 120 frames (wanted 121)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (2160×3840)
+-- IMG_8196.MOV
+PASS  opened: 23.4 s (the file says 23.4 s), 703 samples, 30.00 fps
+PASS  the picture is read upright: 1440×1920 (rotation 90°, track says 1440×1920)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (7.001666666666667 vs 7.001666666666667)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 12 → 13)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 12 → 17)
+PASS  exact cut: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (1440×1920)
+PASS  exact cut sound: 3.97 s for a 4.00 s span (-34 ms), shifted -17.2 ms (a frame is 33.3 ms), waveform match 0.99
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (1440×1920)
+PASS  fast cut sound: 3.97 s for a 4.00 s span (-34 ms), shifted -17.2 ms (a frame is 33.3 ms), waveform match 0.99, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (1440×1920)
+PASS  exact cut of a mirrored picture sound: 4.00 s for a 4.00 s span (-1 ms), shifted -17.2 ms (a frame is 33.3 ms), waveform match 0.98
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 4.00 s)
+PASS  replaced original now has 120 frames (wanted 120)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (1440×1920)
+-- IMG_8375.mov
+PASS  opened: 28.8 s (the file says 28.8 s), 867 samples, 30.00 fps
+PASS  the picture is read upright: 1920×1080 (rotation 0°, track says 1920×1080)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (8.633333333333333 vs 8.633333333333333)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 13 → 14)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 13 → 18)
+PASS  exact cut: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (1920×1080)
+PASS  exact cut sound: 3.97 s for a 4.00 s span (-34 ms), shifted -17.2 ms (a frame is 33.3 ms), waveform match 0.99
+PASS  exact cut: its first frame is the frame at the In point (0 frames off)
+PASS  exact cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (1920×1080)
+PASS  fast cut sound: 3.97 s for a 4.00 s span (-34 ms), shifted -17.2 ms (a frame is 33.3 ms), waveform match 0.99, the sound packets are copied byte for byte
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (1920×1080)
+PASS  exact cut of a mirrored picture sound: 4.00 s for a 4.00 s span (-1 ms), shifted -17.2 ms (a frame is 33.3 ms), waveform match 0.99
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 4.00 s)
+PASS  replaced original now has 120 frames (wanted 120)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (1920×1080)
+-- ScreenRecording_02-06-2025 15-18-41_1.MOV
+PASS  opened: 9.1 s (the file says 9.1 s), 563 samples, 59.88 fps
+PASS  the picture is read upright: 888×1920 (rotation 0°, track says 888×1920)
+PASS  plays at normal speed (1.02)
+PASS  exact seek lands on the frame time (2.716666666666667 vs 2.716666666666667)
+PASS  one frame forward
+PASS  and it is exactly one frame of the picture shown (frame 24 → 25)
+PASS  one frame back
+PASS  and it is the same frame as before
+PASS  five frames forward shows five frames later (frame 24 → 29)
+PASS  exact cut: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut keeps the picture upright and the same size (888×1920)
+PASS  exact cut sound: 1.98 s for a 2.00 s span (-17 ms), silent
+PASS  exact cut: its first frame is the frame at the In point (picture too still to tell)
+PASS  exact cut: its last frame is source frame #120 from the In point (picture too still to tell)
+PASS  fast cut: 120 frames (wanted 120), from 0.000 s
+PASS  fast cut keeps the picture upright and the same size (888×1920)
+PASS  fast cut sound: 1.98 s for a 2.00 s span (-22 ms), silent
+PASS  fast cut: its first frame is the frame at the In point (0 frames off)
+PASS  fast cut: its last frame is source frame #120 from the In point (0 frames off)
+PASS  exact cut of a mirrored picture: 120 frames (wanted 120), from 0.000 s
+PASS  exact cut of a mirrored picture keeps the picture upright and the same size (888×1920)
+PASS  exact cut of a mirrored picture sound: 2.00 s for a 2.00 s span (+2 ms), silent
+PASS  source untouched, byte for byte
+PASS  project saved and reopened (1 clip, 2.00 s)
+PASS  replaced original now has 120 frames (wanted 120)
+PASS  backup is the untouched original
+PASS  no temp files left
+PASS  replaced original is still upright and the same size (888×1920)
+-- the whole folder as a playlist
+PASS  dropping the folder adds all 18 videos (got 18, skipped 0)
+PASS  in natural order
+PASS  plays the first three in order and moves on by itself: ["1IJDIJSSS_87D28K", "1IJL1VBDH_7DR920", "1IKOTE83T_5411PF"]
+-- different videos joined on one timeline, then a layer on top
+   portrait HDR with sound: IMG_2612.MOV
+   landscape HDR: IMG_0014.MOV
+   H.264 SDR: 1IJDIJSSS_87D28K.MP4
+   30 fps SDR HEVC portrait: IMG_0299.MOV
+   4K: IMG_3945.MOV
+PASS  all 5 added as clips (notice: none)
+PASS  added in the order given: IMG_2612.MOV, IMG_0014.MOV, 1IJDIJSSS_87D28K.MP4, IMG_0299.MOV, IMG_3945.MOV
+PASS  timeline is 15.00 s (5 × 3 s)
+PASS  the preview is built for the whole timeline (15.00 s)
+PASS  joined file: 780 frames at 51.86 fps for 15.00 s, longest gap 68 ms
+PASS  joined file is 15.03 s long (the preview is 15.00 s)
+   output picture 1080×1920, avc1, HDR false
+   output sound 15.00 s for 15.00 s of picture
+PASS  clip 1 (IMG_2612.MOV) is on screen at 1.5 s (brightness 77, source 68)
+PASS  clip 1 sound lines up with its source: shifted -8.8 ms, waveform match 0.98
+PASS  clip 2 (IMG_0014.MOV) is on screen at 4.5 s (brightness 37, source 108)
+PASS  clip 2 sound lines up with its source: shifted -6.1 ms, waveform match 0.90
+PASS  clip 3 (1IJDIJSSS_87D28K.MP4) is on screen at 7.5 s (brightness 140, source 140)
+PASS  clip 3 sound lines up with its source: shifted -18.0 ms, waveform match 0.96
+PASS  clip 4 (IMG_0299.MOV) is on screen at 10.5 s (brightness 128, source 129)
+PASS  clip 4 sound lines up with its source: shifted -9.1 ms, waveform match 0.62
+PASS  clip 5 (IMG_3945.MOV) is on screen at 13.5 s (brightness 149, source 140)
+PASS  clip 5 sound lines up with its source: shifted -6.4 ms, waveform match 0.99
+PASS  a real video added as a layer
+PASS  export with the layer keeps the length (15.03 s)
+PASS  the layer shows in the picture (difference 6.9)
+ALL CHECKS PASSED

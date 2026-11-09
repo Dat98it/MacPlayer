@@ -1,0 +1,157 @@
+# Báo cáo bàn giao MacPlayer
+
+Ngày: 05/11/2026 · Máy kiểm thử: Apple Silicon, macOS 27.0.1, Swift 6.4, chỉ có Command Line Tools.
+Nguồn yêu cầu: `MacPlayer-Thiet-ke-san-pham.md`.
+
+**Tóm tắt trung thực:** đây là một ứng dụng chạy được, với lõi lưu an toàn, cắt, render, playlist, dự án và hàng đợi đã kiểm thử kỹ. Nó **chưa phải bản thương mại hoàn chỉnh**: không có cấp phép, thanh toán, cập nhật, chữ ký phân phối; timeline nhiều nguồn/nhiều lớp và nhiều tính năng giai đoạn 3–4 chưa có giao diện hoặc chưa làm.
+
+## 1. Quyết định kỹ thuật đã chốt
+
+| Mục | Quyết định | Lý do / bằng chứng |
+|---|---|---|
+| Stack | Swift + SwiftPM; AppKit cho cửa sổ/timeline, SwiftUI cho panel | Không có Xcode đầy đủ; cùng họ với các app cũ |
+| macOS tối thiểu | 15.0 | `AVAssetExportSession.export(to:as:)` async; API callback đã deprecated ở SDK 27 |
+| Phần cứng | Chỉ Apple Silicon đã kiểm thử | Không có máy Intel |
+| Media engine | Chỉ AVFoundation | Không ffmpeg/engine ngoài; MKV/WebM chưa hỗ trợ |
+| Cắt chính xác | `AVAssetReader` → `AVAssetWriter` tự viết | Prototype cho thấy preset export có thể **âm thầm sao chép luồng** nên không đảm bảo mã hóa lại |
+| Cắt nhanh | `AVAssetExportSession` passthrough | Cắt đúng ở mức trình chiếu nhờ edit list; file giữ khung dẫn đầu (xem mục 4) |
+| Thời gian | Hữu tỉ `value/timescale`, tần số khung là phân số | Tránh trôi ở 29,97 fps |
+
+## 2. Kết quả theo lát cắt
+
+| Lát cắt | Trạng thái | Bằng chứng |
+|---|---|---|
+| **A** mở → phát/tua → chọn đoạn → xuất bản sao | Hoàn thành | Self-test trong app thật: phát 1,03 s/1 s, seek đúng khung 75, bước một khung, xuất ra đúng khung 75…149, nguồn không đổi từng byte |
+| **B** playlist từ kéo thả/chọn thư mục → phát liên tục → lưu và mở lại | Hoàn thành (xem hạn chế) | Self-test: thứ tự tự nhiên `clip 1, 2, 10`, bỏ file trùng, tự chuyển video, dừng cuối danh sách, xóa danh sách không xóa video; 1.000 mục = 0,06 s; lưu/đọc JSON |
+| **C** nhiều vùng → đặt tên → xuất hàng loạt | Hoàn thành | Self-test: 3 file đúng tên `demo - 01 - Intro`…, đúng số khung (75/30/30); lỗi một mục không ảnh hưởng mục khác (test hàng đợi) |
+| **D** chỉnh hình/tiếng/phụ đề/thumbnail → xem trước → xuất đúng | Hoàn thành phần chính | Test pixel: xoay/lật/crop/canvas/màu/chữ/phụ đề/gain/mute/fade/tốc độ; **preview vs xuất lệch 0,75/255** (chỉ do nén); ba loại thumbnail có hành vi tách biệt |
+| **E** lưu dự án → đóng/mở → phục hồi | Hoàn thành | Self-test: lưu, mở lại giữ nguyên clip/look/thời gian; tự lưu sau 2 s; bản tự lưu chứa chỉnh sửa chưa lưu; không chạm file video |
+| **G** timeline nhiều nguồn | Hoàn thành ở mức một track video | Self-test trong app thật: chuyển thành dự án, tách đúng khung, thêm video thứ hai, đổi thứ tự, chỉnh riêng một đoạn, Undo/Redo, xuất đúng 660 khung (A 150 + B 60 + A 450), lưu/mở lại 2 nguồn, phát hiện thiếu media, chặn xuất khi thiếu, liên kết lại; test Media: look và tốc độ riêng từng đoạn, khớp kích thước canvas |
+| **H** nhiều lớp video (lớp phủ) | Hoàn thành ở mức 3 dòng lớp, video/ảnh, keyframe tuyến tính | Test pixel: xuất hiện đúng thời gian/vị trí, độ mờ, viền, keyframe, ảnh PNG, thứ tự dòng, âm thanh lớp, khung chính không mất khung, khớp preview; self-test trong app: thêm video/ảnh, chọn dòng trống, từ chối chồng lấn, preset, keyframe + Undo, xuất đúng 180 khung, lưu định dạng 2, mở lại, chặn xuất khi thiếu file ảnh |
+| **I** kéo lớp trên khung hình | Hoàn thành | Hình học thuần ở Core (di chuyển, đổi cỡ giữ góc đối diện, hít tâm/lề) có test; self-test trong app thật bơm sự kiện chuột thật vào view thao tác: kéo thân đúng khoảng cách chuột, một lần kéo = một bước Undo, kéo góc giữ góc đối diện, bấm chọn lớp khác, khung đang dừng được vẽ lại trong 150 ms (đọc pixel); test Media: preview theo thay đổi live còn bản xuất thì không |
+| **F** phần còn lại | **Một phần** — xem mục 3 | |
+
+## 3. Đối chiếu bản thiết kế
+
+**Đã làm và kiểm chứng (tự động hoặc trong app thật)**
+
+- Phát: tua/bước khung theo PTS thật, tốc độ 0,25–4×, lặp video/A–B, nhớ vị trí (có tắt/xóa), metadata, thông báo lỗi rõ khi file không mở được.
+- Playlist: tạo/đổi tên/nhân đôi/xóa, kéo thả file & thư mục, thêm thư mục có **xem trước trước khi thêm**, thư mục con (tùy chọn), file trùng, thứ tự tự nhiên/ngày/thời lượng, tuần tự/trộn theo lượt/lặp một/lặp cả danh sách/tự phát, quay lại theo lịch sử, bỏ qua mục lỗi không lặp vô hạn, xóa mục đang phát không dừng, nhớ vị trí, tìm kiếm không phân biệt dấu, theo dõi thư mục (quét lại mỗi 20 s, thêm cuối, đánh dấu mất, không xóa).
+- Vùng chọn: nhiều vùng trên một video, đặt tên/nhân đôi/xóa, kéo cạnh trên timeline, chính sách chồng lấn tường minh (giữ riêng/gộp), xem trước liên tiếp, marker có tên/màu, xuất CSV/JSON.
+- Lưu video: hai lựa chọn đúng đặc tả; xác nhận file; sao lưu mặc định bật; file tạm + kiểm tra; phát hiện nguồn bị sửa; hủy/lỗi/hết dung lượng/mất quyền không làm mất bản gốc; khôi phục khi gián đoạn giữa lúc thay; phân biệt Undo với khôi phục file.
+- Xuất: nhanh và chính xác, MP4/MOV/M4V, H.264/HEVC, chất lượng, giới hạn độ phân giải (không phóng to), ước tính dung lượng, cảnh báo (mã hóa lại, giữ HDR 10-bit, VFR, đổi container), hàng đợi có tiến trình/hủy/chạy lại/khôi phục sau crash, đồng thời 1–4.
+- Hình: crop, xoay, lật, canvas 16:9/9:16/1:1/4:3, vừa/lấp đầy, sáng/tương phản/bão hòa/nhiệt độ màu.
+- Chữ: tiêu đề/chú thích/lower-third, font/cỡ/màu/nền/căn lề/vị trí/fade.
+- Phụ đề: nhập/xuất SRT & WebVTT, tiếng Việt qua UTF-8/UTF-16/**Windows-1258**, sửa/tách/gộp/tìm-thay, dời toàn bộ, cảnh báo chồng lấn/ngoài thời lượng, kiểu chữ + mẫu video dọc, xuất `.srt` kèm theo hoặc ghi cứng.
+- Âm thanh: gain, tắt tiếng, fade vào/ra (đã test).
+- Thumbnail: ba chức năng **tách biệt** (ảnh trong thư viện / xuất PNG-JPEG / nhúng ảnh bìa), hiển thị giới hạn từng loại; nhúng ảnh bìa đọc lại được ở MP4/M4V/MOV.
+- Dự án: định dạng JSON có phiên bản schema và chuỗi migration, tự lưu, điểm khôi phục theo thời gian/dung lượng, phục hồi sau crash, relink video.
+- Riêng tư: không có kết nối mạng nào trong mã; không có telemetry.
+- Bản địa hóa: 537 chuỗi, tiếng Việt và tiếng Anh; nhãn VoiceOver trên các điều khiển chính.
+
+**Từng ở danh sách "chưa kiểm thử", nay đã kiểm thử (đợt "Kiểm thử còn thiếu")**
+
+- Làm trễ/lệch tiếng, thay âm thanh bằng file ngoài, xuất riêng `.m4a`, xuất ảnh thumbnail có cắt theo tỷ lệ: có test bằng dữ liệu thật (đo thời điểm tiếng bíp, đọc pixel ảnh).
+- Chọn track âm thanh khi phát và khi xuất: test trên file có hai track thay thế nhau; **tìm ra lỗi thật** (mục 5, số 14).
+- Phím tắt (Space, ←/→, ⇧←/⇧→, `,` `.`, I, O, M, Return, Delete, `-`, `=`): selftest trong app thật bơm sự kiện phím thật vào cửa sổ; kiểm cả hai chiều: **không kích hoạt khi đang gõ trong ô văn bản** và **⌘M không bị lấy làm phím M**.
+- Menu: mọi mục đều có nơi nhận lệnh, không hai mục nào trùng phím tắt, Lưu/Hoàn tác bật-tắt đúng và Hoàn tác nêu tên thao tác.
+- "Luôn nổi": mức cửa sổ đổi sang `floating` rồi về `normal`.
+- Hàng đợi chạy song song: với giới hạn 1 thì đỉnh thấy 1 lượt chạy, với giới hạn 3 thì đỉnh đúng 3; cả 6 lượt đều thành công.
+- Mở bằng Finder: `Scripts/open_with_test.py` dùng `open -a` (đường Launch Services mà Finder dùng) với app thật: mở khi app đóng, mở thêm khi đang chạy (cửa sổ thứ hai, cửa sổ cũ giữ nguyên), tên có dấu cách và chữ "é", thư mục → playlist 3 video, file `.macplayer` (mở thành dự án đúng đường dẫn và đúng số đoạn), file hỏng (app không crash, không mở). 13/13 đạt.
+- Giao diện không bị khóa khi xuất: trong khi xuất bốn đoạn có chỉnh màu, vòng lặp chính chưa bao giờ bị giữ quá **2 ms**.
+- Ổ đĩa thật (`hdiutil`): ổ đầy, hết chỗ giữa lúc ghi, ổ chỉ-đọc, gỡ ổ cưỡng bức khi đang xuất, ổ hỏng giữa chừng. Bản gốc luôn còn nguyên; không để lại file dở.
+- File hỏng/cụt/không phải video, tên file tiếng Việt/độ dài tối đa/ký tự đặc biệt.
+- **Giết tiến trình (`kill -9`) trên app thật giữa lúc xuất:** 54 lượt ngẫu nhiên (bản sao, thay bản gốc, hàng loạt) đều đạt: bản gốc luôn đọc được và nguyên vẹn, file dở được dọn khi mở lại.
+- HDR (HLG/PQ): nhận diện, cảnh báo, và giữ 10-bit khi xuất; **tìm ra lỗi thật** (mục 5, số 16).
+- Đo hiệu năng theo mục 16: xem [benchmark.md](benchmark.md).
+
+**Đã kiểm thử trên video thật** (6 clip thật SDR/HDR10/Dolby Vision, 1080p và 4K/60; xem [kiem-thu-video-that.md](kiem-thu-video-that.md)): mở, phát (0 khung rơi), tua chính xác, xuất 21 ca đọc lại và so điểm ảnh với nguồn, thay bản gốc có sao lưu, lưu/mở lại dự án, Open With, `kill -9`. Tìm ra: Dolby Vision có 4,9% khung không giải mã được khi nhảy thẳng tới (mục 5, số 20); mốc thời gian file cắt lệch nửa khung (số 21). Bộ mẫu thật **không có âm thanh, xoay hay VFR**.
+
+**Vẫn chưa kiểm thử** (không có công cụ/dữ liệu/phần cứng để làm trung thực)
+
+- **Toàn màn hình**: macOS không cho tiến trình nền tự giành quyền active nên không tự kiểm được (selftest in SKIP); cần người bấm thử tay. Picture-in-Picture của cửa sổ phát (chưa có).
+- Finder thật (menu chuột phải ▸ Mở bằng): đã thử qua `open -a`, chưa bấm trong Finder.
+- Tháo ổ ngoài thật, ngủ/thức máy, đổi thiết bị âm thanh giữa chừng (đã thử gỡ ổ ảnh đĩa cưỡng bức, nhưng không phải ổ USB thật).
+- Video **quay từ iPhone/camera** (VFR thật, xoay, có âm thanh và đồng bộ âm–hình trên cảnh quay thật, Dolby Vision từ iPhone). Bộ video thật đã dùng là clip thử của một dự án phần mềm: 60 fps cố định, không âm thanh.
+- Máy Intel, macOS cũ hơn 15; chỉ chạy trên một máy Apple Silicon (M4, macOS 27).
+- Mục tiêu "99,5% phiên không crash" cần dữ liệu từ người dùng beta; không thể tự đo.
+- Kiểm toán VoiceOver và Reduce Motion.
+
+**Chưa làm hoặc chưa có giao diện**
+
+- **Nhiều track âm thanh** riêng (âm thanh lớp phủ được trộn vào, nhưng không có track âm thanh độc lập). Chế độ Dự án có **một track video chính** nối tiếp các đoạn (mục G) cùng **ba dòng lớp phủ** (mục H). Chưa có: snap khi kéo đoạn, kéo video từ Finder thả đúng vị trí trên timeline (thả vào cửa sổ thì thêm vào cuối/sau đoạn đang chọn), thumbnail/ảnh bìa và "thay âm thanh" cho dự án nhiều nguồn, cắt nhanh cho timeline ghép, và xem trước khi còn video bị mất (xem trước tạm dừng cho tới khi liên kết lại).
+- Với lớp phủ: bo góc, xoay, hiệu ứng màu/chế độ hòa trộn riêng cho lớp, tốc độ riêng của lớp, easing (chỉ nội suy tuyến tính), lớp tạo bằng văn bản (chữ dùng công cụ Chữ riêng), keyframe cho viền/xoay. Lớp chỉ có trong chế độ Dự án.
+- Keyframe cho crop/màu của đoạn chính, Picture-in-Picture của cửa sổ phát (khác với lớp phủ), chuyển cảnh (dissolve/fade qua đen), freeze frame, đảo chiều, nền làm mờ khi đổi tỷ lệ, kéo khung crop trực tiếp trên video (hiện chỉ có thanh trượt).
+- Thu voiceover, meter mức âm/cảnh báo clipping, chuẩn hóa âm lượng, giảm ồn, ducking. Tốc độ clip có thanh trượt trong chế độ Dự án (cho đoạn đang chọn); chế độ nhanh không có.
+- Phiên âm/dịch (tại máy hoặc cloud).
+- Thư viện nâng cao: tag, bộ sưu tập, yêu thích, tìm theo metadata; sao chép nguồn vào gói dự án; proxy cho nguồn nặng. Ảnh đại diện "trong MacPlayer" **được lưu vào dự án nhưng chưa dùng để hiển thị trong danh sách/thư viện**.
+- Picture-in-Picture của cửa sổ phát; tùy chỉnh phím tắt (có bảng phím tắt chỉ-đọc).
+- Undo cho thao tác playlist (Undo chỉ áp dụng chỉnh sửa video/dự án).
+- Đánh dấu "nguồn đã thay đổi" cho **các dự án khác** dùng cùng nguồn: hiện chỉ có cờ trong phiên hiện tại.
+- Cấp phép, thanh toán, kích hoạt, khôi phục mua hàng, cập nhật có chữ ký, trang bán hàng, FAQ, hỗ trợ, chữ ký Developer ID + notarization. **Cần thông tin/tài khoản bên ngoài; không tự tạo hay giả lập.**
+- Kiểm toán khả năng truy cập thật bằng VoiceOver và Reduce Motion; kiểm tra thương hiệu tên "MacPlayer".
+
+## 4. Giới hạn thực tế đã đo (đọc kỹ)
+
+- **Cắt nhanh:** file kết quả chứa các khung từ keyframe trước điểm cắt (ví dụ 94 mẫu cho 75 khung hiển thị), được ẩn bằng edit list. AVFoundation đọc lại đúng, **nhưng chưa thử với trình phát khác** (VLC, ffmpeg…) nên chưa biết chúng có tôn trọng edit list không. Giao diện nêu rõ điều này.
+- **Cắt chính xác** mất một chút chất lượng (mã hóa lại); không gọi là "lossless".
+- **Tốc độ khung hình cố định khi có hiệu ứng:** khi dùng compositor (crop, chữ…), video VFR được ghi ở tốc độ danh nghĩa cố định.
+- **Một track âm thanh được dùng khi xuất**: track đang bật (mặc định của nhóm thay thế, như ngôn ngữ), hoặc track đầu nếu không phải nhóm thay thế. Không trộn nhiều track. Âm thanh xuất luôn là AAC.
+- **Bước khung** dùng bảng mẫu của file (`AVSampleCursor`); `AVPlayerItem.step(byCount:)` không dùng được vì chỉ bước theo từng khung khi có view đang hiển thị (đo được: bước 0,25 s khi không có view).
+- **Theo dõi thư mục** dùng quét định kỳ 20 s, chưa dùng FSEvents.
+- Màn hình video không chụp được bằng cơ chế chụp view, nên **tôi chưa tự nhìn thấy khung hình video hiển thị trong cửa sổ** (chỉ xác nhận gián tiếp qua test render, seek và player). Phần giao diện còn lại đã được chụp và xem.
+- **Hiệu năng (đo bằng `macplayer-probe bench`, chi tiết ở [benchmark.md](benchmark.md)):** máy Apple M4, 16 GB, macOS 27.0.1, media tổng hợp.
+  - Khung hình đầu: 11–18 ms trung vị, p95 ≤ 137 ms trên 20 lượt cho mỗi mẫu (mục tiêu < 2 s ở 95%). Đây là **bộ nhớ đệm ổ đĩa đã nóng**, nên chưa phải lần mở đầu tiên sau khi khởi động máy.
+  - Tua chính xác: 10–11 ms (1080p) và 91–97 ms (4K/60, p95 ≤ 173 ms); 0/120 lần sai khung.
+  - Phát 10 s: **không rơi khung nào** ở 1080p30 (1× và 2×), 4K/60 H.264 và HEVC. Chưa đo vẽ lên màn hình thật.
+  - Xuất: cắt nhanh 170–206× thời gian thực; chính xác 1080p khoảng 7×; **4K/60 chính xác chỉ khoảng 1× (8 s video mất ~8 s), có chỉnh màu 0,9×**; 4K→1080p 3,6×. Mọi kết quả đều đúng số khung và lệch tiếng–hình ≤ 17,3 ms (nhỏ hơn một khung). **Đã điều tra** (benchmark.md, mục 8): giải mã chạy ~10×, nút cổ chai là bộ mã hóa phần cứng của máy đo (hai lượt song song chia đôi tốc độ, tổng vẫn ~1×), không phải lỗi của MacPlayer. Muốn nhanh hơn: cắt nhanh hoặc xuất 1080p. Chưa đo máy có nhiều bộ mã hóa và video thật.
+  - Hủy xuất: 45 ms (1080p), tệ nhất 164 ms (4K); không để lại file dở. Mục tiêu < 5 s.
+  - Video 10 phút: mở 3 ms, khung đầu 17 ms, sóng âm 97 ms, tua xa 4–14 ms, cắt 8 s gần cuối 0,27 s (nhanh) và 1,45 s (chính xác, đúng 240/240 khung); bộ nhớ tiến trình thử không vượt 103 MB.
+  - Tự lưu 2 s; playlist 1.000 mục 0,06 s.
+  - Số liệu đo trên media tổng hợp dễ mã hóa hơn cảnh quay thật: tốc độ xuất thực tế có thể **thấp hơn**.
+
+## 5. Lỗi thật đã tìm ra và sửa trong quá trình làm (đều có test hồi quy)
+
+1. Preset export của AVFoundation có thể sao chép luồng thay vì mã hóa lại → thay bằng pipeline đọc/ghi riêng.
+2. PTS bị làm tròn theo timescale 600 → điểm cắt thừa/thiếu một khung ở 29,97 fps → dùng PTS thật + dời nửa khung theo quy tắc "khoảng hiển thị giao vùng cắt".
+3. Phục hồi sau gián đoạn có thể **làm mất file gốc** nếu máy chết giữa hai lần đổi tên → nhật ký ghi trước, phục hồi theo trạng thái đĩa.
+4. Buffer màu không gắn thẻ → preview và bản xuất lệch tới 13/255 → gắn thẻ màu theo nguồn.
+5. Bấm Hủy đúng lúc vừa bắt đầu xuất làm **crash** trong MediaToolbox, và một dạng hủy khác làm treo → máy trạng thái hủy + đánh thức cổng.
+6. Trộn playlist 1.000 mục mất 24 s → 0,06 s.
+7. Video **không có âm thanh** không cắt nhanh được → bỏ track âm thanh rỗng.
+8. **Đường compositor mất khung cuối mỗi đoạn** (đoạn 30…70 ra 30…68; ghép nhiều đoạn mất một khung ở mỗi chỗ nối) vì cắt hai đầu nửa khung chỉ đúng cho đường copy thẳng → lấy mẫu giữa khung trên lưới cố định; thêm test đếm khung và đồng bộ tiếng/hình cho đường này.
+9. `PlayerController.load` ghi đè lệnh seek đến trong lúc đang tải (đặt lại thời gian sau các `await`).
+10. Khi chỉ có lớp phủ (không chỉnh hình nào khác), builder vẫn coi hình chính là copy thẳng và cắt hai đầu nửa khung nên mất khung cuối. Lỗi do chính đợt này thêm vào, bị che bởi các test dùng thêm bộ lọc màu; self-test trong app bắt được, sau đó tái hiện và có test hồi quy.
+11. Preset vị trí góc của lớp phủ đặt lớp ra ngoài khung (sai công thức chiều cao theo tỷ lệ khung); ghi keyframe trùng thời điểm làm trôi mốc thời gian.
+12. **Nhóm race giữa tua và dựng lại preview** (phát hiện khi viết test kéo): (a) `currentTime` nháy về 0 khi dựng lại, (b) tua trong lúc dựng bị ghi đè bằng vị trí cũ vì vị trí được ghi nhớ ở đầu việc dựng, (c) lệnh tua bị cắt giữa chừng khi item bị thay vẫn công bố thời gian của item mới. Nay: giữ playhead tại đích, nhớ số lần tua ở đầu và cuối việc dựng, và không công bố khi item đã bị thay. Selftest chạy 6 lần liên tiếp đều qua.
+13. Làm tròn kích thước chẵn (852 thay vì 854); ép bảng mã phụ đề âm thầm chuyển sang bảng mã khác; bước khung sai khi không có view.
+
+14. **Nhiều track âm thanh:** khi file có hai track thay thế nhau (ngôn ngữ), preview và bản xuất có thể chọn khác track. Test dùng file có track 440 Hz đứng trước track mặc định 1 kHz nên lộ ra việc "track đầu" không phải "track mặc định" → dùng track đang bật (`isEnabled`).
+15. **Dọn file dở không bao giờ được gọi:** `cleanStalePartials` có sẵn nhưng không có chỗ nào gọi; sau crash giữa lúc xuất, file `.partial` nằm lại. Nay được gọi khi khôi phục hàng đợi; kiểm chứng bằng 54 lượt `kill -9` trên app thật.
+16. **HDR xuất ra sai bản chất:** nguồn HDR (HLG/PQ, 10-bit) xuất chính xác ra **HEVC 8-bit** mang nhãn HDR (dễ vỡ dải màu), trong khi giao diện báo "HDR sẽ chuyển sang SDR" (sai cả hai chiều). Do bench đọc lại profile HEVC của file kết quả. Nay đọc 10-bit và ghi HEVC Main10 giữ nhãn màu; chọn H.264 thì tự chuyển sang HEVC và cảnh báo nói đúng điều đó. Có 5 test hồi quy.
+17. Công cụ đo tự mắc lỗi (không phải lỗi app, ghi lại để khỏi lặp lại): `AVPlayerItemVideoOutput` sau khi tua vẫn trả khung cũ cho tới khi khung mới giải mã xong, và tua tới thời điểm làm tròn theo timescale 6000 đáp xuống khung trước ở 4K/60 (app dùng thời điểm hữu tỉ của khung nên không dính). Ngoài ra helper lấp đầy ổ trong test làm tràn do đọc dung lượng trống đã bị lưu đệm.
+19. **Cảnh báo Dolby Vision:** nguồn Dolby Vision xuất mã hóa lại mất dữ liệu Dolby Vision mà app không nói; nay nhận diện hộp `dvvC`/`dvcC` và cảnh báo (cắt nhanh giữ nguyên). Tìm ra nhờ video thật.
+20. **Dolby Vision, truy cập ngẫu nhiên:** 88/1799 khung của file Dolby Vision thử (3 khung cuối mỗi nhóm 60 khung) không giải mã được khi nhảy thẳng tới (hệ thống báo "Cannot Decode"): tua/bước tới đó thì hình đứng yên ở khung cũ; phát tuần tự và xuất vẫn đúng. **Chưa sửa**, chưa rõ nguyên nhân hay có gặp ở video iPhone không.
+21. Mốc thời gian của file cắt (đường copy thẳng / mã hóa lại không chỉnh hình) lệch nửa khung: khung đầu hiển thị 8,3 ms, nội dung và số khung đúng. **Chưa sửa** (quy tắc có chủ đích, có test).
+22. Selftest: đóng/ẩn cửa sổ cuối làm chính app thoát im lặng giữa chừng; thêm cờ để selftest không tự thoát.
+18. `activeSession` rơi về cửa sổ trống khi không có cửa sổ chính; nay ưu tiên cửa sổ đang có video.
+
+## 6. Tệp bàn giao
+
+- Mã nguồn: toàn bộ thư mục này. Mở bằng `swift build`/SwiftPM (không có `.xcodeproj`; không cần Xcode).
+- `.app` chạy thử: `Scripts/build_app.sh` → `build/MacPlayer.app` (ký ad-hoc).
+- `docs/format-matrix.md`: ma trận định dạng đã chạy thật. `docs/benchmark.md`: số đo hiệu năng. `docs/kiem-thu-video-that.md`: kiểm thử trên video thật.
+- Công cụ kiểm thử: `Scripts/test.sh`, `Scripts/crash_test.py`, `Scripts/open_with_test.py`, `Scripts/check_localization.py`; cách chạy trong README.
+- Không có commit, không sửa git config, không thay đổi ứng dụng cũ, không gửi dữ liệu ra ngoài.
+
+
+## Bổ sung: kiểm thử trên 111 video thật của người dùng
+Xem `docs/kiem-thu-video-that.md` Phần 2. Lỗi 23–26 đã sửa: thứ tự khi thêm nhiều video, dư 1 khung khi xuất có chỉnh hình, lưới khung compositor ở 29,97/59,94 fps, cảnh báo Dolby Vision sai. Còn mở: độ dài khi ghép nhiều clip, bitrate mức Cao, hai ca nhỏ nêu trong tài liệu đó.
+
+## Bổ sung lần 2: vòng sửa sau khi thử trên video thật (xem `docs/kiem-thu-video-that.md` Phần 3)
+Đã sửa: độ dài khi ghép nhiều clip và việc ghép video khác kích thước/chiều quay; hình sai khi chỉnh sửa video HDR (compositor 10-bit); mức chất lượng "Cao" theo bitrate nguồn; cảnh báo khi ghép lẫn HDR và SDR. Kiểm thử cuối: Core 171, Media 88, selftest tổng hợp 103, luồng thật trong app 538, `realcheck` 83 ca xuất đều đạt, kill -9 và Open With đạt. Còn mở: tiếng ở tốc độ 2× dài hơn hình ~0,1 s; cắt nhanh clip 0,73 s không sao chép nguyên byte gói tiếng; toàn màn hình, USB, ngủ/thức, Intel, VoiceOver chưa kiểm thử được.
+
+## Phát hành miễn phí
+- `Scripts/make_release.sh` tạo `dist/MacPlayer-<phiên bản>.dmg`, `.zip` và `SHA256SUMS.txt` (đã chạy thử, đã kiểm checksum). Chữ ký ad-hoc, **chưa công chứng** (cần tài khoản Apple Developer trả phí); người dùng làm theo `docs/huong-dan-cai-dat.md` ở lần mở đầu.
+- App không có mã nào dùng mạng; không thu thập dữ liệu.
+- Giấy phép MIT đã thêm (`LICENSE`, tên bản quyền "MacPlayer contributors", có thể sửa). Còn cần quyết định: bundle id (hiện `local.macplayer.app`), tên hiển thị, nơi đăng tải.

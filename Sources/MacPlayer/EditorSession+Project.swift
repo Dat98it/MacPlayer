@@ -1,0 +1,246 @@
+import AVFoundation
+import AppKit
+import MacPlayerCore
+import MacPlayerMedia
+
+/// Project mode: one timeline of clips taken from several videos (design section 6, "Dự án").
+extension EditorSession {
+
+    // MARK: Sources
+
+    /// Finds every source of the project (moved files via bookmarks), reads what is known about it, and reports the missing.
+    func resolveSources() async {
+        var urls: [UUID: URL] = [:], infs: [UUID: MediaInfo] = [:]
+        for src in project.sources {
+            var url = URL(fileURLWithPath: src.path)
+            if !env.fs.exists(url.path), let moved = Bookmarks.resolve(src.bookmark), env.fs.exists(moved.path) { url = moved }
+            if env.fs.exists(url.path), let info = try? await MediaProbe.probe(url: url) { urls[src.id] = url; infs[src.id] = info }
+        }
+        sourceURLs = urls; infos = infs
+        if let first = project.sources.first { sourceURL = urls[first.id]; info = infs[first.id] }
+        reportMissing()
+        loadWaveforms()
+    }
+
+    func reportMissing() {
+        let missing = project.sources.filter { sourceURLs[$0.id] == nil }
+        if !missing.isEmpty {
+            flash(LF("The video “%@” was not found. Use File ▸ Relink Video… to point to it.", missing.map { PathUtil.fileName(of: $0.path) }.joined(separator: ", ")), error: true)
+        }
+    }
+
+    func loadWaveforms() {
+        for (id, url) in sourceURLs where peaksBySource[id] == nil && infos[id]?.hasAudio == true {
+            Task { if let p = try? await Waveform.peaks(url: url) { peaksBySource[id] = p } }
+        }
+    }
+
+    /// Points a missing source at the file the user chose. The clips keep their times.
+    func relinkSource(_ id: UUID, to url: URL) async {
+        do {
+            let new = try await MediaProbe.probe(url: url)
+            guard new.hasVideo else { flash(L("This file has no picture."), error: true); return }
+            edit("Relink video", refreshPreview: false) { p in
+                guard let i = p.sources.firstIndex(where: { $0.id == id }) else { return }
+                p.sources[i].path = url.path; p.sources[i].bookmark = Bookmarks.make(url)
+                p.sources[i].fingerprint = try? env.fs.fingerprint(url.path); p.sources[i].info = new
+            }
+            sourceURLs[id] = url; infos[id] = new; peaksBySource[id] = nil
+            if project.sources.first?.id == id { sourceURL = url; info = new }
+            loadWaveforms()
+            await loadPlayer(at: player.effectiveTime)
+            flash(L("Video relinked. Check that the timing of your clips is still right."))
+        } catch { flash((error as? CustomStringConvertible)?.description ?? error.localizedDescription, error: true) }
+    }
+
+    // MARK: Becoming a project
+
+    /// Turns the open video into a project timeline: from the chosen clips if there are any, else the whole video.
+    /// Text, subtitles and markers move with the clips so they stay on the same pictures.
+    func makeProject(fromClips: Bool) {
+        guard !isProject, let src = project.sources.first, let info else { return }
+        let chosen = fromClips ? project.selections.effective() : []
+        var firstID: UUID?
+        edit("Make project", refreshPreview: false) { p in
+            let look = p.look, audio = p.audio
+            var clips: [TimelineClip]
+            if chosen.isEmpty {
+                clips = [TimelineClip(sourceID: src.id, sourceStart: .zero, sourceEnd: info.duration, name: p.name, look: look, audio: audio)]
+            } else {
+                clips = chosen.map { TimelineClip(sourceID: src.id, sourceStart: $0.start, sourceEnd: $0.end, name: $0.name, look: look, audio: audio) }
+                let r = RecipeBuilder.joinedRecipe(look: look, audio: audio, overlays: p.overlays, subtitles: p.subtitles, burnIn: true, spans: chosen.map(\.span))
+                p.overlays = r.overlays
+                p.subtitles.cues = r.burnedInCues
+                p.markers = p.markers.compactMap { m in
+                    guard let c = clips.first(where: { $0.sourceSpan.contains(m.time) }), let t = TimelineMap.timelineTime(for: m.time, inClip: c.id, of: clips) else { return nil }
+                    var n = m; n.time = t; return n
+                }
+            }
+            p.mode = .project
+            p.timeline = clips
+            p.look = VideoLook(); p.audio = AudioSettings()       // from now on these belong to each clip
+            p.selections = SelectionList()
+            p.activeClipID = clips.first?.id
+            firstID = clips.first?.id
+        }
+        inPoint = nil; outPoint = nil
+        selectedClipIDs = firstID.map { [$0] } ?? []
+        activeTool = .clips
+        Task { await loadPlayer(at: .zero) }
+    }
+
+    /// Adds whole videos to the end of the timeline (or after the selected clip).
+    func addVideos(_ urls: [URL]) async {
+        if !isProject { makeProject(fromClips: false) }
+        var lastAdded: UUID?
+        // Where the first new clip goes: after the selected clip, else at the end. Each further video goes right after the one before it,
+        // so several videos added at once keep the order they were given in.
+        var insertAt: Int? = project.timeline.lastIndex { selectedClipIDs.contains($0.id) }.map { $0 + 1 }
+        for url in urls {
+            do {
+                let info = try await MediaProbe.probe(url: url)
+                guard info.hasVideo, info.isExportable else { flash(LF("“%@” has no picture or cannot be used here.", url.lastPathComponent), error: true); continue }
+                let ref = SourceRef(path: url.path, bookmark: Bookmarks.make(url), fingerprint: try? env.fs.fingerprint(url.path), info: info)
+                var newID: UUID?
+                edit("Add video", refreshPreview: false) { p in
+                    let sid = p.addSource(ref)
+                    let c = TimelineClip(sourceID: sid, sourceStart: .zero, sourceEnd: info.duration, name: url.deletingPathExtension().lastPathComponent)
+                    p.timeline.insert(c, at: min(insertAt ?? p.timeline.count, p.timeline.count))
+                    newID = c.id
+                }
+                if let sid = project.timeline.first(where: { $0.id == newID })?.sourceID { sourceURLs[sid] = url; infos[sid] = info }
+                if let i = insertAt { insertAt = i + 1 }
+                lastAdded = newID
+            } catch { flash(LF("“%@” cannot be opened.", url.lastPathComponent) + " " + ((error as? CustomStringConvertible)?.description ?? error.localizedDescription), error: true) }
+        }
+        loadWaveforms()
+        if let id = lastAdded { selectedClipIDs = [id] }
+        await loadPlayer(at: player.effectiveTime)
+    }
+
+    // MARK: Editing the timeline
+
+    func syncActiveClip(_ ids: Set<UUID>) {
+        guard isProject else { return }
+        let id = project.timeline.first(where: { ids.contains($0.id) })?.id
+        guard project.activeClipID != id else { return }
+        var p = project; p.activeClipID = id
+        history.amend(p)
+        objectWillChange.send()
+    }
+
+    /// Cuts the clip under the playhead in two, at the exact frame.
+    func splitAtPlayhead() {
+        guard isProject, let loc = TimelineMap.locate(project.timeline, at: player.currentTime) else { return }
+        Task {
+            var t = loc.sourceTime
+            if let url = sourceURLs[project.timeline[loc.index].sourceID], let f = try? await FrameLocator.frame(url: url, at: t + MediaTime(value: 1, timescale: 6000)) { t = f.time }
+            var ok = false
+            edit("Split clip") { p in ok = TimelineEditor.split(&p.timeline, clipID: loc.clipID, atSourceTime: t) }
+            if ok, let second = project.timeline.firstIndex(where: { $0.id == loc.clipID }).map({ project.timeline[$0 + 1].id }) { selectedClipIDs = [second] }
+            else if !ok { flash(L("Move the playhead inside a clip, away from its edges, to split it."), error: true) }
+        }
+    }
+
+    /// Where the clip the Picture tools edit starts on the timeline, and how long it is (the whole video in quick mode).
+    var activeClipStart: MediaTime {
+        guard isProject, let id = project.activeClipID else { return .zero }
+        return TimelineEditor.starts(project.timeline)[id] ?? .zero
+    }
+    var activeClipDuration: MediaTime {
+        if isProject, let id = project.activeClipID, let c = project.timeline.first(where: { $0.id == id }) { return c.duration }
+        return isProject ? (project.timeline.first?.duration ?? .zero) : duration
+    }
+    /// The playhead counted from the start of that clip.
+    var localPlayhead: Double { max(0, (player.currentTime - activeClipStart).seconds) }
+
+    func deleteTimelineClips(_ ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        edit("Delete clip") { TimelineEditor.rippleDelete(&$0.timeline, ids: ids) }
+        selectedClipIDs.subtract(ids)
+    }
+
+    func duplicateTimelineClips(_ ids: Set<UUID>) {
+        var last: UUID?
+        edit("Duplicate clip") { p in for id in ids { last = TimelineEditor.duplicate(&p.timeline, id: id) ?? last } }
+        if let l = last { selectedClipIDs = [l] }
+    }
+
+    /// Moves a clip so it sits before the clip that is now at `index` (0...count).
+    func moveClip(_ id: UUID, toIndex index: Int) {
+        guard let from = project.timeline.firstIndex(where: { $0.id == id }) else { return }
+        guard index != from, index != from + 1 else { return }
+        edit("Move clip") { TimelineEditor.move(&$0.timeline, fromOffsets: [from], toOffset: index) }
+    }
+
+    /// Drag an edge to a timeline time: trims the clip's source range (the picture, not the clip's place).
+    func trimClip(_ id: UUID, leftEdge: Bool, toTimelineTime t: MediaTime) {
+        guard let c = project.timeline.first(where: { $0.id == id }), let start = TimelineEditor.starts(project.timeline)[id],
+              let srcDur = infos[c.sourceID]?.duration else { return }
+        let src = c.sourceStart + MediaTime(seconds: max(0, (t - start).seconds) * max(0.01, c.look.speed), timescale: 6000)
+        edit("Trim clip", coalesce: "trim-\(id)") { p in
+            if leftEdge { TimelineEditor.trim(&p.timeline, clipID: id, start: src, sourceDuration: srcDur) }
+            else { TimelineEditor.trim(&p.timeline, clipID: id, end: src, sourceDuration: srcDur) }
+        }
+    }
+
+    // MARK: Preview
+
+    func loadProjectPreview(at start: MediaTime?, since generation: Int? = nil) async {
+        LayerLive.clear() // the rebuilt preview carries the current values itself
+        EffectsLive.clear()
+        let used = Set(project.timeline.map(\.sourceID) + project.overlayClips.compactMap(\.sourceID))
+        if !missingSourceIDs.intersection(used).isEmpty {
+            // With media missing, the preview would not match the timeline's positions, so it waits for a relink.
+            player.unload(); reportMissing(); return
+        }
+        let pieces = project.timeline.compactMap { c in sourceURLs[c.sourceID].map { RenderPiece(sourceURL: $0, span: c.sourceSpan, look: c.look, audio: c.audio, liveKey: c.id) } }
+        guard let first = pieces.first else { player.unload(); return }
+        let layers = project.layerSpecs(resolve: { sourceURLs[$0]?.path })
+        let built = try? await CompositionBuilder.build(pieces: pieces, overlays: project.overlays, cues: project.subtitles.cues,
+                                                        subtitleStyle: project.subtitles.style, maxHeight: Self.previewMaxHeight, includeAudio: true, layers: layers, soundClips: resolvedSounds(), frameAccurate: false)
+        previewHasCompositor = built?.videoComposition != nil
+        await player.load(url: first.sourceURL, preview: built, at: start, since: generation)
+    }
+
+    // MARK: Exporting the whole timeline as one new file
+
+    func planProjectExport(_ r: ExportRequest) throws -> (jobs: [ExportJob], batch: BatchPlan) {
+        let p = project
+        guard r.saveKind == .newCopy else { throw PlanError.replaceNotPossible(L("A project with several videos must be saved as a new file.")) }
+        guard !p.timeline.isEmpty else { throw PlanError.nothingToExport }
+        let missing = Set(p.timeline.map(\.sourceID) + p.overlayClips.compactMap(\.sourceID)).filter { sourceURLs[$0] == nil }
+        var missingNames = p.sources.filter { missing.contains($0.id) }.map { PathUtil.fileName(of: $0.path) }
+        for c in p.overlayClips { if case .image(let path, _) = c.kind, !env.fs.exists(path) { missingNames.append(PathUtil.fileName(of: path)) } }
+        missingNames += p.soundClips.filter { isMissing($0) }.map(\.name)
+        if !missingNames.isEmpty { throw PlanError.missingMedia(missingNames) }
+        let layers = p.layerSpecs(resolve: { sourceURLs[$0]?.path })
+        guard r.options.mode == .exact else { throw PlanError.projectNeedsExact }
+        var options = r.options
+        if infos.values.allSatisfy({ !$0.hasAudio }) && !p.overlayClips.contains(where: { $0.isVideo }) && p.soundClips.isEmpty { options.includeAudio = false }
+
+        // Paths from where the videos really are now (a moved source is found through its bookmark).
+        let pieces: [JobPiece] = p.timeline.compactMap { c in
+            sourceURLs[c.sourceID].map { JobPiece(sourcePath: $0.path, span: c.sourceSpan, look: c.look, audio: c.audio) }
+        }
+        let base = r.baseName ?? p.name
+        let ext = options.container.fileExtension
+        let total = p.timelineDuration
+        let first = infos.values.first
+        let bps = first.map { options.estimatedBytesPerSecond(source: $0) } ?? 2_000_000
+        let batch = BatchPlan.make(selections: [ClipSelection(name: base, start: .zero, end: total)], sourcePath: pieces.first?.sourcePath ?? "", folder: r.folder,
+                                   fileExtension: ext, template: NamingTemplate(pattern: "{name}"), fs: env.fs, estimatedBytesPerSecond: bps)
+        guard batch.canRun else { throw PlanError.issues(batch.issues) }
+        let dest = batch.outputs[0].path
+        let allPaths = pieces.map(\.sourcePath) + layers.map(\.path)
+        if allPaths.contains(where: { ($0 as NSString).standardizingPath == (dest as NSString).standardizingPath }) { throw PlanError.issues([BatchIssue(kind: .destinationIsSource(dest))]) }
+
+        let shift = MediaTime(seconds: p.subtitles.syncOffset)
+        var cues = p.subtitles.cues
+        if p.subtitles.syncOffset != 0 { for i in cues.indices { cues[i].start = cues[i].start + shift; cues[i].end = cues[i].end + shift } }
+        let recipe = RenderRecipe(look: VideoLook(), audio: AudioSettings(), overlays: p.overlays, subtitleStyle: p.subtitles.style, burnedInCues: p.subtitles.burnIn ? cues : [], layers: layers, soundClips: resolvedSounds())
+        let job = ExportJob(label: base, pieces: pieces, recipe: recipe, options: options, target: .newCopy(path: dest, overwrite: r.overwrite),
+                            sidecarSubtitles: p.subtitles.burnIn ? [] : cues)
+        return ([job], batch)
+    }
+}
