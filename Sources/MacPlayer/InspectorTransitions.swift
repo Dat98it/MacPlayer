@@ -20,6 +20,14 @@ struct TransitionsPane: View {
         case .slideDown: return L("Slide down")
         case .wipeRight: return L("Wipe")
         case .zoomIn: return L("Zoom")
+        case .wipeLeft: return L("Wipe left")
+        case .wipeUp: return L("Wipe up")
+        case .wipeDown: return L("Wipe down")
+        case .circleOpen: return L("Circle open")
+        case .blur: return L("Blur")
+        case .spin: return L("Spin")
+        case .flash: return L("Flash")
+        case .pixelate: return L("Pixelate")
         }
     }
 

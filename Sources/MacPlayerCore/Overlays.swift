@@ -13,6 +13,14 @@ public struct OverlayTransform: Codable, Equatable, Sendable {
     public var borderHex = "#FFFFFF"
     /// A colour made see-through (green screen). Nil = none.
     public var chromaKey: ChromaKey?
+    /// Keeps only a shape of the layer's picture. Nil = the whole picture.
+    public var mask: MaskSpec?
+    /// How the layer's colours mix with the picture under it.
+    public var blend: LayerBlend = .normal
+    /// Cuts the person (or the main subject) out of the layer's picture and drops the background.
+    public var isolateSubject = false
+    /// Degrees, clockwise.
+    public var rotation = 0.0
     public init() {}
 
     /// Keeps every value in a range that cannot produce an invisible or absurd layer.
@@ -20,23 +28,65 @@ public struct OverlayTransform: Codable, Equatable, Sendable {
         var t = self
         t.centerX = min(max(centerX, -0.5), 1.5); t.centerY = min(max(centerY, -0.5), 1.5)
         t.width = min(max(width, 0.02), 2); t.opacity = min(max(opacity, 0), 1); t.borderWidth = min(max(borderWidth, 0), 0.05)
+        t.mask = mask?.clamped()
+        t.rotation = min(max(rotation, -720), 720)
         return t
+    }
+}
+
+extension OverlayTransform {
+    enum CodingKeys: String, CodingKey { case centerX, centerY, width, opacity, borderWidth, borderHex, chromaKey, mask, blend, isolateSubject, rotation }
+
+    /// Projects saved before masks and blending existed have none of those keys: they open with none.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        centerX = try c.decodeIfPresent(Double.self, forKey: .centerX) ?? 0.8
+        centerY = try c.decodeIfPresent(Double.self, forKey: .centerY) ?? 0.78
+        width = try c.decodeIfPresent(Double.self, forKey: .width) ?? 0.3
+        opacity = try c.decodeIfPresent(Double.self, forKey: .opacity) ?? 1
+        borderWidth = try c.decodeIfPresent(Double.self, forKey: .borderWidth) ?? 0
+        borderHex = try c.decodeIfPresent(String.self, forKey: .borderHex) ?? "#FFFFFF"
+        chromaKey = try c.decodeIfPresent(ChromaKey.self, forKey: .chromaKey)
+        mask = try c.decodeIfPresent(MaskSpec.self, forKey: .mask)
+        blend = try c.decodeIfPresent(LayerBlend.self, forKey: .blend) ?? .normal
+        isolateSubject = try c.decodeIfPresent(Bool.self, forKey: .isolateSubject) ?? false
+        rotation = try c.decodeIfPresent(Double.self, forKey: .rotation) ?? 0
     }
 }
 
 /// The animated values at one instant (what the compositor draws).
 public struct OverlayState: Equatable, Sendable {
     public var centerX: Double, centerY: Double, width: Double, opacity: Double
-    public init(centerX: Double, centerY: Double, width: Double, opacity: Double) { self.centerX = centerX; self.centerY = centerY; self.width = width; self.opacity = opacity }
+    /// Degrees, clockwise.
+    public var rotation: Double
+    public init(centerX: Double, centerY: Double, width: Double, opacity: Double, rotation: Double = 0) {
+        self.centerX = centerX; self.centerY = centerY; self.width = width; self.opacity = opacity; self.rotation = rotation
+    }
 }
 
-/// A keyframe: the layer's position, size and opacity at a time counted from the layer's own start.
+/// A keyframe: the layer's position, size, turn and opacity at a time counted from the layer's own start.
 public struct OverlayKeyframe: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var time: MediaTime
     public var centerX: Double, centerY: Double, width: Double, opacity: Double
-    public init(id: UUID = UUID(), time: MediaTime, centerX: Double, centerY: Double, width: Double, opacity: Double) {
-        self.id = id; self.time = time; self.centerX = centerX; self.centerY = centerY; self.width = width; self.opacity = opacity
+    public var rotation: Double
+    /// How the values move on from this keyframe to the next.
+    public var easing: Easing
+    public init(id: UUID = UUID(), time: MediaTime, centerX: Double, centerY: Double, width: Double, opacity: Double, rotation: Double = 0, easing: Easing = .linear) {
+        self.id = id; self.time = time; self.centerX = centerX; self.centerY = centerY; self.width = width; self.opacity = opacity; self.rotation = rotation; self.easing = easing
+    }
+
+    enum CodingKeys: String, CodingKey { case id, time, centerX, centerY, width, opacity, rotation, easing }
+
+    /// Projects saved before turning and easing existed open with a straight, unturned animation.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); time = try c.decode(MediaTime.self, forKey: .time)
+        centerX = try c.decode(Double.self, forKey: .centerX); centerY = try c.decode(Double.self, forKey: .centerY)
+        width = try c.decode(Double.self, forKey: .width); opacity = try c.decode(Double.self, forKey: .opacity)
+        rotation = try c.decodeIfPresent(Double.self, forKey: .rotation) ?? 0
+        easing = try c.decodeIfPresent(Easing.self, forKey: .easing) ?? .linear
     }
 }
 
@@ -49,6 +99,9 @@ public protocol OverlayAnimating {
     var duration: MediaTime { get }
     var fadeIn: Double { get }
     var fadeOut: Double { get }
+    /// How the layer arrives and leaves (slide, zoom, pop...), on top of its keyframes. Nil = none.
+    var animationIn: ElementAnimation? { get }
+    var animationOut: ElementAnimation? { get }
 }
 
 extension OverlayAnimating {
@@ -59,7 +112,7 @@ extension OverlayAnimating {
     public func state(at t: MediaTime) -> OverlayState? {
         guard t >= start, t < end else { return nil }
         let rel = (t - start).seconds
-        var s = OverlayState(centerX: transform.centerX, centerY: transform.centerY, width: transform.width, opacity: transform.opacity)
+        var s = OverlayState(centerX: transform.centerX, centerY: transform.centerY, width: transform.width, opacity: transform.opacity, rotation: transform.rotation)
         let kfs = keyframes.sorted { $0.time < $1.time }
         if let first = kfs.first, let last = kfs.last {
             if rel <= first.time.seconds { s = Self.state(first) }
@@ -67,19 +120,31 @@ extension OverlayAnimating {
             else if let i = kfs.indices.dropLast().first(where: { rel < kfs[$0 + 1].time.seconds }) {
                 let a = kfs[i], b = kfs[i + 1]
                 let span = b.time.seconds - a.time.seconds
-                let f = span > 0 ? (rel - a.time.seconds) / span : 0
+                let f = a.easing.apply(span > 0 ? (rel - a.time.seconds) / span : 0)
                 func mix(_ x: Double, _ y: Double) -> Double { x + (y - x) * f }
-                s = OverlayState(centerX: mix(a.centerX, b.centerX), centerY: mix(a.centerY, b.centerY), width: mix(a.width, b.width), opacity: mix(a.opacity, b.opacity))
+                s = OverlayState(centerX: mix(a.centerX, b.centerX), centerY: mix(a.centerY, b.centerY), width: mix(a.width, b.width), opacity: mix(a.opacity, b.opacity),
+                                 rotation: mix(a.rotation, b.rotation))
             }
         }
         var fade = 1.0
         if fadeIn > 0 { fade = min(fade, rel / fadeIn) }
         if fadeOut > 0 { fade = min(fade, (duration.seconds - rel) / fadeOut) }
         s.opacity = min(max(s.opacity * max(0, min(1, fade)), 0), 1)
+        // Arriving and leaving: the same moves text uses, applied to the layer's place, size, turn and opacity.
+        let total = duration.seconds
+        if let a = animationIn, a.kind != .none, a.kind != .typewriter, a.duration > 0, rel < a.duration { Self.animate(a.kind, progress: rel / a.duration, leaving: false, on: &s) }
+        if let a = animationOut, a.kind != .none, a.kind != .typewriter, a.duration > 0, total - rel < a.duration { Self.animate(a.kind, progress: (total - rel) / a.duration, leaving: true, on: &s) }
+        s.opacity = min(max(s.opacity, 0), 1)
         return s
     }
 
-    static func state(_ k: OverlayKeyframe) -> OverlayState { OverlayState(centerX: k.centerX, centerY: k.centerY, width: k.width, opacity: k.opacity) }
+    private static func animate(_ kind: ElementAnimationKind, progress: Double, leaving: Bool, on s: inout OverlayState) {
+        var e = ElementState(x: s.centerX, y: s.centerY, scale: 1, rotation: s.rotation, alpha: 1)
+        ElementAnimator.apply(kind, progress: progress, leaving: leaving, to: &e)
+        s.centerX = e.x; s.centerY = e.y; s.width *= e.scale; s.rotation = e.rotation; s.opacity *= e.alpha
+    }
+
+    static func state(_ k: OverlayKeyframe) -> OverlayState { OverlayState(centerX: k.centerX, centerY: k.centerY, width: k.width, opacity: k.opacity, rotation: k.rotation) }
 
     /// Where the layer sits in an output of `outputWidth` x `outputHeight`, for a layer picture of the given aspect ratio.
     /// Rectangle with the origin at the top-left.
@@ -111,12 +176,15 @@ public struct OverlayClip: Codable, Identifiable, Equatable, Sendable, OverlayAn
     public var audio: AudioSettings
     public var fadeIn: Double
     public var fadeOut: Double
+    public var animationIn: ElementAnimation?
+    public var animationOut: ElementAnimation?
 
     public init(id: UUID = UUID(), name: String, kind: OverlayKind, lane: Int = 0, start: MediaTime, duration: MediaTime,
                 transform: OverlayTransform = OverlayTransform(), keyframes: [OverlayKeyframe] = [], audio: AudioSettings = AudioSettings(),
-                fadeIn: Double = 0, fadeOut: Double = 0) {
+                fadeIn: Double = 0, fadeOut: Double = 0, animationIn: ElementAnimation? = nil, animationOut: ElementAnimation? = nil) {
         self.id = id; self.name = name; self.kind = kind; self.lane = lane; self.start = start; self.duration = duration
         self.transform = transform; self.keyframes = keyframes; self.audio = audio; self.fadeIn = fadeIn; self.fadeOut = fadeOut
+        self.animationIn = animationIn; self.animationOut = animationOut
     }
 
     public var span: TimeSpan { TimeSpan(start: start, end: end) }
@@ -141,11 +209,15 @@ public struct LayerSpec: Codable, Equatable, Sendable, OverlayAnimating {
     public var audio: AudioSettings
     public var fadeIn: Double
     public var fadeOut: Double
+    public var animationIn: ElementAnimation?
+    public var animationOut: ElementAnimation?
 
     public init(id: UUID = UUID(), kind: Kind, lane: Int, start: MediaTime, duration: MediaTime, transform: OverlayTransform = OverlayTransform(),
-                keyframes: [OverlayKeyframe] = [], audio: AudioSettings = AudioSettings(), fadeIn: Double = 0, fadeOut: Double = 0) {
+                keyframes: [OverlayKeyframe] = [], audio: AudioSettings = AudioSettings(), fadeIn: Double = 0, fadeOut: Double = 0,
+                animationIn: ElementAnimation? = nil, animationOut: ElementAnimation? = nil) {
         self.id = id; self.kind = kind; self.lane = lane; self.start = start; self.duration = duration; self.transform = transform
         self.keyframes = keyframes; self.audio = audio; self.fadeIn = fadeIn; self.fadeOut = fadeOut
+        self.animationIn = animationIn; self.animationOut = animationOut
     }
 
     public var path: String { switch kind { case .video(let p, _, _): return p; case .image(let p): return p } }
@@ -209,17 +281,17 @@ public enum OverlayEditor {
     /// Records the layer's values at `relative` time as a keyframe (replacing one at the same time).
     public static func setKeyframe(_ clip: inout OverlayClip, at relative: MediaTime, to s: OverlayState) {
         let r = min(max(relative, .zero), clip.duration)
-        let k = OverlayKeyframe(time: r, centerX: s.centerX, centerY: s.centerY, width: s.width, opacity: s.opacity)
-        if let i = clip.keyframes.firstIndex(where: { abs($0.time.seconds - r.seconds) < 1.0 / 120 }) { var n = k; n.id = clip.keyframes[i].id; n.time = clip.keyframes[i].time; clip.keyframes[i] = n }
+        let k = OverlayKeyframe(time: r, centerX: s.centerX, centerY: s.centerY, width: s.width, opacity: s.opacity, rotation: s.rotation)
+        if let i = clip.keyframes.firstIndex(where: { abs($0.time.seconds - r.seconds) < 1.0 / 120 }) { var n = k; n.id = clip.keyframes[i].id; n.time = clip.keyframes[i].time; n.easing = clip.keyframes[i].easing; clip.keyframes[i] = n }
         else { clip.keyframes.append(k) }
         clip.keyframes.sort { $0.time < $1.time }
     }
 
     /// The values to show for editing at `t` without fades: base transform, or the interpolated keyframes.
     public static func editableState(_ clip: OverlayClip, at t: MediaTime) -> OverlayState {
-        var plain = clip; plain.fadeIn = 0; plain.fadeOut = 0
+        var plain = clip; plain.fadeIn = 0; plain.fadeOut = 0; plain.animationIn = nil; plain.animationOut = nil
         let inside = min(max(t, clip.start), clip.end - MediaTime(value: 1, timescale: 6000))
-        return plain.state(at: inside) ?? OverlayState(centerX: clip.transform.centerX, centerY: clip.transform.centerY, width: clip.transform.width, opacity: clip.transform.opacity)
+        return plain.state(at: inside) ?? OverlayState(centerX: clip.transform.centerX, centerY: clip.transform.centerY, width: clip.transform.width, opacity: clip.transform.opacity, rotation: clip.transform.rotation)
     }
 
     /// Corner and centre presets for Picture in Picture.

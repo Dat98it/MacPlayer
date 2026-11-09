@@ -1,6 +1,6 @@
 # Báo cáo bàn giao MacPlayer
 
-Ngày: 05/11/2026 · Máy kiểm thử: Apple Silicon, macOS 27.0.1, Swift 6.4, chỉ có Command Line Tools.
+Ngày: 05/11/2026 (cập nhật lần cuối 09/11/2026, bản 0.7.0; xem "Bổ sung 0.3.0–0.7.0" ở cuối) · Máy kiểm thử: Apple Silicon, macOS 27.0.1, Swift 6.4, chỉ có Command Line Tools.
 Nguồn yêu cầu: `MacPlayer-Thiet-ke-san-pham.md`.
 
 **Tóm tắt trung thực:** đây là một ứng dụng chạy được, với lõi lưu an toàn, cắt, render, playlist, dự án và hàng đợi đã kiểm thử kỹ. Nó **chưa phải bản thương mại hoàn chỉnh**: không có cấp phép, thanh toán, cập nhật, chữ ký phân phối; timeline nhiều nguồn/nhiều lớp và nhiều tính năng giai đoạn 3–4 chưa có giao diện hoặc chưa làm.
@@ -79,17 +79,18 @@ Nguồn yêu cầu: `MacPlayer-Thiet-ke-san-pham.md`.
 
 **Chưa làm hoặc chưa có giao diện**
 
-- **Nhiều track âm thanh** riêng (âm thanh lớp phủ được trộn vào, nhưng không có track âm thanh độc lập). Chế độ Dự án có **một track video chính** nối tiếp các đoạn (mục G) cùng **ba dòng lớp phủ** (mục H). Chưa có: snap khi kéo đoạn, kéo video từ Finder thả đúng vị trí trên timeline (thả vào cửa sổ thì thêm vào cuối/sau đoạn đang chọn), thumbnail/ảnh bìa và "thay âm thanh" cho dự án nhiều nguồn, cắt nhanh cho timeline ghép, và xem trước khi còn video bị mất (xem trước tạm dừng cho tới khi liên kết lại).
-- Với lớp phủ: bo góc, xoay, hiệu ứng màu/chế độ hòa trộn riêng cho lớp, tốc độ riêng của lớp, easing (chỉ nội suy tuyến tính), lớp tạo bằng văn bản (chữ dùng công cụ Chữ riêng), keyframe cho viền/xoay. Lớp chỉ có trong chế độ Dự án.
-- Keyframe cho crop/màu của đoạn chính, Picture-in-Picture của cửa sổ phát (khác với lớp phủ), chuyển cảnh (dissolve/fade qua đen), freeze frame, đảo chiều, nền làm mờ khi đổi tỷ lệ, kéo khung crop trực tiếp trên video (hiện chỉ có thanh trượt).
-- Thu voiceover, meter mức âm/cảnh báo clipping, chuẩn hóa âm lượng, giảm ồn, ducking. Tốc độ clip có thanh trượt trong chế độ Dự án (cho đoạn đang chọn); chế độ nhanh không có.
-- Phiên âm/dịch (tại máy hoặc cloud).
-- Thư viện nâng cao: tag, bộ sưu tập, yêu thích, tìm theo metadata; sao chép nguồn vào gói dự án; proxy cho nguồn nặng. Ảnh đại diện "trong MacPlayer" **được lưu vào dự án nhưng chưa dùng để hiển thị trong danh sách/thư viện**.
+_(Danh sách này đã được viết lại ngày 09/11/2026 cho khớp bản 0.7.0; các mục từng nằm ở đây như nhiều track âm thanh, thu giọng, giảm ồn, ducking, chuyển cảnh, freeze frame, đảo chiều, nền mờ, easing, xoay, chế độ hòa trộn nay đã có, xem mục "Bổ sung 0.3.0–0.7.0".)_
+
+- **Keyframe** cho màu và crop của đoạn chính; kéo khung crop trực tiếp trên **video** (ảnh thì có); snap khi kéo đoạn trên timeline.
+- Lớp phủ chỉ có trong chế độ Dự án; bo góc riêng, tốc độ riêng của lớp, lớp tạo bằng văn bản (chữ dùng công cụ Chữ).
+- Hiệu ứng giọng (EQ, cao độ, phòng, dội) áp lên **bản sao** âm thanh nên chỉ nghe sau khi bấm Áp dụng, không nghe tức thời khi kéo thanh trượt.
+- Phiên âm/dịch bằng cloud (không làm: app không dùng mạng). Phiên âm tại máy đã có.
+- Thư viện nâng cao: tag, bộ sưu tập, yêu thích, tìm theo metadata; sao chép nguồn vào gói dự án; proxy cho nguồn nặng. Ảnh đại diện "trong MacPlayer" được lưu vào dự án nhưng chưa dùng để hiển thị trong danh sách/thư viện.
 - Picture-in-Picture của cửa sổ phát; tùy chỉnh phím tắt (có bảng phím tắt chỉ-đọc).
 - Undo cho thao tác playlist (Undo chỉ áp dụng chỉnh sửa video/dự án).
 - Đánh dấu "nguồn đã thay đổi" cho **các dự án khác** dùng cùng nguồn: hiện chỉ có cờ trong phiên hiện tại.
 - Cấp phép, thanh toán, kích hoạt, khôi phục mua hàng, cập nhật có chữ ký, trang bán hàng, FAQ, hỗ trợ, chữ ký Developer ID + notarization. **Cần thông tin/tài khoản bên ngoài; không tự tạo hay giả lập.**
-- Kiểm toán khả năng truy cập thật bằng VoiceOver và Reduce Motion; kiểm tra thương hiệu tên "MacPlayer".
+- Kiểm toán khả năng truy cập thật bằng VoiceOver và Reduce Motion; kiểm tra thương hiệu tên "MacPlayer"; máy Intel; trình phát khác đọc file cắt nhanh.
 
 ## 4. Giới hạn thực tế đã đo (đọc kỹ)
 
@@ -141,8 +142,9 @@ Nguồn yêu cầu: `MacPlayer-Thiet-ke-san-pham.md`.
 - Mã nguồn: toàn bộ thư mục này. Mở bằng `swift build`/SwiftPM (không có `.xcodeproj`; không cần Xcode).
 - `.app` chạy thử: `Scripts/build_app.sh` → `build/MacPlayer.app` (ký ad-hoc).
 - `docs/format-matrix.md`: ma trận định dạng đã chạy thật. `docs/benchmark.md`: số đo hiệu năng. `docs/kiem-thu-video-that.md`: kiểm thử trên video thật.
+- `CLAUDE.md`: hướng dẫn cho AI agent/người mới (công nghệ, cấu trúc, quy tắc, cách thêm tính năng, cách phát hành). Cập nhật cùng mỗi thay đổi lớn.
 - Công cụ kiểm thử: `Scripts/test.sh`, `Scripts/crash_test.py`, `Scripts/open_with_test.py`, `Scripts/check_localization.py`; cách chạy trong README.
-- Không có commit, không sửa git config, không thay đổi ứng dụng cũ, không gửi dữ liệu ra ngoài.
+- Không sửa git config, không thay đổi ứng dụng khác, không gửi dữ liệu ra ngoài.
 
 
 ## Bổ sung: kiểm thử trên 111 video thật của người dùng
@@ -155,3 +157,25 @@ Xem `docs/kiem-thu-video-that.md` Phần 2. Lỗi 23–26 đã sửa: thứ tự
 - `Scripts/make_release.sh` tạo `dist/MacPlayer-<phiên bản>.dmg`, `.zip` và `SHA256SUMS.txt` (đã chạy thử, đã kiểm checksum). Chữ ký ad-hoc, **chưa công chứng** (cần tài khoản Apple Developer trả phí); người dùng làm theo `docs/huong-dan-cai-dat.md` ở lần mở đầu.
 - App không có mã nào dùng mạng; không thu thập dữ liệu.
 - Giấy phép MIT đã thêm (`LICENSE`, tên bản quyền "MacPlayer contributors", có thể sửa). Còn cần quyết định: bundle id (hiện `local.macplayer.app`), tên hiển thị, nơi đăng tải.
+
+## Bổ sung 0.3.0–0.7.0 (09/11/2026)
+
+Mỗi nhóm tính năng ra một phiên bản mới (quy tắc của người bảo trì: sửa app thì phải ra phiên bản mới và cài lại vào `/Applications`).
+
+| Bản | Nội dung | Kiểm chứng |
+|---|---|---|
+| 0.2.1 / 0.3.0 | Cây thư mục: file trong thư mục hiện dạng danh sách hoặc lưới (nhớ lựa chọn); thanh trượt cỡ ảnh xem trước (nhớ giá trị); viền **xanh lá** cho file đang mở, viền **màu nhấn + dấu tích** cho file đang chọn (đổi tên/Thùng rác/gỡ). Trước đó: chọn nhiều file, đổi tên hàng loạt, chuyển nhiều file vào Thùng rác, cây thư mục, hỏi tên khi tạo danh sách mới | Test Core (`FolderTree`, `PreviewSize`, `TreeFiles`, `BatchRename`), chụp cửa sổ app thật ở 4 chế độ; ổ ảnh thật không gắn lúc kiểm nên dùng thư mục ảnh mẫu 50 ảnh |
+| 0.4.0 | **Chỉnh màu chuyên nghiệp**: phơi sáng, vùng sáng/tối, rực màu, sắc thái, đường cong (sáng + R/G/B), 3 bánh xe màu, HSL 8 màu, nạp `.cube`, histogram, so sánh/sao chép/dán/áp cho mọi đoạn | `ColorGradingTests` (toán), `ColorGradeTests` (điểm ảnh thật, kể cả **video xuất ra** và file `.cube` đọc từ đĩa), chụp giao diện |
+| 0.5.0 | **Tách nền**: xóa nền người/chủ thể (Vision, trên máy), phông xanh cho video chính, mặt nạ 6 hình (mềm viền, đảo), màu/bản sao mờ thay thế, 10 chế độ hòa trộn cho lớp phủ | `MaskTests` (hình học, điểm ảnh, lớp phủ, tương thích dự án cũ); Vision chỉ kiểm bằng mask giả (`SubjectMasker.provider`) và gọi thật trên ảnh phẳng không lỗi — **chưa thử trên người thật** |
+| 0.6.0 | 8 chuyển cảnh mới (tổng 17), 6 easing cho keyframe (lớp phủ, chữ/hình dán, "phóng to và dời"), xoay cho lớp phủ và "phóng to và dời", hoạt ảnh xuất hiện/biến mất cho lớp phủ | `EasingAnimationTests`, `MoreTransitionAndTurnTests` (điểm ảnh: mọi chuyển cảnh bắt đầu ở hình cũ và kết thúc ở hình mới, quét/vòng tròn, lớp xoay đứng, zoom-and-move xoay) |
+| 0.7.0 | **Giọng và hiệu ứng âm thanh**: 8 mẫu một chạm + tự chỉnh (trầm/trung/cao, cao độ, phòng, dội) qua AVAudioEngine chạy offline trên bản sao; **đường âm lượng vẽ tay** cho từng âm thanh | `SoundFXTests` (âm thuần: cao độ gấp đôi, EQ đổi mức, dội xuất hiện trong khoảng lặng, bộ nhớ đệm, xuất video mang âm đã đổi), `VolumeCurveTests` |
+
+Tổng số test sau đợt này: Core 360, Media 214 (đều đạt, ngoại trừ test ổn định hình bên dưới).
+
+**Chưa kiểm chứng / lưu ý trung thực**
+
+- Chưa thao tác bằng chuột thật trên các giao diện mới (bánh xe, đường cong, vẽ âm lượng, kéo thanh trượt trong tab Lớp); mới chụp cửa sổ app thật và kiểm logic bằng test. Các giao diện của tab Lớp và bảng Chuyển cảnh mới **chưa chụp được** (cần chế độ Dự án).
+- Vision (xóa nền) chưa thử trên người thật; xem trước video dùng chế độ nhanh nên thô hơn bản xuất.
+- `StabilizerTests.anExportedVideoIsSteadierThanTheOneItCameFrom` chập chờn (hỏng khoảng một nửa số lần chạy, cả ở commit cũ trước các thay đổi này). Self-test trong app còn 2 kiểm tra hỏng từ trước (cỡ cửa sổ sau slideshow ảnh; trùng phím tắt do mục hệ thống "Emoji & Symbols", "Enter Full Screen") và không được chạy lại ở các bản 0.4–0.7.
+- Video HDR: màu áp lên giá trị HDR đang lưu, không chuyển tông (app cảnh báo).
+- Đã tham khảo **ý tưởng** tính năng từ một ứng dụng chỉnh sửa video phổ biến để xếp thứ tự ưu tiên; không sao chép mã, tài nguyên hay hiệu ứng, và bỏ qua phần cần mạng/AI đám mây.

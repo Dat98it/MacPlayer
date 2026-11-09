@@ -21,6 +21,8 @@ struct PiecePlan {
     var speed: Double = 1
     /// A preview only: the effects of this clip may be replaced while it plays (see `EffectsLive`).
     var liveKey: UUID?
+    /// How carefully a subject is cut out of its background (a preview is quick, an export and a photo are careful).
+    var subjectMode: SubjectMasker.Mode = .exportVideo
 }
 
 /// Everything time-based that is drawn over the picture, shared by all instructions. Drawn text images are cached
@@ -222,24 +224,31 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
         img = img.transformed(by: CGAffineTransform(translationX: tx, y: ty))
         let frame = CGRect(x: 0, y: 0, width: ow, height: oh)
         let effects = plan.liveKey.flatMap { EffectsLive.effects(for: $0) } ?? look.effects
-        let backdrop = (effects.blurBackground && look.fit == .fit)
-            ? LookEffectsRenderer.backdrop(of: upright, frame: frame, amount: effects.blurBackgroundAmount)
-            : CIImage(color: .black).cropped(to: frame)
-        var out = img.cropped(to: frame).composited(over: backdrop)
-
-        // Colour.
-        if !look.color.isNeutral {
-            let c = look.color
-            out = out.applyingFilter("CIColorControls", parameters: [
-                kCIInputBrightnessKey: c.brightness * 0.5, kCIInputContrastKey: 1 + c.contrast * 0.5, kCIInputSaturationKey: 1 + c.saturation,
-            ])
-            if c.temperature != 0 {
-                // Warmer = lower target neutral temperature.
-                out = out.applyingFilter("CITemperatureAndTint", parameters: [
-                    "inputNeutral": CIVector(x: 6500, y: 0), "inputTargetNeutral": CIVector(x: 6500 - c.temperature * 2500, y: 0),
-                ])
+        // What is cut away (a key colour, a subject cut-out, a shape) shows the backdrop: a colour, the blurred picture, or black.
+        var placedPicture = img.cropped(to: frame)
+        if look.cutsOut {
+            if let key = look.chromaKey { placedPicture = LookEffectsRenderer.chromaKeyed(placedPicture, key: key) }
+            if look.isolateSubject, let subject = SubjectMasker.mask(for: upright, mode: plan.subjectMode) {
+                let moved = subject.transformed(by: CGAffineTransform(scaleX: k, y: k)).transformed(by: CGAffineTransform(translationX: tx, y: ty))
+                placedPicture = MaskRenderer.apply(moved, to: placedPicture)
             }
+            if let m = look.mask { placedPicture = MaskRenderer.apply(MaskRenderer.alpha(m, size: frame.size), to: placedPicture) }
         }
+        let backdrop: CIImage
+        if effects.blurBackground && look.fit == .fit && !look.cutsOut {
+            backdrop = LookEffectsRenderer.backdrop(of: upright, frame: frame, amount: effects.blurBackgroundAmount)
+        } else if let hex = look.backdropHex {
+            backdrop = CIImage(color: CompositionBuilder.ciColor(hex: hex)).cropped(to: frame)
+        } else if effects.blurBackground && look.cutsOut {
+            backdrop = LookEffectsRenderer.backdrop(of: upright, frame: frame, amount: effects.blurBackgroundAmount)
+        } else {
+            backdrop = CIImage(color: .black).cropped(to: frame)
+        }
+        var out = placedPicture.composited(over: backdrop)
+
+        // Colour (the basic sliders, then curves, wheels, HSL and look files).
+        let colour = plan.liveKey.flatMap { ColorLive.colour(for: $0) } ?? look.color
+        if !colour.isNeutral { out = ColorGradeRenderer.apply(colour, to: out) }
 
         // Zoom and move over the clip.
         if !look.motion.isEmpty, let m = Motion.state(look.motion, at: max(0, time - plan.rangeStart)), m != .still {
@@ -271,6 +280,8 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
             if let pb { li = normalized(CIImage(cvPixelBuffer: pb).oriented(d.orientation)) } else if let im = d.image { li = normalized(im) } else { continue }
             guard li.extent.width > 0, li.extent.height > 0 else { continue }
             if let key = spec.transform.chromaKey { li = LookEffectsRenderer.chromaKeyed(li, key: key) }
+            if spec.transform.isolateSubject, let subject = SubjectMasker.mask(for: li, mode: plan.subjectMode) { li = MaskRenderer.apply(subject, to: li) }
+            if let m = spec.transform.mask { li = MaskRenderer.apply(MaskRenderer.alpha(m, size: li.extent.size), to: li) }
             let r = OverlayRect.rect(for: st, outputWidth: ow, outputHeight: oh, aspect: Double(li.extent.width / li.extent.height))
             let k = r.width / Double(li.extent.width)
             li = li.transformed(by: CGAffineTransform(scaleX: k, y: k))
@@ -281,8 +292,16 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
                 let edge = CIImage(color: d.live ? CompositionBuilder.ciColor(hex: spec.transform.borderHex) : d.border).cropped(to: li.extent.insetBy(dx: -bw, dy: -bw))
                 li = li.composited(over: edge)
             }
+            if st.rotation != 0 {
+                let c = CGPoint(x: r.x + r.width / 2, y: oh - r.y - r.height / 2)
+                li = li.transformed(by: CGAffineTransform(translationX: -c.x, y: -c.y).concatenating(CGAffineTransform(rotationAngle: -st.rotation * .pi / 180)).concatenating(CGAffineTransform(translationX: c.x, y: c.y)))
+            }
             if st.opacity < 0.999 { li = li.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: st.opacity)]) }
-            out = li.composited(over: out).cropped(to: frame)
+            if let blend = spec.transform.blend.filterName {
+                out = li.applyingFilter(blend, parameters: [kCIInputBackgroundImageKey: out]).cropped(to: frame)
+            } else {
+                out = li.composited(over: out).cropped(to: frame)
+            }
         }
 
         // Text and subtitles.

@@ -2,6 +2,7 @@ import Foundation
 
 public enum TransitionKind: String, Codable, CaseIterable, Sendable {
     case dissolve, dipBlack, dipWhite, slideLeft, slideRight, slideUp, slideDown, wipeRight, zoomIn
+    case wipeLeft, wipeUp, wipeDown, circleOpen, blur, spin, flash, pixelate
 }
 
 /// How a clip arrives: a transition from the clip before it, centred on the cut between them. It needs a little footage on both sides

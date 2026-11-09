@@ -188,7 +188,7 @@ extension EditorSession {
 
     func loadProjectPreview(at start: MediaTime?, since generation: Int? = nil) async {
         LayerLive.clear() // the rebuilt preview carries the current values itself
-        EffectsLive.clear()
+        EffectsLive.clear(); ColorLive.clear(); colorCompare = false
         let used = Set(project.timeline.map(\.sourceID) + project.overlayClips.compactMap(\.sourceID))
         if !missingSourceIDs.intersection(used).isEmpty {
             // With media missing, the preview would not match the timeline's positions, so it waits for a relink.

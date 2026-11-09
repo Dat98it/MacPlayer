@@ -255,6 +255,7 @@ struct TextPane: View {
                 Text(Timecode.format(o.start + MediaTime(seconds: k.time))).font(.caption.monospacedDigit())
                 Text(String(format: "x %.2f y %.2f  %.1f×  %.0f°", k.x, k.y, k.scale, k.rotation)).font(.caption2).foregroundColor(.secondary)
                 Spacer()
+                EasingMenu(easing: Binding(get: { k.easing }, set: { e in update(o.id, "Keyframe easing") { if let i = $0.keyframes?.firstIndex(where: { $0.id == k.id }) { $0.keyframes?[i].easing = e } } }))
                 Button { Task { await session.player.seek(to: o.start + MediaTime(seconds: k.time)) } } label: { Image(systemName: "arrow.right.to.line") }.buttonStyle(.borderless).accessibilityLabel(L("Go to keyframe"))
                 Button { update(o.id, "Delete keyframe") { $0.keyframes?.removeAll { $0.id == k.id } } } label: { Image(systemName: "trash") }.buttonStyle(.borderless).accessibilityLabel(L("Delete keyframe"))
             }

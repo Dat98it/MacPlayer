@@ -148,7 +148,10 @@ public enum CompositionBuilder {
                 // The tracks the player would play are the enabled ones: the default of an alternative group, or every ordinary track.
                 // With noise reduction on, the sound comes from the cleaned copy (an export makes it first when there is none yet; a preview waits for it).
                 var audioAsset = a
-                if let strength = piece.audio.denoise, strength > 0, let u = await Self.cleanedSound(piece.sourceURL, strength: strength, make: frameAccurate) { audioAsset = asset(u) }
+                var audioURL = piece.sourceURL, audioChanged = false
+                if let strength = piece.audio.denoise, strength > 0, let u = await Self.cleanedSound(audioURL, strength: strength, make: frameAccurate) { audioURL = u; audioChanged = true }
+                if let fx = piece.audio.fx, !fx.isNeutral, let u = await Self.changedSound(audioURL, fx: fx, make: frameAccurate) { audioURL = u; audioChanged = true }
+                if audioChanged { audioAsset = asset(audioURL) }
                 let allAudio = try await audioAsset.loadTracks(withMediaType: .audio)
                 var audioSources: [AVAssetTrack] = []
                 for t in allAudio where (try? await t.load(.isEnabled)) ?? true { audioSources.append(t) }
@@ -185,7 +188,7 @@ public enum CompositionBuilder {
             var plan = PiecePlan(look: piece.look, trackOrientation: RecipeCompositor.orientation(of: transform),
                                  storedSize: PixelSize(width: Int(natural.width), height: Int(natural.height)), rangeStart: cursor.seconds)
             plan.sourceStart = prep.span.start.seconds; plan.speed = prep.speed
-            if !frameAccurate { plan.liveKey = piece.liveKey }
+            if !frameAccurate { plan.liveKey = piece.liveKey; plan.subjectMode = .previewVideo }
             if piece.look.stabilize > 0 {
                 // The analysis is kept after the first time. A preview uses it if there is one; an export makes it first if it has to.
                 var path = Stabilizer.cachedPath(for: piece.sourceURL)
@@ -273,6 +276,7 @@ public enum CompositionBuilder {
                 guard start < total, FileManager.default.fileExists(atPath: clip.path) else { continue }     // a sound whose file is gone is left out (the app asks for it to be found again)
                 var url = URL(fileURLWithPath: clip.path)
                 if let strength = clip.denoise, strength > 0, let u = await Self.cleanedSound(url, strength: strength, make: frameAccurate) { url = u }
+                if let fx = clip.fx, !fx.isNeutral, let u = await Self.changedSound(url, fx: fx, make: frameAccurate) { url = u }
                 let a = asset(url)
                 guard let src = try await a.loadTracks(withMediaType: .audio).first,
                       let track = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { continue }
@@ -289,7 +293,8 @@ public enum CompositionBuilder {
                     depth = pow(10, min(0, clip.duckDepthDB) / 20)
                 }
                 let points = VolumeEnvelope.points(start: start.seconds, end: (start + length).seconds, gain: pow(10, clip.gainDB / 20),
-                                                   fadeIn: clip.fadeIn, fadeOut: clip.fadeOut, speech: duckSpeech, duckGain: depth)
+                                                   fadeIn: clip.fadeIn, fadeOut: clip.fadeOut, speech: duckSpeech, duckGain: depth,
+                                                   curve: (clip.volumeCurve ?? []).map { (time: start.seconds + $0.time, gain: pow(10, $0.gainDB / 20)) })
                 let params = AVMutableAudioMixInputParameters(track: track)
                 Self.apply(points, to: params)
                 soundParams.append(params)
@@ -383,6 +388,12 @@ public enum CompositionBuilder {
     static func cleanedSound(_ url: URL, strength: Double, make: Bool) async -> URL? {
         if let hit = NoiseReducer.cached(for: url, strength: strength) { return hit }
         return make ? try? await NoiseReducer.clean(url, strength: strength) : nil
+    }
+
+    /// The copy of a file's sound with bass, treble, pitch, room and echo: the one made before, or (when `make`) one made now.
+    static func changedSound(_ url: URL, fx: SoundFX, make: Bool) async -> URL? {
+        if let hit = SoundFXRenderer.cached(for: url, fx: fx.clamped()) { return hit }
+        return make ? try? await SoundFXRenderer.process(url, fx: fx) : nil
     }
 
     /// When someone speaks in the output, on the timeline: in the video's own sound (where it is not muted) and in the voice-overs.

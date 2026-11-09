@@ -31,7 +31,7 @@ public struct RenderRecipe: Codable, Equatable, Sendable {
     }
 
     /// True when the picture or sound must be processed, so a stream copy ("fast cut") is not possible.
-    public var needsReencode: Bool { !layers.isEmpty || !soundClips.isEmpty || audio.denoise != nil || look.changesPicture || !overlays.isEmpty || !burnedInCues.isEmpty || audio.gainDB != 0 || audio.muted || audio.fadeIn > 0 || audio.fadeOut > 0 || look.speed != 1 || audio.replacementPath != nil || audio.offsetSeconds != 0 }
+    public var needsReencode: Bool { !layers.isEmpty || !soundClips.isEmpty || audio.denoise != nil || audio.fx != nil || look.changesPicture || !overlays.isEmpty || !burnedInCues.isEmpty || audio.gainDB != 0 || audio.muted || audio.fadeIn > 0 || audio.fadeOut > 0 || look.speed != 1 || audio.replacementPath != nil || audio.offsetSeconds != 0 }
 }
 
 /// Where a finished export goes.

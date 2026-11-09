@@ -142,12 +142,12 @@ extension EditorSession {
             var s = OverlayEditor.editableState(c, at: now)
             change(&s)
             if c.keyframes.isEmpty {
-                c.transform.centerX = s.centerX; c.transform.centerY = s.centerY; c.transform.width = s.width; c.transform.opacity = s.opacity
+                c.transform.centerX = s.centerX; c.transform.centerY = s.centerY; c.transform.width = s.width; c.transform.opacity = s.opacity; c.transform.rotation = s.rotation
                 c.transform = c.transform.clamped()
             } else {
-                var clamped = OverlayTransform(); clamped.centerX = s.centerX; clamped.centerY = s.centerY; clamped.width = s.width; clamped.opacity = s.opacity
+                var clamped = OverlayTransform(); clamped.centerX = s.centerX; clamped.centerY = s.centerY; clamped.width = s.width; clamped.opacity = s.opacity; clamped.rotation = s.rotation
                 clamped = clamped.clamped()
-                OverlayEditor.setKeyframe(&c, at: now - c.start, to: OverlayState(centerX: clamped.centerX, centerY: clamped.centerY, width: clamped.width, opacity: clamped.opacity))
+                OverlayEditor.setKeyframe(&c, at: now - c.start, to: OverlayState(centerX: clamped.centerX, centerY: clamped.centerY, width: clamped.width, opacity: clamped.opacity, rotation: clamped.rotation))
             }
         }
     }
@@ -161,7 +161,7 @@ extension EditorSession {
             else {
                 var t = c.transform; t.width = OverlayEditor.editableState(c, at: c.start).width
                 OverlayEditor.apply(preset, to: &t, outputAspect: oa, layerAspect: layerAspect)
-                OverlayEditor.setKeyframe(&c, at: now - c.start, to: OverlayState(centerX: t.centerX, centerY: t.centerY, width: t.width, opacity: OverlayEditor.editableState(c, at: now).opacity))
+                OverlayEditor.setKeyframe(&c, at: now - c.start, to: OverlayState(centerX: t.centerX, centerY: t.centerY, width: t.width, opacity: OverlayEditor.editableState(c, at: now).opacity, rotation: OverlayEditor.editableState(c, at: now).rotation))
             }
         }
     }
@@ -177,5 +177,9 @@ extension EditorSession {
     }
 
     func removeKeyframe(_ id: UUID, keyframe kid: UUID) { updateOverlay(id, "Delete keyframe") { $0.keyframes.removeAll { $0.id == kid } } }
+    /// How the values move on from one keyframe to the next.
+    func setKeyframeEasing(_ id: UUID, keyframe kid: UUID, _ easing: Easing) {
+        updateOverlay(id, "Keyframe easing") { c in if let i = c.keyframes.firstIndex(where: { $0.id == kid }) { c.keyframes[i].easing = easing } }
+    }
     func clearKeyframes(_ id: UUID) { updateOverlay(id, "Clear animation") { $0.keyframes = [] } }
 }

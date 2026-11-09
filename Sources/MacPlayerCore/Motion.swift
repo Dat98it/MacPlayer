@@ -10,21 +10,37 @@ public struct MotionKeyframe: Codable, Equatable, Identifiable, Sendable {
     /// The part of the picture that is in the middle of the frame, 0...1 across (0.5 = the middle).
     public var x: Double
     public var y: Double
+    /// Degrees, clockwise (0 = upright).
+    public var rotation: Double
+    /// How the values move on from this keyframe to the next.
+    public var easing: Easing
 
-    public init(id: UUID = UUID(), time: Double, scale: Double = 1, x: Double = 0.5, y: Double = 0.5) {
-        self.id = id; self.time = time; self.scale = scale; self.x = x; self.y = y
+    public init(id: UUID = UUID(), time: Double, scale: Double = 1, x: Double = 0.5, y: Double = 0.5, rotation: Double = 0, easing: Easing = .linear) {
+        self.id = id; self.time = time; self.scale = scale; self.x = x; self.y = y; self.rotation = rotation; self.easing = easing
+    }
+
+    enum CodingKeys: String, CodingKey { case id, time, scale, x, y, rotation, easing }
+
+    /// Projects saved before turning and easing existed open with a straight, unturned animation.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); time = try c.decode(Double.self, forKey: .time)
+        scale = try c.decode(Double.self, forKey: .scale); x = try c.decode(Double.self, forKey: .x); y = try c.decode(Double.self, forKey: .y)
+        rotation = try c.decodeIfPresent(Double.self, forKey: .rotation) ?? 0
+        easing = try c.decodeIfPresent(Easing.self, forKey: .easing) ?? .linear
     }
 }
 
 public struct MotionState: Equatable, Sendable {
     public var scale: Double, x: Double, y: Double
-    public init(scale: Double, x: Double, y: Double) { self.scale = scale; self.x = x; self.y = y }
+    public var rotation: Double
+    public init(scale: Double, x: Double, y: Double, rotation: Double = 0) { self.scale = scale; self.x = x; self.y = y; self.rotation = rotation }
     public static let still = MotionState(scale: 1, x: 0.5, y: 0.5)
 
     /// Keeps the view inside the picture: at 2x only half of it is visible, so its middle can only be between 0.25 and 0.75.
     public func clamped() -> MotionState {
         let s = min(max(scale, 1), 8), half = 0.5 / s
-        return MotionState(scale: s, x: min(max(x, half), 1 - half), y: min(max(y, half), 1 - half))
+        return MotionState(scale: s, x: min(max(x, half), 1 - half), y: min(max(y, half), 1 - half), rotation: rotation)
     }
 }
 
@@ -34,15 +50,15 @@ public enum Motion {
     public static func state(_ keyframes: [MotionKeyframe], at t: Double) -> MotionState? {
         let k = keyframes.sorted { $0.time < $1.time }
         guard let first = k.first, let last = k.last else { return nil }
-        func s(_ f: MotionKeyframe) -> MotionState { MotionState(scale: f.scale, x: f.x, y: f.y) }
+        func s(_ f: MotionKeyframe) -> MotionState { MotionState(scale: f.scale, x: f.x, y: f.y, rotation: f.rotation) }
         if t <= first.time { return s(first).clamped() }
         if t >= last.time { return s(last).clamped() }
         guard let i = k.indices.dropLast().first(where: { t < k[$0 + 1].time }) else { return s(last).clamped() }
         let a = k[i], b = k[i + 1]
         let span = b.time - a.time
-        let u = span > 0 ? (t - a.time) / span : 1
+        let u = a.easing.apply(span > 0 ? (t - a.time) / span : 1)
         func mix(_ p: Double, _ q: Double) -> Double { p + (q - p) * u }
-        return MotionState(scale: mix(a.scale, b.scale), x: mix(a.x, b.x), y: mix(a.y, b.y)).clamped()
+        return MotionState(scale: mix(a.scale, b.scale), x: mix(a.x, b.x), y: mix(a.y, b.y), rotation: mix(a.rotation, b.rotation)).clamped()
     }
 
     public enum Preset: String, CaseIterable, Sendable { case zoomIn, zoomOut, panRight, panLeft, zoomInPan, punchIn }
@@ -75,8 +91,8 @@ public enum Motion {
     public static func setting(_ keyframes: [MotionKeyframe], at t: Double, to state: MotionState) -> [MotionKeyframe] {
         var k = keyframes
         let c = state.clamped()
-        if let i = k.firstIndex(where: { abs($0.time - t) < 0.02 }) { k[i].scale = c.scale; k[i].x = c.x; k[i].y = c.y }
-        else { k.append(MotionKeyframe(time: max(0, t), scale: c.scale, x: c.x, y: c.y)) }
+        if let i = k.firstIndex(where: { abs($0.time - t) < 0.02 }) { k[i].scale = c.scale; k[i].x = c.x; k[i].y = c.y; k[i].rotation = c.rotation }
+        else { k.append(MotionKeyframe(time: max(0, t), scale: c.scale, x: c.x, y: c.y, rotation: c.rotation)) }
         return k.sorted { $0.time < $1.time }
     }
 }

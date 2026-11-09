@@ -60,14 +60,51 @@ public enum CanvasPreset: String, Codable, CaseIterable, Sendable {
     }
 }
 
-public struct ColorAdjust: Codable, Equatable, Sendable {
+public struct ColorAdjust: Codable, Equatable, Hashable, Sendable {
     /// All in -1...1 (0 = unchanged), except saturation/contrast where 0 also means unchanged.
     public var brightness: Double = 0
     public var contrast: Double = 0
     public var saturation: Double = 0
     public var temperature: Double = 0
+    /// The finer tools (all -1...1, 0 = unchanged). They are drawn together with the curves, wheels, HSL and LUT in one pass (`ColorGrading`).
+    public var exposure: Double = 0
+    public var highlights: Double = 0
+    public var shadows: Double = 0
+    public var vibrance: Double = 0
+    /// Green (−) to magenta (+).
+    public var tint: Double = 0
+    public var curves = ColorCurves()
+    public var wheels = ColorWheels()
+    public var hsl = ColorHSL()
+    public var lut: LutRef?
     public init() {}
     public var isNeutral: Bool { self == ColorAdjust() }
+
+    /// Whether anything beyond the four basic sliders is set (those are drawn with Core Image's own colour filters, as they always were).
+    public var needsGrade: Bool { exposure != 0 || highlights != 0 || shadows != 0 || vibrance != 0 || tint != 0 || !curves.isNeutral || !wheels.isNeutral || !hsl.isNeutral || lut != nil }
+}
+
+extension ColorAdjust {
+    enum CodingKeys: String, CodingKey { case brightness, contrast, saturation, temperature, exposure, highlights, shadows, vibrance, tint, curves, wheels, hsl, lut }
+
+    /// Projects saved before the finer tools existed have only the four basic values: the rest open unchanged.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        brightness = try c.decodeIfPresent(Double.self, forKey: .brightness) ?? 0
+        contrast = try c.decodeIfPresent(Double.self, forKey: .contrast) ?? 0
+        saturation = try c.decodeIfPresent(Double.self, forKey: .saturation) ?? 0
+        temperature = try c.decodeIfPresent(Double.self, forKey: .temperature) ?? 0
+        exposure = try c.decodeIfPresent(Double.self, forKey: .exposure) ?? 0
+        highlights = try c.decodeIfPresent(Double.self, forKey: .highlights) ?? 0
+        shadows = try c.decodeIfPresent(Double.self, forKey: .shadows) ?? 0
+        vibrance = try c.decodeIfPresent(Double.self, forKey: .vibrance) ?? 0
+        tint = try c.decodeIfPresent(Double.self, forKey: .tint) ?? 0
+        curves = try c.decodeIfPresent(ColorCurves.self, forKey: .curves) ?? ColorCurves()
+        wheels = try c.decodeIfPresent(ColorWheels.self, forKey: .wheels) ?? ColorWheels()
+        hsl = try c.decodeIfPresent(ColorHSL.self, forKey: .hsl) ?? ColorHSL()
+        lut = try c.decodeIfPresent(LutRef.self, forKey: .lut)
+    }
 }
 
 public struct AudioSettings: Codable, Equatable, Sendable {
@@ -81,6 +118,8 @@ public struct AudioSettings: Codable, Equatable, Sendable {
     public var replacementPath: String?
     /// Noise reduction strength 0...1 (nil = off).
     public var denoise: Double?
+    /// Bass, treble, a higher or lower voice, a room, an echo (nil = none).
+    public var fx: SoundFX?
     public init() {}
     public var isNeutral: Bool { self == AudioSettings() }
 }
@@ -106,16 +145,27 @@ public struct VideoLook: Codable, Equatable, Sendable {
     public var transitionIn: ClipTransition?
     /// Steadies shaky footage: 0 = off, up to 1 = as steady as it gets (and the most cropped in).
     public var stabilize: Double = 0
+    /// A colour made see-through (green screen), so the backdrop shows there.
+    public var chromaKey: ChromaKey?
+    /// Keeps only a shape of the picture.
+    public var mask: MaskSpec?
+    /// Cuts the person (or the main subject) out and drops the background.
+    public var isolateSubject = false
+    /// What fills the parts the picture no longer covers (after a cut-out, a mask or a key): a colour, or nil for black.
+    public var backdropHex: String?
     public init() {}
 
+    /// Whether anything makes parts of the picture see-through.
+    public var cutsOut: Bool { chromaKey != nil || mask != nil || isolateSubject }
+
     public var changesPicture: Bool {
-        !crop.isFull || rotation % 360 != 0 || flipHorizontal || flipVertical || canvas != .source || !color.isNeutral || !effects.isNeutral || !motion.isEmpty || transitionIn != nil || stabilize > 0
+        !crop.isFull || rotation % 360 != 0 || flipHorizontal || flipVertical || canvas != .source || !color.isNeutral || !effects.isNeutral || !motion.isEmpty || transitionIn != nil || stabilize > 0 || cutsOut
     }
     public var isNeutral: Bool { !changesPicture && speed == 1 }
 }
 
 extension VideoLook {
-    enum CodingKeys: String, CodingKey { case crop, rotation, flipHorizontal, flipVertical, canvas, fit, color, speed, effects, motion, transitionIn, stabilize }
+    enum CodingKeys: String, CodingKey { case crop, rotation, flipHorizontal, flipVertical, canvas, fit, color, speed, effects, motion, transitionIn, stabilize, chromaKey, mask, isolateSubject, backdropHex }
 
     /// Projects saved before `effects` existed have no such key: they open with no effects.
     public init(from decoder: Decoder) throws {
@@ -133,6 +183,10 @@ extension VideoLook {
         motion = try c.decodeIfPresent([MotionKeyframe].self, forKey: .motion) ?? []
         transitionIn = try c.decodeIfPresent(ClipTransition.self, forKey: .transitionIn)
         stabilize = try c.decodeIfPresent(Double.self, forKey: .stabilize) ?? 0
+        chromaKey = try c.decodeIfPresent(ChromaKey.self, forKey: .chromaKey)
+        mask = try c.decodeIfPresent(MaskSpec.self, forKey: .mask)
+        isolateSubject = try c.decodeIfPresent(Bool.self, forKey: .isolateSubject) ?? false
+        backdropHex = try c.decodeIfPresent(String.self, forKey: .backdropHex)
     }
 }
 
@@ -297,7 +351,7 @@ public struct Project: Codable, Identifiable, Equatable, Sendable {
             case .image(let path, _): kind = .image(path: path)
             }
             return LayerSpec(id: c.id, kind: kind, lane: c.lane, start: c.start, duration: c.duration, transform: c.transform, keyframes: c.keyframes,
-                             audio: c.audio, fadeIn: c.fadeIn, fadeOut: c.fadeOut)
+                             audio: c.audio, fadeIn: c.fadeIn, fadeOut: c.fadeOut, animationIn: c.animationIn, animationOut: c.animationOut)
         }
     }
 

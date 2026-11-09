@@ -58,6 +58,8 @@ struct AudioPane: View {
                 Text(L("A positive value plays the sound later than the picture; a negative one plays it earlier.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                 Divider()
                 NoiseControl(strength: session.project.activeAudio.denoise, progress: session.denoiseProgress[.main]) { session.setDenoise($0, for: .main) }
+                Divider()
+                SoundFXControl(fx: session.project.activeAudio.fx, progress: session.fxProgress[.main]) { session.setSoundFX($0, for: .main) }
                 if !session.isProject {
                     Divider()
                     HStack {
@@ -142,6 +144,18 @@ struct AudioPane: View {
                 .help(L("Measures the sound and sets the gain so that it is neither too quiet nor too loud."))
             Spacer()
         }.font(.caption)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(L("Volume over time")).font(.caption)
+                Spacer()
+                if c.volumeCurve != nil { Button(L("Straighten")) { session.updateSound(id, "Clear volume curve") { $0.volumeCurve = nil } }.buttonStyle(.borderless).font(.caption) }
+            }
+            VolumeCurveEditor(points: c.volumeCurve ?? [], length: max(0.1, c.duration.seconds),
+                              onChange: { pts in session.updateSound(id, "Volume curve", coalesce: "vc-\(id)") { $0.volumeCurve = pts.isEmpty ? nil : pts } },
+                              onDone: { session.endCoalescing() })
+                .frame(height: 70)
+            Text(L("Click the line to add a point, drag a point up or down to make the sound louder or quieter there, double-click a point to remove it.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
         SliderRow(title: L("Fade in (s)"), value: Binding(get: { c.fadeIn }, set: { v in session.updateSound(id, "Sound fade", coalesce: "fi") { $0.fadeIn = v } }), range: 0...10, format: "%.1f", onDone: { session.endCoalescing() })
         SliderRow(title: L("Fade out (s)"), value: Binding(get: { c.fadeOut }, set: { v in session.updateSound(id, "Sound fade", coalesce: "fo") { $0.fadeOut = v } }), range: 0...10, format: "%.1f", onDone: { session.endCoalescing() })
         if c.kind != .voice {
@@ -155,6 +169,8 @@ struct AudioPane: View {
         }
         Divider()
         NoiseControl(strength: c.denoise, progress: session.denoiseProgress[.sound(id)]) { session.setDenoise($0, for: .sound(id)) }
+        Divider()
+        SoundFXControl(fx: c.fx, progress: session.fxProgress[.sound(id)]) { session.setSoundFX($0, for: .sound(id)) }
         HStack {
             Button(L("Duplicate")) { session.duplicateSound(id) }
             Button(L("Delete")) { session.deleteSound(id) }
@@ -294,5 +310,153 @@ struct SoundBar: View {
         .frame(height: CGFloat(rows) * laneHeight + 8)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(LF("%d sounds on the timeline", clips.count))
+    }
+}
+
+
+/// Voice and sound effects: a row of ready-made looks (deeper, higher, telephone, hall, echo...), and the values behind them to set by hand.
+/// A change is worked into a copy of the sound first, so it is applied with a button, not while a slider moves.
+struct SoundFXControl: View {
+    var fx: SoundFX?
+    var progress: Double?
+    var onChange: (SoundFX?) -> Void
+    @StateObject private var draft = Box<SoundFX>(SoundFX())
+    @StateObject private var open = Box<Bool>(false)
+
+    static func name(_ p: SoundFX.Preset) -> String {
+        switch p {
+        case .clearVoice: return L("Clear voice"); case .warm: return L("Warm"); case .deep: return L("Deep voice"); case .high: return L("High voice")
+        case .chipmunk: return L("Chipmunk"); case .telephone: return L("Telephone"); case .hall: return L("Hall"); case .echo: return L("Echo")
+        }
+    }
+
+    private func slider(_ title: String, _ kp: WritableKeyPath<SoundFX, Double>, _ range: ClosedRange<Double>, _ format: String) -> some View {
+        SliderRow(title: title, value: Binding(get: { draft.value[keyPath: kp] }, set: { draft.value[keyPath: kp] = $0 }), range: range, format: format)
+    }
+
+    var body: some View {
+        let busy = progress != nil
+        let current = fx ?? SoundFX()
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(L("Voice and sound effects")).font(.caption.weight(.semibold))
+                Spacer()
+                if fx != nil { Button(L("Take off")) { onChange(nil) }.buttonStyle(.borderless).font(.caption).disabled(busy) }
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 66), spacing: 5)], spacing: 5) {
+                ForEach(SoundFX.Preset.allCases, id: \.self) { p in
+                    let selected = fx?.preset == p
+                    Button { draft.value = p.fx; onChange(p.fx) } label: {
+                        Text(Self.name(p)).font(.system(size: 11, weight: selected ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity).padding(.vertical, 5)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.12)))
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: selected ? 2 : 0))
+                    }.buttonStyle(.plain).disabled(busy).accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+                }
+            }
+            DisclosureGroup(L("Set by hand"), isExpanded: $open.value) {
+                VStack(alignment: .leading, spacing: 4) {
+                    slider(L("Bass (dB)"), \.bass, -12...12, "%+.0f")
+                    slider(L("Middle (dB)"), \.mid, -12...12, "%+.0f")
+                    slider(L("Treble (dB)"), \.treble, -12...12, "%+.0f")
+                    slider(L("Pitch (semitones)"), \.pitch, -12...12, "%+.0f")
+                    slider(L("Room"), \.reverb, 0...1, "%.2f")
+                    slider(L("Echo"), \.echo, 0...1, "%.2f")
+                    HStack {
+                        Button(L("Apply")) { onChange(draft.value.isNeutral ? nil : draft.value) }.disabled(busy || draft.value == current)
+                        Button(L("Reset values")) { draft.value = SoundFX() }.disabled(draft.value.isNeutral)
+                    }.font(.caption)
+                }.padding(.top, 4)
+            }.font(.caption)
+            if let progress { ProgressView(value: progress) { Text(L("Changing the sound…")).font(.caption) } }
+            else { Text(L("Makes a voice deeper or higher, adds bass or treble, a room or an echo. The original file is not changed.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true) }
+        }
+        .onAppear { draft.value = current }
+    }
+}
+
+
+/// The volume of a sound drawn over its length: click the line to add a point, drag to make it louder or quieter, double-click to remove.
+struct VolumeCurveEditor: View {
+    var points: [VolumePoint]
+    var length: Double
+    var onChange: ([VolumePoint]) -> Void
+    var onDone: () -> Void
+    @StateObject private var dragState = Box<Int?>(nil)
+    @StateObject private var lastTapState = Box<(index: Int, time: Date)?>(nil)
+
+    private let range = VolumeCurve.range
+
+    private func point(_ p: VolumePoint, in s: CGSize) -> CGPoint {
+        CGPoint(x: s.width * p.time / max(length, 0.01), y: s.height * (1 - (p.gainDB - range.lowerBound) / (range.upperBound - range.lowerBound)))
+    }
+    private func value(_ loc: CGPoint, in s: CGSize) -> VolumePoint {
+        let t = min(max(loc.x / s.width, 0), 1) * length
+        let g = range.lowerBound + (1 - min(max(loc.y / s.height, 0), 1)) * (range.upperBound - range.lowerBound)
+        return VolumePoint(time: t, gainDB: (g * 2).rounded() / 2)
+    }
+    private func nearest(_ loc: CGPoint, in s: CGSize) -> Int? {
+        var best: (Int, CGFloat)?
+        for (i, p) in points.enumerated() {
+            let d = hypot(point(p, in: s).x - loc.x, point(p, in: s).y - loc.y)
+            if d < 12, best == nil || d < best!.1 { best = (i, d) }
+        }
+        return best?.0
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let s = geo.size
+            Canvas { ctx, size in
+                ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black.opacity(0.3)))
+                let zeroY = size.height * (1 - (0 - range.lowerBound) / (range.upperBound - range.lowerBound))
+                var zero = Path(); zero.move(to: CGPoint(x: 0, y: zeroY)); zero.addLine(to: CGPoint(x: size.width, y: zeroY))
+                ctx.stroke(zero, with: .color(.white.opacity(0.25)), style: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                var line = Path()
+                if points.isEmpty { line.move(to: CGPoint(x: 0, y: zeroY)); line.addLine(to: CGPoint(x: size.width, y: zeroY)) }
+                else {
+                    let first = point(points[0], in: size)
+                    line.move(to: CGPoint(x: 0, y: first.y)); line.addLine(to: first)
+                    for p in points.dropFirst() { line.addLine(to: point(p, in: size)) }
+                    line.addLine(to: CGPoint(x: size.width, y: point(points[points.count - 1], in: size).y))
+                }
+                ctx.stroke(line, with: .color(.accentColor), lineWidth: 1.8)
+                for p in points {
+                    let c = point(p, in: size)
+                    ctx.fill(Path(ellipseIn: CGRect(x: c.x - 4.5, y: c.y - 4.5, width: 9, height: 9)), with: .color(.white))
+                    ctx.stroke(Path(ellipseIn: CGRect(x: c.x - 4.5, y: c.y - 4.5, width: 9, height: 9)), with: .color(.accentColor), lineWidth: 1.5)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { v in
+                    if dragState.value == nil {
+                        if let i = nearest(v.startLocation, in: s) { dragState.value = i }
+                        else {
+                            let new = value(v.startLocation, in: s)
+                            let next = VolumeCurve.cleaned(points + [new], length: length)
+                            onChange(next)
+                            dragState.value = next.firstIndex { abs($0.time - new.time) < 0.06 }
+                        }
+                    }
+                    guard let i = dragState.value, i < points.count else { return }
+                    var next = points
+                    let moved = value(v.location, in: s)
+                    let lo = i > 0 ? next[i - 1].time + 0.06 : 0, hi = i < next.count - 1 ? next[i + 1].time - 0.06 : length
+                    next[i] = VolumePoint(time: min(max(moved.time, lo), max(lo, hi)), gainDB: moved.gainDB)
+                    onChange(next)
+                }
+                .onEnded { v in
+                    defer { dragState.value = nil; onDone() }
+                    guard let i = dragState.value, i < points.count else { return }
+                    if hypot(v.translation.width, v.translation.height) < 3 {
+                        if let last = lastTapState.value, last.index == i, Date().timeIntervalSince(last.time) < 0.4 {
+                            var next = points; next.remove(at: i); onChange(next); lastTapState.value = nil
+                        } else { lastTapState.value = (i, Date()) }
+                    } else { lastTapState.value = nil }
+                })
+        }
+        .accessibilityElement().accessibilityLabel(L("Volume over time")).accessibilityHint(L("Click to add a point, drag to change the volume there."))
     }
 }

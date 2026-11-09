@@ -3,6 +3,14 @@ import AppKit
 import MacPlayerCore
 
 struct LayersPane: View {
+    static func blendName(_ b: LayerBlend) -> String {
+        switch b {
+        case .normal: return L("Normal"); case .multiply: return L("Multiply"); case .screen: return L("Screen"); case .overlay: return L("Overlay")
+        case .softLight: return L("Soft light"); case .hardLight: return L("Hard light"); case .darken: return L("Darken"); case .lighten: return L("Lighten")
+        case .difference: return L("Difference"); case .add: return L("Add")
+        }
+    }
+
     @ObservedObject var session: EditorSession
 
     var body: some View {
@@ -85,6 +93,7 @@ struct LayersPane: View {
                 SliderRow(title: L("Horizontal position"), value: Binding(get: { st.centerX }, set: { v in session.setOverlayValue(c.id, "x") { $0.centerX = v } }), range: -0.2...1.2, onDone: { session.endCoalescing() })
                 SliderRow(title: L("Vertical position"), value: Binding(get: { st.centerY }, set: { v in session.setOverlayValue(c.id, "y") { $0.centerY = v } }), range: -0.2...1.2, onDone: { session.endCoalescing() })
                 SliderRow(title: L("Opacity"), value: Binding(get: { st.opacity }, set: { v in session.setOverlayValue(c.id, "opacity") { $0.opacity = v } }), range: 0...1, onDone: { session.endCoalescing() })
+                SliderRow(title: L("Turn (degrees)"), value: Binding(get: { st.rotation }, set: { v in session.setOverlayValue(c.id, "turn") { $0.rotation = v } }), range: -180...180, format: "%.0f°", onDone: { session.endCoalescing() })
             }.padding(4)
         }
         GroupBox(L("Look")) {
@@ -111,6 +120,20 @@ struct LayersPane: View {
                 }
             }.padding(4)
         }
+        GroupBox(L("Cut-out and blend")) {
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(L("Keep only the person or subject"), isOn: Binding(get: { c.transform.isolateSubject }, set: { on in session.updateOverlay(c.id, "Remove layer background") { $0.transform.isolateSubject = on } }))
+                Picker(L("Blend with the picture under it"), selection: Binding(get: { c.transform.blend }, set: { b in session.updateOverlay(c.id, "Layer blend") { $0.transform.blend = b } })) {
+                    ForEach(LayerBlend.allCases, id: \.self) { Text(Self.blendName($0)).tag($0) }
+                }.pickerStyle(.menu)
+                Text(L("Multiply darkens, Screen lightens, Overlay adds contrast: good for textures, light leaks and logos.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                Divider()
+                Text(L("Shape")).font(.caption.weight(.semibold))
+                MaskControls(spec: c.transform.mask,
+                             change: { label, coalesce, f in session.updateOverlay(c.id, label, coalesce: coalesce) { var m = $0.transform.mask; f(&m); $0.transform.mask = m } },
+                             done: { session.endCoalescing() })
+            }.padding(4)
+        }
         if c.isVideo {
             GroupBox(L("Layer sound")) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -119,9 +142,16 @@ struct LayersPane: View {
                 }.padding(4)
             }
         }
+        GroupBox(L("Arrive and leave")) {
+            VStack(alignment: .leading, spacing: 8) {
+                ArrivalControls(title: L("Arrives with"), animation: c.animationIn) { a in session.updateOverlay(c.id, "Layer arrival", coalesce: "ovain") { $0.animationIn = a } }
+                ArrivalControls(title: L("Leaves with"), animation: c.animationOut) { a in session.updateOverlay(c.id, "Layer departure", coalesce: "ovaout") { $0.animationOut = a } }
+                Text(L("Ready-made moves at the start and end of the layer. They add to the keyframes below.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            }.padding(4)
+        }
         GroupBox(L("Animation")) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(animated ? L("Changing a value at the playhead sets a keyframe there. Values change in a straight line between keyframes.") : L("Add a keyframe, then move the playhead and change position, size or opacity to animate the layer."))
+                Text(animated ? L("Changing a value at the playhead sets a keyframe there. Pick how the values move between keyframes with the menu on each one.") : L("Add a keyframe, then move the playhead and change position, size, turn or opacity to animate the layer."))
                     .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                 HStack {
                     Button(L("Add Keyframe at Playhead")) { session.addKeyframe(c.id) }.disabled(now < c.start || now >= c.end)
@@ -131,8 +161,9 @@ struct LayersPane: View {
                     HStack {
                         Image(systemName: "diamond.fill").font(.caption2).foregroundColor(.accentColor).accessibilityHidden(true)
                         Text(Timecode.format(c.start + k.time)).font(.caption.monospacedDigit())
-                        Text(String(format: "x %.2f  y %.2f  %@ %.2f", k.centerX, k.centerY, L("size"), k.width)).font(.caption2).foregroundColor(.secondary)
+                        Text(String(format: "x %.2f  y %.2f  %@ %.2f  %.0f°", k.centerX, k.centerY, L("size"), k.width, k.rotation)).font(.caption2).foregroundColor(.secondary)
                         Spacer()
+                        EasingMenu(easing: Binding(get: { k.easing }, set: { e in session.setKeyframeEasing(c.id, keyframe: k.id, e) }))
                         Button { Task { await session.player.seek(to: c.start + k.time) } } label: { Image(systemName: "arrow.right.to.line") }.buttonStyle(.borderless).accessibilityLabel(L("Go to keyframe"))
                         Button { session.removeKeyframe(c.id, keyframe: k.id) } label: { Image(systemName: "trash") }.buttonStyle(.borderless).accessibilityLabel(L("Delete keyframe"))
                     }

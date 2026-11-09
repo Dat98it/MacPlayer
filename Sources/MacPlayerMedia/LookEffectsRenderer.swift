@@ -59,6 +59,7 @@ enum LookEffectsRenderer {
         let px = frame.minX + m.x * frame.width, py = frame.minY + (1 - m.y) * frame.height      // Core Image's origin is bottom-left
         var t = CGAffineTransform(translationX: -px, y: -py)
         t = t.concatenating(CGAffineTransform(scaleX: m.scale, y: m.scale))
+        if m.rotation != 0 { t = t.concatenating(CGAffineTransform(rotationAngle: -m.rotation * .pi / 180)) }        // clockwise on screen, and Core Image's y points up
         t = t.concatenating(CGAffineTransform(translationX: frame.midX, y: frame.midY))
         return image.transformed(by: t).cropped(to: frame)
     }

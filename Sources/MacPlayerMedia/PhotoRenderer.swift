@@ -36,7 +36,8 @@ public enum PhotoRenderer {
         if let effects { l.effects = effects }
         let b = RecipeCompositor.normalized(base)
         let out = outputSize(source: b.extent.size, look: l)
-        let plan = PiecePlan(look: l, trackOrientation: .up, storedSize: PixelSize(width: Int(b.extent.width), height: Int(b.extent.height)))
+        var plan = PiecePlan(look: l, trackOrientation: .up, storedSize: PixelSize(width: Int(b.extent.width), height: Int(b.extent.height)))
+        plan.subjectMode = .photo
         var picture = RecipeCompositor.mainPicture(base: b, plan: plan, time: stillTime, outputSize: out)
         let layer = OverlayLayer(overlays: stilled(overlays), cues: [], style: SubtitleStyle())
         if !layer.isEmpty {

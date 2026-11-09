@@ -47,6 +47,8 @@ extension InspectorTab {
         case .clips: return "scissors"
         case .layers: return "square.3.layers.3d"
         case .picture: return "crop.rotate"
+        case .color: return "slider.horizontal.below.sun.max"
+        case .mask: return "person.crop.rectangle"
         case .effects: return "wand.and.stars"
         case .timing: return "speedometer"
         case .transitions: return "rectangle.2.swap"

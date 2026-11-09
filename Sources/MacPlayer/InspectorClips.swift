@@ -23,6 +23,8 @@ struct InspectorView: View {
                     case .clips: if session.isProject { TimelinePane(session: session) } else { ClipsPane(session: session) }
                     case .layers: LayersPane(session: session)
                     case .picture: if needsClip { Text(L("Select a clip on the timeline to edit its picture.")).foregroundColor(.secondary) } else { PicturePane(session: session) }
+                    case .color: if needsClip { Text(L("Select a clip on the timeline to edit its colour.")).foregroundColor(.secondary) } else { ColorPane(session: session) }
+                    case .mask: if needsClip { Text(L("Select a clip on the timeline to edit its cut-out.")).foregroundColor(.secondary) } else { MaskPane(session: session) }
                     case .effects: if needsClip { Text(L("Select a clip on the timeline to edit its effects.")).foregroundColor(.secondary) } else { EffectsPane(session: session) }
                     case .timing: TimingPane(session: session)
                     case .transitions: TransitionsPane(session: session)

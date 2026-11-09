@@ -12,6 +12,12 @@ public enum EffectPreview {
         return context.createCGImage(out, from: source.extent)
     }
 
+    /// How a frame would look with a set of colour settings (the same recipes as the export).
+    public static func image(from frame: CGImage, colour: ColorAdjust) -> CGImage? {
+        let source = CIImage(cgImage: frame)
+        return context.createCGImage(ColorGradeRenderer.apply(colour, to: source), from: source.extent)
+    }
+
     /// A small picture of a transition part way through, between two frames (the second is scaled to the first's size).
     public static func transition(from a: CGImage, to b: CGImage, kind: TransitionKind, progress: Double) -> CGImage? {
         let ia = CIImage(cgImage: a)

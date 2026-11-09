@@ -81,6 +81,7 @@ final class EditorSession: NSObject, ObservableObject {
     /// The sound (music, voice-over, effect) being edited, and the microphone recorder that makes voice-overs.
     @Published var selectedSoundID: UUID?
     @Published var denoiseProgress: [DenoiseTarget: Double] = [:]
+    @Published var fxProgress: [DenoiseTarget: Double] = [:]
     let recorder = VoiceRecorder()
     var voiceStart = MediaTime.zero
     /// True when the preview that is playing is drawn by the compositor, which can take new filter settings without being built again.
@@ -88,6 +89,8 @@ final class EditorSession: NSObject, ObservableObject {
     @Published var recordWithPlayback = true
     /// A photo instead of a video: the picture as drawn now (screen size), the copy it is drawn from, and how it is being looked at.
     @Published var photoImage: CGImage?
+    /// Colour tool: the picture is shown without its colour changes, for as long as a button is held.
+    @Published var colorCompare = false
     var photoBase: PhotoLoader.Loaded?
     var photoRenderGeneration = 0
     /// 1 = the whole picture fits the window; larger zooms in.
@@ -245,11 +248,11 @@ final class EditorSession: NSObject, ObservableObject {
 
     /// The preview is the edited composition, built by the same code as the export, so what is seen is what is written.
     private func previewNeeded(_ p: Project) -> Bool {
-        p.look.changesPicture || !p.overlays.isEmpty || !p.subtitles.cues.isEmpty || !p.soundClips.isEmpty || p.audio.denoise != nil
+        p.look.changesPicture || !p.overlays.isEmpty || !p.subtitles.cues.isEmpty || !p.soundClips.isEmpty || p.audio.denoise != nil || p.audio.fx != nil
     }
 
     /// The preview plays the video's own volume through the player; only noise reduction has to be in the sound itself.
-    private func audioOnlyDenoise(_ a: AudioSettings) -> AudioSettings { var n = AudioSettings(); n.denoise = a.denoise; return n }
+    private func audioOnlyDenoise(_ a: AudioSettings) -> AudioSettings { var n = AudioSettings(); n.denoise = a.denoise; n.fx = a.fx; return n }
 
     /// The preview is drawn no taller than this. A 4K video drawn at full size with a filter on it played at about 0.6x speed; the export is not limited.
     static let previewMaxHeight = 1080
@@ -257,7 +260,7 @@ final class EditorSession: NSObject, ObservableObject {
     func loadPlayer(at start: MediaTime?) async {
         if isPhoto { renderPhoto(); return }
         let generation = player.seekGeneration
-        EffectsLive.clear()
+        EffectsLive.clear(); ColorLive.clear(); colorCompare = false
         if isProject { await loadProjectPreview(at: start, since: generation); return }
         guard let url = sourceURL, let info else { return }
         var built: BuiltRender?
@@ -585,14 +588,16 @@ final class EditorSession: NSObject, ObservableObject {
     }
 }
 
-enum InspectorTab: String, CaseIterable { case clips, picture, effects, timing, transitions, layers, audio, text, subtitles, thumbnail, export
+enum InspectorTab: String, CaseIterable { case clips, picture, color, mask, effects, timing, transitions, layers, audio, text, subtitles, thumbnail, export
     /// The tools that make sense for what is open: a photo has no timeline, sound or subtitles.
-    static func tabs(forPhoto photo: Bool) -> [InspectorTab] { photo ? [.picture, .effects, .text, .export] : allCases }
+    static func tabs(forPhoto photo: Bool) -> [InspectorTab] { photo ? [.picture, .color, .mask, .effects, .text, .export] : allCases }
     var title: String {
         switch self {
         case .clips: return L("Clips")
         case .layers: return L("Layers")
         case .picture: return L("Picture")
+        case .color: return L("Colour")
+        case .mask: return L("Cut-out")
         case .effects: return L("Effects")
         case .timing: return L("Speed")
         case .transitions: return L("Transitions")

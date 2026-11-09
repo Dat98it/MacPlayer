@@ -163,6 +163,49 @@ extension EditorSession {
 }
 
 extension EditorSession {
+    /// Gives a sound bass, treble, a higher or lower voice, a room or an echo (or takes it off with nil). The changed copy is made first (a long
+    /// sound takes a little while); the original file is not touched.
+    func setSoundFX(_ fx: SoundFX?, for target: DenoiseTarget) {
+        func apply(_ f: SoundFX?) {
+            switch target {
+            case .main: edit("Sound effect") { $0.activeAudio.fx = f }
+            case .sound(let id): updateSound(id, "Sound effect") { $0.fx = f }
+            }
+        }
+        guard let fx, !fx.isNeutral else { apply(nil); return }
+        var url: URL?
+        var noise: Double?
+        switch target {
+        case .main: url = activeSourceURL; noise = project.activeAudio.denoise
+        case .sound(let id): let c = resolvedSounds().first { $0.id == id }; url = c.map { URL(fileURLWithPath: $0.path) }; noise = c?.denoise
+        }
+        guard var input = url else { return }
+        // With noise reduction on, the effect is made from the cleaned copy (the one the sound will really come from).
+        if let n = noise, n > 0, let cleaned = NoiseReducer.cached(for: input, strength: n) { input = cleaned }
+        if SoundFXRenderer.cached(for: input, fx: fx.clamped()) != nil { apply(fx); return }
+        fxProgress[target] = 0
+        flash(L("Changing the sound… this can take a little while."))
+        Task {
+            defer { fxProgress[target] = nil }
+            do {
+                _ = try await SoundFXRenderer.process(input, fx: fx) { f in Task { @MainActor in self.fxProgress[target] = f } }
+                apply(fx)
+                flash(L("The sound was changed."))
+            } catch { flash(Self.fxErrorText(error), error: true) }
+        }
+    }
+
+    static func fxErrorText(_ error: Error) -> String {
+        guard let e = error as? SoundFXRenderer.FXError else { return error.localizedDescription }
+        switch e {
+        case .noAudio: return L("This file has no sound to change.")
+        case .tooLong: return L("This sound is too long to change in one go (the limit is one hour).")
+        case .failed(let m): return LF("Changing the sound failed: %@", m)
+        }
+    }
+}
+
+extension EditorSession {
     /// Changes the filter and effect settings of the clip being edited. When the preview is already drawn by the compositor the new settings are
     /// handed to it directly, so the picture changes at the next frame; building the preview again every time made each click on a filter stall
     /// playback for about half a second. The first change, which has to switch the compositor on, still builds it.

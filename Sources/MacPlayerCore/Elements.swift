@@ -49,8 +49,21 @@ public struct ElementKeyframe: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var time: Double
     public var x: Double, y: Double, scale: Double, rotation: Double, opacity: Double
-    public init(id: UUID = UUID(), time: Double, x: Double, y: Double, scale: Double = 1, rotation: Double = 0, opacity: Double = 1) {
-        self.id = id; self.time = time; self.x = x; self.y = y; self.scale = scale; self.rotation = rotation; self.opacity = opacity
+    /// How the values move on from this keyframe to the next.
+    public var easing: Easing
+    public init(id: UUID = UUID(), time: Double, x: Double, y: Double, scale: Double = 1, rotation: Double = 0, opacity: Double = 1, easing: Easing = .linear) {
+        self.id = id; self.time = time; self.x = x; self.y = y; self.scale = scale; self.rotation = rotation; self.opacity = opacity; self.easing = easing
+    }
+
+    enum CodingKeys: String, CodingKey { case id, time, x, y, scale, rotation, opacity, easing }
+
+    /// Projects saved before easing existed open with straight changes.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id); time = try c.decode(Double.self, forKey: .time)
+        x = try c.decode(Double.self, forKey: .x); y = try c.decode(Double.self, forKey: .y)
+        scale = try c.decode(Double.self, forKey: .scale); rotation = try c.decode(Double.self, forKey: .rotation); opacity = try c.decode(Double.self, forKey: .opacity)
+        easing = try c.decodeIfPresent(Easing.self, forKey: .easing) ?? .linear
     }
 }
 
@@ -82,7 +95,7 @@ public enum ElementAnimator {
             if local <= first.time { take(first) }
             else if local >= last.time { take(last) }
             else if let i = ks.indices.dropLast().first(where: { local < ks[$0 + 1].time }) {
-                let a = ks[i], b = ks[i + 1], u = (local - a.time) / max(1e-6, b.time - a.time)
+                let a = ks[i], b = ks[i + 1], u = a.easing.apply((local - a.time) / max(1e-6, b.time - a.time))
                 func mix(_ p: Double, _ q: Double) -> Double { p + (q - p) * u }
                 s.x = mix(a.x, b.x); s.y = mix(a.y, b.y); s.scale = mix(a.scale, b.scale); s.rotation = mix(a.rotation, b.rotation); s.alpha = mix(a.opacity, b.opacity)
             }

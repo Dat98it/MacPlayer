@@ -22,6 +22,10 @@ public struct SoundClip: Codable, Identifiable, Equatable, Sendable {
     public var duckDepthDB: Double
     /// Noise reduction strength 0...1 (nil = off).
     public var denoise: Double?
+    /// Bass, treble, a higher or lower voice, a room, an echo (nil = none).
+    public var fx: SoundFX?
+    /// The volume drawn by hand over the sound: points of gain (dB) at seconds from the start of the sound. Nil = none.
+    public var volumeCurve: [VolumePoint]?
     /// How long the whole file is (for the length control; the builder reads the real file).
     public var fileDuration: MediaTime?
 
@@ -48,6 +52,7 @@ public struct SoundClip: Codable, Identifiable, Equatable, Sendable {
         // A fade belongs to the sound's own start and end: it stays only where the sound still starts or ends there.
         if a > start { n.fadeIn = 0 }
         if b < end { n.fadeOut = 0 }
+        if let curve = volumeCurve { n.volumeCurve = VolumeCurve.shifted(curve, by: (a - start).seconds, speed: k) }
         return n
     }
 }

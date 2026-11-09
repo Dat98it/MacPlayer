@@ -1,8 +1,8 @@
 # MacPlayer
 
-Xem và chỉnh sửa **video lẫn ảnh**: cắt đoạn, ghép nhiều video, lọc màu, chữ và hình dán, rồi xuất ngay trên Mac. Mọi xử lý diễn ra trên máy; không có tài khoản, không thu thập dữ liệu, không có tính năng trực tuyến.
+Xem và chỉnh sửa **video lẫn ảnh**: cắt đoạn, ghép nhiều video, chỉnh màu chuyên nghiệp (đường cong, bánh xe màu, HSL, LUT), tách nền và mặt nạ, chuyển cảnh và keyframe, hiệu ứng giọng, chữ và hình dán, rồi xuất ngay trên Mac. Mọi xử lý diễn ra trên máy; không có tài khoản, không thu thập dữ liệu, không có tính năng trực tuyến.
 
-> **Trạng thái: bản 0.3.0 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
+> **Trạng thái: bản 0.7.0 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
 
 ## Yêu cầu
 
@@ -31,8 +31,8 @@ swift Scripts/make_icon.swift   # vẽ lại Resources/AppIcon.icns
 ### Kiểm thử
 
 - `Scripts/test.sh` chạy `swift test` kèm đường dẫn plugin Swift Testing, vì với Command Line Tools thì plugin `TestingMacros` không tự được tìm thấy.
-- **Test Core** (321 test): thời gian hữu tỉ, lưu an toàn (kể cả máy chết ở mọi bước), vùng chọn, playlist, dự án, phụ đề, hàng đợi, cài đặt.
-- **Test Media** (178 test): cắt đúng khung, đồng bộ tiếng/hình, hiệu ứng bằng pixel thật, khớp preview/xuất, hủy, thay thế bản gốc trên đĩa thật, nhúng ảnh bìa; nguồn HDR 10-bit; nhiều track âm thanh; file hỏng/cụt; tên file tiếng Việt; **ổ đĩa thật** tạo bằng `hdiutil` (đầy ổ, hết chỗ giữa chừng, chỉ-đọc, gỡ ổ khi đang xuất). Media thử được **sinh tự động** (mã vạch số khung hình + tiếng bíp), không dùng video cá nhân.
+- **Test Core** (360 test): thời gian hữu tỉ, lưu an toàn (kể cả máy chết ở mọi bước), vùng chọn, playlist, dự án, phụ đề, hàng đợi, cài đặt.
+- **Test Media** (214 test; có test điểm ảnh/mẫu âm thật cho màu, mặt nạ, chuyển cảnh, hiệu ứng giọng): cắt đúng khung, đồng bộ tiếng/hình, hiệu ứng bằng pixel thật, khớp preview/xuất, hủy, thay thế bản gốc trên đĩa thật, nhúng ảnh bìa; nguồn HDR 10-bit; nhiều track âm thanh; file hỏng/cụt; tên file tiếng Việt; **ổ đĩa thật** tạo bằng `hdiutil` (đầy ổ, hết chỗ giữa chừng, chỉ-đọc, gỡ ổ khi đang xuất). Media thử được **sinh tự động** (mã vạch số khung hình + tiếng bíp), không dùng video cá nhân.
 - **Tự kiểm thử trong app thật:** `MacPlayer.app/Contents/MacOS/MacPlayer --sandbox <thư-mục-tạm> --selftest <thư-mục-chứa-demo.mp4>` chạy các luồng A–J bằng đúng `EditorSession`, hàng đợi xuất và playlist của app, rồi in PASS/FAIL. Gồm cả phím tắt (bơm sự kiện phím thật, kể cả khi đang gõ trong ô văn bản), trạng thái menu, "luôn nổi", ba lượt xuất song song, chọn track âm thanh. `--sandbox` đưa dữ liệu vào thư mục tạm nên không đụng cài đặt thật.
 - **Mở bằng Finder (Open With / bấm đúp):** `python3 -I Scripts/open_with_test.py build/MacPlayer.app .build/release/macplayer-probe <thư-mục-tạm>` mở file bằng `open -a` (cùng đường Launch Services mà Finder dùng) và đọc trạng thái app qua cờ phát triển `--report-session <json>`. Kiểm tra: mở khi app đóng/đang chạy, tên có dấu cách và chữ có dấu, thư mục → playlist, file `.macplayer`, file hỏng.
 - **Giết tiến trình giữa lúc xuất:** `python3 -I Scripts/crash_test.py build/MacPlayer.app .build/release/macplayer-probe <video-dài.mp4> <số-lần> <hạt-giống>` chạy app thật ở chế độ `--crash-export`, `kill -9` ở thời điểm ngẫu nhiên (0,15–3 s) trong ba kiểu lưu (bản sao, thay bản gốc, hàng loạt), rồi mở lại bằng `--recover-check` để xác nhận: bản gốc luôn còn nguyên và đọc được, không còn file dở.
@@ -62,6 +62,7 @@ swift Scripts/make_icon.swift   # vẽ lại Resources/AppIcon.icns
 | `Sources/macplayer-probe` | Công cụ dòng lệnh để đo và kiểm chứng media. Chỉ đọc file, ghi vào thư mục bạn chỉ định. |
 | `Resources` | Info.plist, icon, bản địa hóa `en` và `vi`. |
 | `docs` | Ma trận định dạng và báo cáo bàn giao. |
+| `CLAUDE.md` | Hướng dẫn cho AI agent / người mới: công nghệ, cấu trúc, quy tắc, cách thêm tính năng, cách phát hành. Đọc file này trước khi sửa code. |
 
 ## Chế độ Dự án (timeline nhiều nguồn)
 
@@ -125,6 +126,50 @@ MacPlayer mở cả ảnh (JPEG, PNG, HEIC, TIFF, GIF, WebP, AVIF, ảnh RAW c�
 ## Tạo danh sách phát mới
 
 Mọi lệnh **Danh sách phát mới** (nút "Mới", nút ở màn hình trống, nút trong bảng chọn danh sách, menu ⇧⌘N) đều hỏi tên trước khi tạo: tên để trống thì app nhắc và hỏi lại, bấm Hủy thì không tạo gì. Danh sách tự sinh khi thả file hoặc thư mục vào lúc chưa có danh sách nào vẫn lấy tên thư mục như trước.
+
+## Giọng và hiệu ứng âm thanh (0.7.0)
+
+Trong công cụ **Âm thanh**, cho cả tiếng của video lẫn từng nhạc/giọng đọc trên timeline:
+
+- **Giọng và hiệu ứng:** một chạm cho *Giọng rõ, Ấm, Giọng trầm, Giọng cao, Sóc chuột, Điện thoại, Phòng lớn, Vang dội*; hoặc **Tự chỉnh**: âm trầm / trung / cao (±12 dB), cao độ (±12 nửa cung, độ dài không đổi), tiếng phòng, tiếng dội. Việc xử lý chạy một lần (nhanh hơn thời gian thực) trên một bản sao âm thanh bằng audio unit của Apple; file gốc không bị đổi; cùng thiết lập thì dùng lại bản đã làm. Dùng chung cho xem trước và xuất, và nối được sau bước giảm ồn.
+- **Âm lượng theo thời gian:** vẽ đường âm lượng cho từng âm thanh: nhấp vào đường để thêm điểm, kéo lên/xuống để to/nhỏ hơn ở đó, nhấp đúp để xóa. Nhân với tăng giảm âm, fade và tự hạ nhạc khi có người nói.
+
+Dự án cũ mở bình thường, các tính năng mới ở trạng thái tắt.
+
+## Chuyển cảnh, keyframe và hoạt ảnh (0.6.0)
+
+- **8 kiểu chuyển cảnh mới** giữa các đoạn của dự án (tổng 17): quét trái / lên / xuống, mở vòng tròn, mờ nhòe, xoay, lóe sáng, vỡ ô. Mỗi kiểu có hình xem trước trên khung hình thật.
+- **Kiểu chuyển động giữa các keyframe (easing):** đều, chậm lúc đầu, chậm lúc cuối, chậm hai đầu, vọt rồi về, nảy. Chọn bằng menu nhỏ trên từng keyframe, cho lớp phủ, chữ/hình dán và "Phóng to và dời" của hình chính.
+- **Xoay:** lớp phủ có thanh trượt xoay (và keyframe xoay), "Phóng to và dời" của hình chính cũng xoay được và có keyframe xoay.
+- **Xuất hiện và biến mất** cho lớp phủ (trượt 4 hướng, mờ, bật ra, phóng to) với thời gian chỉnh được, cộng thêm vào keyframe, giống cách chữ vẫn làm.
+
+Dự án cũ mở bình thường: keyframe cũ vẫn chuyển động đều và không xoay.
+
+## Tách nền, mặt nạ và hòa trộn (0.5.0)
+
+Công cụ **Tách nền** (video và ảnh) và các điều khiển mới trong **Lớp**:
+
+- **Xóa nền:** chỉ giữ người (video) hoặc chủ thể chính (ảnh), dùng Vision chạy ngay trên máy, không cần mạng. Video: xem trước dùng chế độ nhanh, xuất dùng chế độ chính xác. Hình không tìm thấy ai thì được giữ nguyên.
+- **Phông xanh (chroma key) cho video chính**, không chỉ cho lớp phủ: chọn màu, độ dung sai, độ mềm viền.
+- **Mặt nạ hình:** tròn, chữ nhật, bo góc, trái tim, ngôi sao, nửa hình; chỉnh rộng/cao, vị trí, xoay, viền mềm và đảo (ẩn phần bên trong). Dùng được cho hình chính lẫn từng lớp phủ.
+- **Hiện gì thay vào** phần bị bỏ đi: màu tự chọn (đen, trắng hoặc bất kỳ), hoặc bản sao mờ của chính hình.
+- **Hòa trộn lớp phủ** (Multiply, Screen, Overlay, Soft/Hard light, Darken, Lighten, Difference, Add) cho kết cấu, hiệu ứng rò sáng, logo.
+
+Mọi thứ đi qua cùng bộ render của xem trước và xuất. Dự án cũ mở bình thường, các tính năng mới ở trạng thái tắt.
+
+## Chỉnh màu chuyên nghiệp (0.4.0)
+
+Công cụ **Màu** (cho cả video lẫn ảnh) nằm cạnh Hình ảnh và Hiệu ứng. Mỗi nhóm là một thẻ có thể thu gọn, có dấu chấm xanh khi đã chỉnh và nút Đặt lại riêng; thay đổi hiện ngay trên khung hình đang phát.
+
+- **Ánh sáng và màu:** độ phơi sáng, độ sáng, tương phản, vùng sáng, vùng tối, bão hòa, độ rực màu (vibrance), nhiệt độ, sắc thái lục–tím.
+- **Đường cong:** đường cong ánh sáng và từng kênh đỏ/lục/lam. Nhấp vào đường để thêm điểm, kéo để uốn, nhấp đúp vào điểm để xóa; đường cong không bao giờ đi ngược nên không sinh dải màu lạ.
+- **Bánh xe màu:** nhuộm riêng vùng tối, vùng giữa, vùng sáng bằng cách kéo chấm về phía một màu; thanh trượt dưới mỗi bánh làm phần đó sáng/tối hơn; nhấp đúp để đặt lại.
+- **Từng màu (HSL):** chọn một trong 8 màu (đỏ, cam, vàng, lục, lục lam, lam, tím, tím hồng) rồi chỉ đổi sắc độ, bão hòa, độ sáng của màu đó, ví dụ làm trời xanh hơn mà không đụng tới da.
+- **File màu (LUT .cube):** nạp file `.cube` 3D của phim/máy ảnh, chỉnh cường độ; file chỉ được đọc, không bị sửa; nếu mất file app báo rõ và bỏ qua thay vì lỗi.
+- **Biểu đồ sáng tối:** histogram của khung hình sau khi chỉnh, cảnh báo khi một phần hình cháy trắng hoặc đen kịt (mất chi tiết).
+- **Nút nhanh:** *So sánh* (giữ để xem hình trước khi chỉnh), *Sao chép/Dán* màu giữa các đoạn hoặc ảnh, *Mọi đoạn* (dự án: áp cùng một màu cho cả timeline), *Đặt lại tất cả*.
+
+Tất cả đi qua cùng một bộ render của xem trước và xuất, nên màu bạn thấy là màu nhận được (đã kiểm thử bằng điểm ảnh thật trên video xuất ra và ảnh). Dự án cũ mở bình thường, các công cụ mới ở trạng thái tắt. Video HDR: màu áp lên hình HDR như đang lưu, không chuyển tông (app cảnh báo).
 
 ## Chọn nhiều file, đổi tên, Thùng rác và cây thư mục
 

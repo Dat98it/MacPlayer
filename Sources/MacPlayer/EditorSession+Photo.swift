@@ -61,6 +61,7 @@ extension EditorSession {
         photoRenderGeneration += 1
         let generation = photoRenderGeneration
         var look = project.look
+        if colorCompare { look.color = ColorAdjust() }
         let overlays = project.overlays
         if photoCropEditing { look.crop = .full; look.canvas = .source }          // the whole picture, so the frame has all of it to sit on
         final class Job: @unchecked Sendable { let base: PhotoLoader.Loaded; let look: VideoLook; let overlays: [TextOverlay]

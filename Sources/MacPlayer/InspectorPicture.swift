@@ -117,8 +117,11 @@ struct PicturePane: View {
             SliderRow(title: L("Vertical position"), value: session.binding(L("Vertical position"), coalesce: "mo-y", get: { pr in Motion.state(pr.activeLook.motion, at: session.localPlayhead)?.y ?? 0.5 },
                                                                              set: { pr, v in var m = Motion.state(pr.activeLook.motion, at: session.localPlayhead) ?? .still; m.y = v; pr.activeLook.motion = Motion.setting(pr.activeLook.motion, at: session.localPlayhead, to: m) }),
                       range: 0...1, onDone: { session.endCoalescing() })
+            SliderRow(title: L("Turn (degrees)"), value: session.binding(L("Turn"), coalesce: "mo-r", get: { pr in Motion.state(pr.activeLook.motion, at: session.localPlayhead)?.rotation ?? 0 },
+                                                                         set: { pr, v in var m = Motion.state(pr.activeLook.motion, at: session.localPlayhead) ?? .still; m.rotation = v; pr.activeLook.motion = Motion.setting(pr.activeLook.motion, at: session.localPlayhead, to: m) }),
+                      range: -180...180, format: "%.0f°", onDone: { session.endCoalescing() })
             Text(k.isEmpty ? L("Moving a slider sets a keyframe at the playhead. Move the playhead and change a value again to animate between them.")
-                           : L("Changing a value at the playhead sets a keyframe there. The picture changes in a straight line between keyframes."))
+                           : L("Changing a value at the playhead sets a keyframe there. Pick how the picture moves between keyframes with the menu on each one."))
                 .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             if !k.isEmpty {
                 Button(L("Add Keyframe at Playhead")) { session.edit("Add keyframe") { $0.activeLook.motion = Motion.setting($0.activeLook.motion, at: now, to: st) } }.font(.caption)
@@ -126,8 +129,9 @@ struct PicturePane: View {
                     HStack(spacing: 6) {
                         Image(systemName: "diamond.fill").font(.caption2).foregroundColor(.accentColor).accessibilityHidden(true)
                         Text(Timecode.format(MediaTime(seconds: f.time))).font(.caption.monospacedDigit())
-                        Text(String(format: "%.2f×  x %.2f  y %.2f", f.scale, f.x, f.y)).font(.caption2).foregroundColor(.secondary)
+                        Text(String(format: "%.2f×  x %.2f  y %.2f  %.0f°", f.scale, f.x, f.y, f.rotation)).font(.caption2).foregroundColor(.secondary)
                         Spacer()
+                        EasingMenu(easing: Binding(get: { f.easing }, set: { e in session.edit("Keyframe easing") { if let i = $0.activeLook.motion.firstIndex(where: { $0.id == f.id }) { $0.activeLook.motion[i].easing = e } } }))
                         Button { Task { await session.player.seek(to: session.activeClipStart + MediaTime(seconds: f.time)) } } label: { Image(systemName: "arrow.right.to.line") }.buttonStyle(.borderless).accessibilityLabel(L("Go to keyframe"))
                         Button { session.edit("Delete keyframe") { $0.activeLook.motion.removeAll { $0.id == f.id } } } label: { Image(systemName: "trash") }.buttonStyle(.borderless).accessibilityLabel(L("Delete keyframe"))
                     }
