@@ -166,12 +166,15 @@ public enum CompositionBuilder {
                     }
                     insertedAudio = true
                     touched.append(target)
-                    // Audio offset (sync): positive delays the sound against the picture.
+                    // Audio offset (sync), counted in the seconds of the finished picture: positive delays the sound against the picture,
+                    // negative brings it forward. A delay is made after the clip's speed has been applied (below); bringing the sound
+                    // forward takes it from further into the source, `speed` source seconds for every second of the picture.
                     let off = piece.audio.offsetSeconds
                     if off >= 0 {
-                        try target.insertTimeRange(range, of: aSrc, at: CMTimeAdd(cursor, CMTime(seconds: off, preferredTimescale: 600)))
+                        try target.insertTimeRange(range, of: aSrc, at: cursor)
                     } else {
-                        let shifted = CMTimeRange(start: CMTimeAdd(range.start, CMTime(seconds: -off, preferredTimescale: 600)), duration: range.duration)
+                        let sourceShift = -off * (piece.look.speed > 0 ? piece.look.speed : 1)
+                        let shifted = CMTimeRange(start: CMTimeAdd(range.start, CMTime(seconds: sourceShift, preferredTimescale: 600)), duration: range.duration)
                         let avail = CMTimeRange(start: .zero, duration: sourceDuration)
                         try target.insertTimeRange(CMTimeRangeGetIntersection(shifted, otherRange: avail), of: aSrc, at: cursor)
                     }
@@ -183,6 +186,16 @@ public enum CompositionBuilder {
                 track.scaleTimeRange(CMTimeRange(start: placeAt, duration: extended.duration), toDuration: CMTimeMultiplyByFloat64(extended.duration, multiplier: 1 / piece.look.speed))
                 for t in touched { t.scaleTimeRange(CMTimeRange(start: cursor, duration: range.duration), toDuration: CMTimeMultiplyByFloat64(range.duration, multiplier: 1 / piece.look.speed)) }
                 length = CMTimeMultiplyByFloat64(length, multiplier: 1 / piece.look.speed)
+            }
+            if piece.audio.offsetSeconds > 0, !touched.isEmpty {
+                // Delay the sound: make room at the front of this clip's sound and cut the same amount off its end, so it still ends with
+                // the clip and never runs on into the next one (which would push that one's sound later).
+                let soundLength = piece.look.speed != 1 && piece.look.speed > 0 ? CMTimeMultiplyByFloat64(range.duration, multiplier: 1 / piece.look.speed) : range.duration
+                let delay = CMTimeMinimum(CMTime(seconds: piece.audio.offsetSeconds, preferredTimescale: 600), soundLength)
+                for t in touched {
+                    t.insertEmptyTimeRange(CMTimeRange(start: cursor, duration: delay))
+                    t.removeTimeRange(CMTimeRange(start: CMTimeAdd(cursor, soundLength), duration: delay))
+                }
             }
             let timeRange = CMTimeRange(start: cursor, duration: length)
             var plan = PiecePlan(look: piece.look, trackOrientation: RecipeCompositor.orientation(of: transform),

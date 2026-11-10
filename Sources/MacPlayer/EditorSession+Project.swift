@@ -177,7 +177,7 @@ extension EditorSession {
     func trimClip(_ id: UUID, leftEdge: Bool, toTimelineTime t: MediaTime) {
         guard let c = project.timeline.first(where: { $0.id == id }), let start = TimelineEditor.starts(project.timeline)[id],
               let srcDur = infos[c.sourceID]?.duration else { return }
-        let src = c.sourceStart + MediaTime(seconds: max(0, (t - start).seconds) * max(0.01, c.look.speed), timescale: 6000)
+        let src = c.sourceStart + MediaTime(seconds: max(0, (t - start).seconds) * max(VideoLook.minimumSpeed, c.look.speed), timescale: 6000)
         edit("Trim clip", coalesce: "trim-\(id)") { p in
             if leftEdge { TimelineEditor.trim(&p.timeline, clipID: id, start: src, sourceDuration: srcDur) }
             else { TimelineEditor.trim(&p.timeline, clipID: id, end: src, sourceDuration: srcDur) }

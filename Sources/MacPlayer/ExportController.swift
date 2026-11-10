@@ -41,7 +41,7 @@ final class ExportController: ObservableObject {
         pump()
     }
 
-    func startRestored() { pump() }
+    func startRestored() { queue.releaseRestored(); persist(); pump() }
 
     func discardRestored() { for j in restoredJobs { queue.cancel(j.id) }; persist() }
 
@@ -57,13 +57,10 @@ final class ExportController: ObservableObject {
     func retryFailed() { queue.retryAllFailed(); persist(); pump() }
     func clearFinished() { queue.removeFinished(); persist() }
 
-    private var started = false
-
     private func pump() {
         queue.maxConcurrent = prefs.maxConcurrentExports
-        // After a crash, restored jobs only start once the user asks (`startRestored`).
-        if !started { started = true; if !restoredJobs.isEmpty { return } }
-        for job in queue.nextToStart() where !job.restoredAfterCrash || started { start(job) }
+        // After a crash, restored jobs only start once the user asks (`startRestored`); new jobs are not held up by them.
+        for job in queue.nextToStart(includeRestored: false) { start(job) }
     }
 
     private func start(_ job: ExportJob) {

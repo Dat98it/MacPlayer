@@ -26,7 +26,7 @@ public final class ExportRunner: @unchecked Sendable {
         let pieces = job.pieces.map {
             RenderPiece(sourceURL: URL(fileURLWithPath: $0.sourcePath), span: $0.span, look: $0.look ?? job.recipe.look, audio: $0.audio ?? job.recipe.audio)
         }
-        let expectedSeconds = job.pieces.reduce(0.0) { $0 + $1.span.duration.seconds / max(0.01, ($1.look ?? job.recipe.look).speed) }
+        let expectedSeconds = job.pieces.reduce(0.0) { $0 + $1.span.duration.seconds / max(VideoLook.minimumSpeed, ($1.look ?? job.recipe.look).speed) }
 
         // Source info for the size estimate and the final check.
         var infos: [MediaInfo] = []

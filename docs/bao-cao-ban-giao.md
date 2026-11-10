@@ -1,6 +1,6 @@
 # Báo cáo bàn giao MacPlayer
 
-Ngày: 05/11/2026 (cập nhật lần cuối 09/11/2026, bản 0.7.0; xem "Bổ sung 0.3.0–0.7.0" ở cuối) · Máy kiểm thử: Apple Silicon, macOS 27.0.1, Swift 6.4, chỉ có Command Line Tools.
+Ngày: 05/11/2026 (cập nhật lần cuối 10/11/2026, bản 0.7.1; xem "Bổ sung 0.3.0–0.7.0" và "Bản 0.7.1" ở cuối) · Máy kiểm thử: Apple Silicon, macOS 27.0.1, Swift 6.4, chỉ có Command Line Tools.
 Nguồn yêu cầu: `MacPlayer-Thiet-ke-san-pham.md`.
 
 **Tóm tắt trung thực:** đây là một ứng dụng chạy được, với lõi lưu an toàn, cắt, render, playlist, dự án và hàng đợi đã kiểm thử kỹ. Nó **chưa phải bản thương mại hoàn chỉnh**: không có cấp phép, thanh toán, cập nhật, chữ ký phân phối; timeline nhiều nguồn/nhiều lớp và nhiều tính năng giai đoạn 3–4 chưa có giao diện hoặc chưa làm.
@@ -179,3 +179,28 @@ Tổng số test sau đợt này: Core 360, Media 214 (đều đạt, ngoại tr
 - `StabilizerTests.anExportedVideoIsSteadierThanTheOneItCameFrom` chập chờn (hỏng khoảng một nửa số lần chạy, cả ở commit cũ trước các thay đổi này). Self-test trong app còn 2 kiểm tra hỏng từ trước (cỡ cửa sổ sau slideshow ảnh; trùng phím tắt do mục hệ thống "Emoji & Symbols", "Enter Full Screen") và không được chạy lại ở các bản 0.4–0.7.
 - Video HDR: màu áp lên giá trị HDR đang lưu, không chuyển tông (app cảnh báo).
 - Đã tham khảo **ý tưởng** tính năng từ một ứng dụng chỉnh sửa video phổ biến để xếp thứ tự ưu tiên; không sao chép mã, tài nguyên hay hiệu ứng, và bỏ qua phần cần mạng/AI đám mây.
+
+
+## Bản 0.7.1: sửa lỗi tìm ra khi chạy trên video và ảnh thật (10/11/2026)
+
+Chạy self-test của app trên 8 video thật (bản sao) và 2.703 ảnh thật (chỉ đọc) cho thấy cắt chính xác thất bại trên 6 video nhỏ; kiểm chứng thêm 11 điểm nghi lỗi từ việc đọc mã. Tất cả đã được tái hiện bằng test hoặc đọc mã trước khi sửa.
+
+| # | Lỗi | Sửa | Kiểm chứng |
+|---|---|---|---|
+| 1 | Cắt chính xác lỗi `-12651 "Tham số mã hóa không được hỗ trợ"` với video có âm thanh 22,05/24 kHz (bộ mã hóa AAC luôn đặt 160 kb/s stereo) | `AACSettings.bitRate(sampleRate:channels:)` chọn mức hợp lệ theo tần số lấy mẫu | Test `AVAssetWriter.canApply` cho 8 tần số × mono/stereo; xuất thử video 22,05 kHz; lượt self-test thật trên 8 video: các lỗi `-12651` biến mất |
+| 2 | Bảng Xuất báo "cắt nhanh được" trong khi kế hoạch xuất từ chối (hai điều kiện khác nhau, một bên bỏ qua âm thanh thêm vào và tốc độ) | Một điều kiện duy nhất `Project.allowsFastCut` | Test Core |
+| 3 | Ghép nhiều đoạn vẫn ghi cứng phụ đề dù đã tắt "ghi cứng" (`joinedRecipe` bỏ qua tham số) | Truyền `burnIn` đúng | Test Core |
+| 4 | Tách/cắt animation "phóng to và dời" làm mất góc xoay (và kiểu easing) của keyframe đầu | `Motion.shifted` giữ cả hai | Test Core |
+| 5 | Freeze frame lâu hơn ~3,3 s ở 30 fps bị rút ngắn (tốc độ bị kẹp ở 0,01 ở chỗ này nhưng không kẹp ở chỗ khác) | `VideoLook.minimumSpeed` dùng chung mọi nơi | Test Core (0,5–10 s) và test Media đo độ dài thật của timeline dựng |
+| 6 | Thông báo lỗi nhận dạng giọng nói hiện nguyên `\(l)`, tên file tạm trùng nhau | Sửa chuỗi, tên file tạm có UUID | Test Media |
+| 7 | Mặt nạ hình và mặt nạ chủ thể bị lệch khi hình có viền đen (fit trong canvas khác tỷ lệ) | Mặt nạ hình làm bằng kích thước hình đã đặt; mặt nạ chủ thể không bị tịnh tiến hai lần | Test Media bằng điểm ảnh (viền trên/dưới và hai bên, chủ thể giả); trên ảnh thật 3024×4032 vào canvas vuông có Vision thật |
+| 8 | Âm thanh trễ kết hợp tốc độ khác 1×: một phần phát đúng tốc độ, phần cuối phát 1× và kéo dài quá hình; âm trễ của đoạn này đẩy âm của đoạn sau | Độ trễ làm sau khi áp tốc độ, phần đuôi bị cắt; số giây tính theo thời gian của hình xuất | Test Media (4 cặp tốc độ/độ lệch + hai đoạn liền nhau); trên clip `.mov` thật có âm thanh |
+| 9 | Bấm "Chạy lại" lần đầu sau sự cố không làm gì; việc mới bị chặn bởi việc khôi phục | Việc khôi phục không chiếm chỗ của việc mới; "Chạy lại" thả chúng ra | Test Core (`nextToStart(includeRestored:)`, `releaseRestored`); luồng giao diện chỉ được đọc mã và biên dịch, **chưa bấm thật** |
+| 10 | Bộ chọn track âm thanh luôn hiện lựa chọn đầu | `PlayerController.audioSelectionIndex` | Chỉ biên dịch và đọc mã, chưa kiểm bằng giao diện thật |
+| 11 | Tên Hoàn tác/Làm lại không được dịch ("Hoàn tác Add clip") | Dịch qua `L()`, thêm 59 tên vào `vi.lproj` | `check_localization.py`: 0 thiếu; chỉ kiểm bằng đọc mã, chưa nhìn thực tế menu |
+| 12 | Self-test khẳng định sai danh sách tab của ảnh | Cập nhật khẳng định | Chưa chạy lại self-test đầy đủ |
+| – | `AudioSettings` mở file thiếu khóa lỗi (rủi ro, chưa phải lỗi đã gặp) | Bộ giải mã tùy chỉnh `decodeIfPresent` | Test Core |
+
+Test sau đợt này: Core 366 + 6 mới đều đạt; Media 223 (gồm 12 mới), chỉ `StabilizerTests.anExportedVideoIsSteadierThanTheOneItCameFrom` chập chờn như đã ghi.
+
+**Còn mở:** cắt chính xác `cam-nang-san-9.mp4` (88 phút) lệch 2 khung ở khung cuối trong self-test thật (chưa tìm ra nguyên nhân; `cam-nang-san-7.mp4` đạt); các kiểu dữ liệu khác (`SoundClip`, `OverlayClip`, `ExportOptions`…) vẫn giải mã nghiêm ngặt, thêm trường không tùy chọn sẽ làm file cũ không mở được (nên làm như `AudioSettings`); mặt nạ chủ thể trên người thật mới thử qua một ảnh thật.

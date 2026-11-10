@@ -312,10 +312,10 @@ final class EditorSession: NSObject, ObservableObject {
 
     func endCoalescing() { var h = history; h.endCoalescing(); history = h }
 
-    func undo() { LayerLive.clear(); var h = history; if let l = h.undo() { history = h; markChanged(); schedulePreviewRefresh(); flash(LF("Undid “%@”", l)) } }
-    func redo() { LayerLive.clear(); var h = history; if let l = h.redo() { history = h; markChanged(); schedulePreviewRefresh(); flash(LF("Redid “%@”", l)) } }
-    var undoTitle: String { history.undoLabel.map { LF("Undo %@", $0) } ?? L("Undo") }
-    var redoTitle: String { history.redoLabel.map { LF("Redo %@", $0) } ?? L("Redo") }
+    func undo() { LayerLive.clear(); var h = history; if let l = h.undo() { history = h; markChanged(); schedulePreviewRefresh(); flash(LF("Undid “%@”", L(l))) } }
+    func redo() { LayerLive.clear(); var h = history; if let l = h.redo() { history = h; markChanged(); schedulePreviewRefresh(); flash(LF("Redid “%@”", L(l))) } }
+    var undoTitle: String { history.undoLabel.map { LF("Undo %@", L($0)) } ?? L("Undo") }
+    var redoTitle: String { history.redoLabel.map { LF("Redo %@", L($0)) } ?? L("Redo") }
 
     private func markChanged() {
         isDirty = true
@@ -466,7 +466,7 @@ final class EditorSession: NSObject, ObservableObject {
         }
     }
 
-    func canUseFastCut() -> Bool { !project.look.changesPicture && project.overlays.isEmpty && project.audio.isNeutral && !(project.subtitles.burnIn && !project.subtitles.cues.isEmpty) }
+    func canUseFastCut() -> Bool { project.allowsFastCut }
 
     func backupFolder() -> String? {
         guard env.prefs.backupBeforeReplace, let s = sourceURL else { return nil }
@@ -482,8 +482,7 @@ final class EditorSession: NSObject, ObservableObject {
         if !missingSounds.isEmpty { throw PlanError.missingMedia(missingSounds) }
         var options = r.options
         let p = project
-        let neutralPicture = p.look.isNeutral && p.overlays.isEmpty && p.audio.isNeutral && p.soundClips.isEmpty && !(p.subtitles.burnIn && !p.subtitles.cues.isEmpty)
-        if options.mode == .fast, !neutralPicture { throw PlanError.fastNotPossible }
+        if options.mode == .fast, !p.allowsFastCut { throw PlanError.fastNotPossible }
         if info.primaryVideo == nil { options.mode = .exact }
 
         let ext = options.container.fileExtension

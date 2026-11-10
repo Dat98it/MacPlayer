@@ -41,7 +41,7 @@ struct AudioPane: View {
                 Text(L("This file has no audio.")).font(.callout).foregroundColor(.secondary)
             } else {
                 if player.audioOptions.count > 1 {
-                    Picker(L("Audio track"), selection: Binding<Int>(get: { 0 }, set: { i in if player.audioOptions.indices.contains(i) { Task { await player.selectAudio(player.audioOptions[i]) } } })) {
+                    Picker(L("Audio track"), selection: Binding<Int>(get: { player.audioSelectionIndex }, set: { i in if player.audioOptions.indices.contains(i) { Task { await player.selectAudio(player.audioOptions[i]) } } })) {
                         ForEach(Array(player.audioOptions.enumerated()), id: \.offset) { i, o in Text(o.displayName).tag(i) }
                     }
                 }

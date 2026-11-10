@@ -203,7 +203,7 @@ public final class ReencodeExporter: @unchecked Sendable {
                 }
                 let a = AVAssetWriterInput(mediaType: .audio, outputSettings: [
                     AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: rate, AVNumberOfChannelsKey: channels,
-                    AVEncoderBitRateKey: channels == 1 ? 96_000 : 160_000,
+                    AVEncoderBitRateKey: AACSettings.bitRate(sampleRate: rate, channels: channels),
                 ])
                 a.expectsMediaDataInRealTime = false
                 if wr.canAdd(a) { wr.add(a); aIn = a }
@@ -298,6 +298,19 @@ public final class ReencodeExporter: @unchecked Sendable {
                     if !box.i.append(sb) { end(); return }
                 }
             }
+        }
+    }
+}
+
+/// The AAC encoder refuses a bit rate that is too high for the sample rate ("encoding parameters are not supported", -12651): 160 kb/s
+/// stereo is fine at 44.1 or 48 kHz but not at the 22.05 or 24 kHz that many screen recordings and phone exports use.
+public enum AACSettings {
+    public static func bitRate(sampleRate: Double, channels: Int) -> Int {
+        let mono = channels == 1
+        switch sampleRate {
+        case ..<16_000: return mono ? 32_000 : 64_000
+        case ..<32_000: return mono ? 48_000 : 96_000
+        default: return mono ? 96_000 : 160_000
         }
     }
 }

@@ -30,6 +30,8 @@ public enum SyntheticMedia {
         public var frameRate = FrameRate(numerator: 30, denominator: 1)
         public var seconds = 10.0
         public var withAudio = true
+        /// Sample rate of the (mono) sound; screen recordings and phone exports often use 22,050 or 24,000 Hz.
+        public var audioSampleRate = 48_000.0
         /// A second audio track playing a 440 Hz tone (the first beeps at 1 kHz), for track-selection tests.
         public var secondAudioTrack = false
         /// With a second track: make the two tracks alternatives of each other (like languages), so a player offers a choice.
@@ -111,9 +113,9 @@ public enum SyntheticMedia {
         if spec.withAudio {
             let a = AVAssetWriterInput(mediaType: .audio, outputSettings: [
                 AVFormatIDKey: kAudioFormatMPEG4AAC,
-                AVSampleRateKey: 48_000,
+                AVSampleRateKey: spec.audioSampleRate,
                 AVNumberOfChannelsKey: 1,
-                AVEncoderBitRateKey: 96_000,
+                AVEncoderBitRateKey: AACSettings.bitRate(sampleRate: spec.audioSampleRate, channels: 1),
             ])
             a.expectsMediaDataInRealTime = false
             writer.add(a)
@@ -168,9 +170,9 @@ public enum SyntheticMedia {
 
         let audioDone = Task.detached { () -> Void in
             guard let aIn else { return }
-            let sampleRate = 48_000.0
+            let sampleRate = spec.audioSampleRate
             let total = Int(spec.seconds * sampleRate)
-            let chunk = 4800
+            let chunk = Int(sampleRate / 10)
             var written = 0
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 let q = DispatchQueue(label: "synthetic.audio")

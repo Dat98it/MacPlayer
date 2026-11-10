@@ -122,6 +122,7 @@ Then: **0.2.1** tree files as grid; **0.3.0** adjustable preview size + green "o
 **0.4.0 Colour** (exposure/highlights/shadows/vibrance/tint, curves, 3 colour wheels, HSL by 8 ranges, `.cube` LUT, histogram, compare/copy/paste, apply to all clips);
 **0.5.0 Cut-out** (subject removal via Vision, chroma key on the main picture, 6 mask shapes with feather/invert, backdrop colour, 10 blend modes for layers);
 **0.6.0 Motion** (8 new transitions → 17 total, 6 easings per keyframe, rotation for layers and "zoom and move", arrive/leave animations for layers);
+**0.7.1 Fixes** from running the app on real footage: AAC encoder bit rate now fits the sample rate (exact cuts of 22.05/24 kHz videos used to fail with -12651); shape and subject masks sit on the picture when it has bars; a delayed sound follows the clip's speed and ends with the clip; one `Project.allowsFastCut` for the Export panel and the plan; joined ranges honour "burn subtitles in"; cutting a zoom-and-move animation keeps its turn; freeze frames of any length (`VideoLook.minimumSpeed`); jobs restored after a crash start when asked and never block new jobs; audio-track picker shows the playing track; undo names are translated; speech error messages.
 **0.7.0 Sound** (8 voice presets + manual bass/mid/treble/pitch/room/echo through an offline AVAudioEngine render, hand-drawn volume curve per sound clip).
 
 ## 6. Rendering and data-flow rules that are easy to break
@@ -139,6 +140,10 @@ Then: **0.2.1** tree files as grid; **0.3.0** adjustable preview size + green "o
   Cached copies live in the temp folder (`macplayer-denoised`, `macplayer-soundfx`).
 - **Backward compatibility is mandatory.** New fields on saved types (`Project`, `VideoLook`, `ColorAdjust`, `OverlayTransform`, keyframes, `SoundClip`, `AudioSettings`) must open old
   files: optional properties, or custom `init(from:)` with `decodeIfPresent`. Add a test that decodes an old JSON string. Bump `ProjectStore`'s schema only for structural migrations.
+- Fast cut is decided in one place: `Project.allowsFastCut` (Core). Do not copy that test elsewhere.
+- Speed is never clamped to a different minimum in different places: use `VideoLook.minimumSpeed`.
+- Audio sync offset (`AudioSettings.offsetSeconds`) is counted in seconds of the *finished picture*: a delay is made after the clip's speed is applied (see `CompositionBuilder`).
+- A mask on the main picture is made as big as the placed picture (`mainPicture`), because `MaskRenderer.apply` puts a mask on the picture's own corner.
 - `ExportJob.needsReencode` and the app's `previewNeeded` must include any new setting that changes picture or sound, or a "fast cut" would silently drop it.
 - **Safe save** (never weaken): export to a temp file next to the target, verify (opens, duration, tracks, first frame decodes), then move into place under a journal; default is "save as new copy";
   "replace original" asks, backs up, checks the source was not changed by another app, refuses extension changes/insufficient space. Undo never brings an old file back.

@@ -11,10 +11,10 @@ public enum SpeechTranscriber {
         public var description: String {
             switch self {
             case .notAuthorized: return "Speech recognition is not allowed for MacPlayer. It can be switched on in System Settings ▸ Privacy & Security ▸ Speech Recognition."
-            case .notOnDevice(let l): return "The language “\\(l)” cannot be recognised on this Mac without the internet. MacPlayer does not send your video or sound anywhere, so it was not used."
+            case .notOnDevice(let l): return "The language “\(l)” cannot be recognised on this Mac without the internet. MacPlayer does not send your video or sound anywhere, so it was not used."
             case .noSpeech: return "No speech was found."
             case .noAudio: return "This video has no sound to listen to."
-            case .failed(let m): return "Recognising the speech failed: \\(m)"
+            case .failed(let m): return "Recognising the speech failed: \(m)"
             }
         }
     }
@@ -41,7 +41,7 @@ public enum SpeechTranscriber {
         guard (try? await asset.loadTracks(withMediaType: .audio).first) != nil else { throw SpeechError.noAudio }
         let whole = TimeSpan(start: .zero, end: MediaTime(try await asset.load(.duration)))
         let part = span ?? whole
-        let temp = FileManager.default.temporaryDirectory.appendingPathComponent("macplayer-speech-\\(UUID().uuidString.prefix(8)).m4a")
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent("macplayer-speech-\(UUID().uuidString.prefix(8)).m4a")
         defer { try? FileManager.default.removeItem(at: temp) }
         do { try await AudioExporter.export(source: source, span: part, audio: AudioSettings(), to: temp) } catch { throw SpeechError.failed(error.localizedDescription) }
 

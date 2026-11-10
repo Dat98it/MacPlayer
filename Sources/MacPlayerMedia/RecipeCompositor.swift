@@ -227,12 +227,16 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
         // What is cut away (a key colour, a subject cut-out, a shape) shows the backdrop: a colour, the blurred picture, or black.
         var placedPicture = img.cropped(to: frame)
         if look.cutsOut {
+            // `MaskRenderer.apply` puts a mask on the picture's own corner. With "fit" the picture does not start at the frame's corner
+            // (there are bars), so a mask is made as big as the picture and the subject mask, which is already in frame
+            // coordinates, is taken back by that corner so that `apply` brings it to the right place exactly once.
+            let box = placedPicture.extent
             if let key = look.chromaKey { placedPicture = LookEffectsRenderer.chromaKeyed(placedPicture, key: key) }
             if look.isolateSubject, let subject = SubjectMasker.mask(for: upright, mode: plan.subjectMode) {
-                let moved = subject.transformed(by: CGAffineTransform(scaleX: k, y: k)).transformed(by: CGAffineTransform(translationX: tx, y: ty))
+                let moved = subject.transformed(by: CGAffineTransform(scaleX: k, y: k)).transformed(by: CGAffineTransform(translationX: tx - box.minX, y: ty - box.minY))
                 placedPicture = MaskRenderer.apply(moved, to: placedPicture)
             }
-            if let m = look.mask { placedPicture = MaskRenderer.apply(MaskRenderer.alpha(m, size: frame.size), to: placedPicture) }
+            if let m = look.mask { placedPicture = MaskRenderer.apply(MaskRenderer.alpha(m, size: box.size), to: placedPicture) }
         }
         let backdrop: CIImage
         if effects.blurBackground && look.fit == .fit && !look.cutsOut {

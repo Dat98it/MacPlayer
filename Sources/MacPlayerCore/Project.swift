@@ -122,12 +122,30 @@ public struct AudioSettings: Codable, Equatable, Sendable {
     public var fx: SoundFX?
     public init() {}
     public var isNeutral: Bool { self == AudioSettings() }
+
+    enum CodingKeys: String, CodingKey { case gainDB, muted, fadeIn, fadeOut, offsetSeconds, replacementPath, denoise, fx }
+
+    /// Every key is optional, so a file saved before a setting existed (or one that lacks a setting) still opens with that setting off.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        gainDB = try c.decodeIfPresent(Double.self, forKey: .gainDB) ?? 0
+        muted = try c.decodeIfPresent(Bool.self, forKey: .muted) ?? false
+        fadeIn = try c.decodeIfPresent(Double.self, forKey: .fadeIn) ?? 0
+        fadeOut = try c.decodeIfPresent(Double.self, forKey: .fadeOut) ?? 0
+        offsetSeconds = try c.decodeIfPresent(Double.self, forKey: .offsetSeconds) ?? 0
+        replacementPath = try c.decodeIfPresent(String.self, forKey: .replacementPath)
+        denoise = try c.decodeIfPresent(Double.self, forKey: .denoise)
+        fx = try c.decodeIfPresent(SoundFX.self, forKey: .fx)
+    }
 }
 
 public enum FitMode: String, Codable, CaseIterable, Sendable { case fit, fill }
 
 /// Everything that changes how the picture looks. Applied identically by the preview and the export.
 public struct VideoLook: Codable, Equatable, Sendable {
+    /// The slowest a clip may play. A freeze frame is one frame played this slowly, so the limit must be small; every length that
+    /// depends on speed uses it, so the timeline, the preview and the export agree on how long a clip is.
+    public static let minimumSpeed = 0.0001
     public var crop: CropRect = .full
     /// Clockwise quarter turns: 0, 90, 180, 270.
     public var rotation: Int = 0
@@ -269,7 +287,7 @@ public struct TimelineClip: Codable, Identifiable, Equatable, Sendable {
     /// Length on the timeline, after speed.
     public var duration: MediaTime {
         let d = sourceEnd - sourceStart
-        return look.speed == 1 ? d : MediaTime(seconds: d.seconds / max(0.01, look.speed), timescale: d.timescale)
+        return look.speed == 1 ? d : MediaTime(seconds: d.seconds / max(VideoLook.minimumSpeed, look.speed), timescale: d.timescale)
     }
 }
 
@@ -363,6 +381,12 @@ public struct Project: Codable, Identifiable, Equatable, Sendable {
         }
     }
 
+    /// A fast cut copies the stored picture and sound, so it is only possible when nothing changes either. This one test is used by the
+    /// Export panel (to say so) and by the export plan (to refuse), so they can never disagree.
+    public var allowsFastCut: Bool {
+        look.isNeutral && overlays.isEmpty && audio.isNeutral && soundClips.isEmpty && !(subtitles.burnIn && !subtitles.cues.isEmpty)
+    }
+
     /// Applying changes to the original is only possible when exactly one source is involved (design section 6).
     public var canReplaceOriginal: Bool {
         switch mode {
@@ -398,7 +422,7 @@ public enum TimelineEditor {
         a.sourceEnd = t
         b.id = UUID(); b.sourceStart = t
         // The second part starts later in the animation: what the picture does from there on stays the same.
-        b.look.motion = Motion.shifted(c.look.motion, by: -((t - c.sourceStart).seconds / max(0.01, c.look.speed)))
+        b.look.motion = Motion.shifted(c.look.motion, by: -((t - c.sourceStart).seconds / max(VideoLook.minimumSpeed, c.look.speed)))
         if !c.name.isEmpty { a.name = c.name; b.name = c.name + " 2" }
         clips.replaceSubrange(i...i, with: [a, b])
         return true
@@ -413,7 +437,7 @@ public enum TimelineEditor {
         if e - s < minLen { if start != nil { s = e - minLen } else { e = s + minLen } }
         guard s >= .zero, e <= sourceDuration, e > s else { return }
         if s != clips[i].sourceStart {
-            clips[i].look.motion = Motion.shifted(clips[i].look.motion, by: -((s - clips[i].sourceStart).seconds / max(0.01, clips[i].look.speed)))
+            clips[i].look.motion = Motion.shifted(clips[i].look.motion, by: -((s - clips[i].sourceStart).seconds / max(VideoLook.minimumSpeed, clips[i].look.speed)))
         }
         clips[i].sourceStart = s; clips[i].sourceEnd = e
     }
@@ -463,7 +487,7 @@ public enum TimelineMap {
             let end = start + c.duration
             if t < end || i == clips.count - 1 {
                 let into = min(max(t - start, .zero), c.duration)
-                let src = c.sourceStart + MediaTime(seconds: into.seconds * max(0.01, c.look.speed), timescale: 6000)
+                let src = c.sourceStart + MediaTime(seconds: into.seconds * max(VideoLook.minimumSpeed, c.look.speed), timescale: 6000)
                 return Location(index: i, clipID: c.id, sourceTime: min(src, c.sourceEnd), timelineStart: start)
             }
             start = end
@@ -477,7 +501,7 @@ public enum TimelineMap {
         for c in clips {
             if c.id == id {
                 guard sourceTime >= c.sourceStart, sourceTime <= c.sourceEnd else { return nil }
-                return start + MediaTime(seconds: (sourceTime - c.sourceStart).seconds / max(0.01, c.look.speed), timescale: 6000)
+                return start + MediaTime(seconds: (sourceTime - c.sourceStart).seconds / max(VideoLook.minimumSpeed, c.look.speed), timescale: 6000)
             }
             start = start + c.duration
         }

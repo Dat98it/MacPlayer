@@ -82,7 +82,10 @@ public enum Motion {
         guard !keyframes.isEmpty else { return [] }
         var out = keyframes.map { var k = $0; k.time += delta; return k }.filter { $0.time > 1e-9 }
         if keyframes.contains(where: { $0.time + delta <= 1e-9 }), let start = state(keyframes, at: -delta) {
-            out.insert(MotionKeyframe(time: 0, scale: start.scale, x: start.x, y: start.y), at: 0)
+            // The new first keyframe carries the turn too, and the easing of the stretch it starts in, so a turning animation that
+            // is cut keeps turning.
+            let easing = keyframes.sorted { $0.time < $1.time }.last(where: { $0.time + delta <= 1e-9 })?.easing ?? .linear
+            out.insert(MotionKeyframe(time: 0, scale: start.scale, x: start.x, y: start.y, rotation: start.rotation, easing: easing), at: 0)
         }
         return out.sorted { $0.time < $1.time }
     }

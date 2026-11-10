@@ -22,7 +22,7 @@ extension ClipTransition {
     /// timeline): the outgoing clip needs some after its end, the incoming one some before its start, and neither can give up more
     /// than 45% of its length. 0 means there is not enough for a transition at all.
     public func effectiveDuration(prev: TimelineClip, prevSourceDuration: Double, cur: TimelineClip) -> Double {
-        let sp = max(0.01, prev.look.speed), sc = max(0.01, cur.look.speed)
+        let sp = max(VideoLook.minimumSpeed, prev.look.speed), sc = max(VideoLook.minimumSpeed, cur.look.speed)
         let spareAfter = max(0, prevSourceDuration - prev.sourceEnd.seconds) / sp
         let spareBefore = max(0, cur.sourceStart.seconds) / sc
         let half = min(clampedDuration / 2, spareAfter, spareBefore, 0.45 * prev.duration.seconds, 0.45 * cur.duration.seconds)

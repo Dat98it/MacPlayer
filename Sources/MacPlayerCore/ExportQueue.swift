@@ -118,10 +118,17 @@ public struct ExportQueueModel: Codable, Equatable, Sendable {
     public var pending: [ExportJob] { jobs.filter { $0.state == .queued } }
     public var hasWork: Bool { !running.isEmpty || !pending.isEmpty }
 
-    /// Jobs to start now: highest priority first, then oldest, within the concurrency limit.
-    public func nextToStart() -> [ExportJob] {
+    /// Jobs to start now: highest priority first, then oldest, within the concurrency limit. Jobs restored after a crash wait for the
+    /// person to ask (`includeRestored: false` leaves them out, and they do not use up a place either).
+    public func nextToStart(includeRestored: Bool = true) -> [ExportJob] {
         let free = max(0, maxConcurrent - running.count)
-        return Array(pending.sorted { ($0.priority, $1.created) > ($1.priority, $0.created) }.prefix(free))
+        return Array(pending.filter { includeRestored || !$0.restoredAfterCrash }
+            .sorted { ($0.priority, $1.created) > ($1.priority, $0.created) }.prefix(free))
+    }
+
+    /// The person chose to run the jobs restored after a crash again: they become ordinary queued jobs.
+    public mutating func releaseRestored() {
+        for i in jobs.indices where jobs[i].restoredAfterCrash && jobs[i].state == .queued { jobs[i].restoredAfterCrash = false }
     }
 
     private mutating func update(_ id: UUID, _ f: (inout ExportJob) -> Void) {

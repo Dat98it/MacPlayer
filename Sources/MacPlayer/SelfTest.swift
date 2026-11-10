@@ -672,7 +672,7 @@ enum SelfTest {
         await waitFor(10) { s.photoImage != nil }
         check(s.isPhoto && s.info?.primaryVideo?.width == 800 && s.info?.primaryVideo?.height == 400, "a photo opens with its size")
         check(s.photoImage != nil && s.photoImage?.width == 800, "the picture is drawn (\(s.photoImage?.width ?? 0) px wide)")
-        check(s.activeTool == .picture && InspectorTab.tabs(forPhoto: true) == [.picture, .effects, .text, .export], "the Picture tool opens, and a photo has no timeline, sound or subtitle tools")
+        check(s.activeTool == .picture && InspectorTab.tabs(forPhoto: true) == [.picture, .color, .mask, .effects, .text, .export], "the Picture tool opens, and a photo has no timeline, sound or subtitle tools")
         check(s.photoDraft.options.format == .jpeg, "it is saved in its own format unless told otherwise")
         s.photoCropAdjusting = false          // the crop frame has its own checks (flow N): here the picture shows every edit as it will be saved
 

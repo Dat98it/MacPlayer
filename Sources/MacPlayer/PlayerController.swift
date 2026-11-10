@@ -19,6 +19,8 @@ final class PlayerController: NSObject, ObservableObject {
     @Published var volume: Float = 1 { didSet { player.volume = volume } }
     @Published var isMuted = false { didSet { player.isMuted = isMuted } }
     @Published private(set) var audioOptions: [AVMediaSelectionOption] = []
+    /// Which of `audioOptions` is playing now (the picker shows it).
+    @Published private(set) var audioSelectionIndex = 0
     @Published private(set) var legibleOptions: [AVMediaSelectionOption] = []
 
     var onEnded: (() -> Void)?
@@ -108,13 +110,17 @@ final class PlayerController: NSObject, ObservableObject {
     }
 
     private func loadSelectionGroups(_ asset: AVAsset) async {
-        if let g = try? await asset.loadMediaSelectionGroup(for: .audible) { audioOptions = g.options } else { audioOptions = [] }
+        if let g = try? await asset.loadMediaSelectionGroup(for: .audible) {
+            audioOptions = g.options
+            audioSelectionIndex = item?.currentMediaSelection.selectedMediaOption(in: g).flatMap { chosen in g.options.firstIndex(of: chosen) } ?? 0
+        } else { audioOptions = []; audioSelectionIndex = 0 }
         if let g = try? await asset.loadMediaSelectionGroup(for: .legible) { legibleOptions = g.options } else { legibleOptions = [] }
     }
 
     func selectAudio(_ option: AVMediaSelectionOption) async {
         guard let item, let g = try? await item.asset.loadMediaSelectionGroup(for: .audible) else { return }
         item.select(option, in: g)
+        audioSelectionIndex = audioOptions.firstIndex(of: option) ?? audioSelectionIndex
     }
 
     func selectLegible(_ option: AVMediaSelectionOption?) async {

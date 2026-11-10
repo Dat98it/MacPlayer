@@ -31,7 +31,7 @@ public enum SpeedRamp {
     }
 
     /// How long the ramped clip plays on the timeline.
-    public static func playedLength(_ parts: [Part]) -> Double { parts.reduce(0) { $0 + $1.sourceLength / max(0.01, $1.speed) } }
+    public static func playedLength(_ parts: [Part]) -> Double { parts.reduce(0) { $0 + $1.sourceLength / max(VideoLook.minimumSpeed, $1.speed) } }
 }
 
 extension TimelineEditor {
@@ -53,7 +53,7 @@ extension TimelineEditor {
             t = k == parts.count - 1 ? c.sourceEnd : t + MediaTime(seconds: part.sourceLength, timescale: 6000)
             piece.sourceEnd = t
             piece.look.speed = min(max(c.look.speed * part.speed, 0.1), 8)
-            piece.look.motion = Motion.shifted(c.look.motion, by: -((piece.sourceStart - c.sourceStart).seconds / max(0.01, c.look.speed)) )
+            piece.look.motion = Motion.shifted(c.look.motion, by: -((piece.sourceStart - c.sourceStart).seconds / max(VideoLook.minimumSpeed, c.look.speed)) )
             piece.look.transitionIn = k == 0 ? c.look.transitionIn : nil
             if !c.name.isEmpty { piece.name = "\(c.name) \(k + 1)" }
             out.append(piece)
@@ -73,7 +73,7 @@ extension TimelineEditor {
         var frozen = c
         frozen.id = UUID()
         frozen.sourceStart = t; frozen.sourceEnd = t + fd
-        frozen.look.speed = max(0.0001, fd.seconds / hold)
+        frozen.look.speed = max(VideoLook.minimumSpeed, fd.seconds / hold)
         frozen.look.motion = []
         frozen.look.transitionIn = nil
         frozen.audio.muted = true
@@ -82,7 +82,7 @@ extension TimelineEditor {
         before.sourceEnd = t
         after.sourceStart = t
         after.look.transitionIn = nil
-        after.look.motion = Motion.shifted(c.look.motion, by: -((t - c.sourceStart).seconds / max(0.01, c.look.speed)))
+        after.look.motion = Motion.shifted(c.look.motion, by: -((t - c.sourceStart).seconds / max(VideoLook.minimumSpeed, c.look.speed)))
         var out: [TimelineClip] = []
         if t > c.sourceStart {
             after.id = UUID()

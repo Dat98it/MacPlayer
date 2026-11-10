@@ -69,14 +69,13 @@ extension RecipeBuilder {
         var out = RenderRecipe(look: look, audio: audio, subtitleStyle: subtitles.style)
         var offset = MediaTime.zero, soundOffset = MediaTime.zero
         for span in spans {
-            let part = recipe(look: look, audio: audio, overlays: overlays, subtitles: subtitles, burnIn: true, span: span)
+            let part = recipe(look: look, audio: audio, overlays: overlays, subtitles: subtitles, burnIn: burnIn, span: span)
             for var o in part.overlays { o.start = o.start + offset; o.end = o.end + offset; o.id = UUID(); out.overlays.append(o) }
             for var c in part.burnedInCues { c.start = c.start + offset; c.end = c.end + offset; c.id = UUID(); out.burnedInCues.append(c) }
             for c in soundClips { if var n = c.cropped(to: span, speed: look.speed, offset: soundOffset) { n.id = UUID(); out.soundClips.append(n) } }
-            soundOffset = soundOffset + MediaTime(seconds: span.duration.seconds / max(0.01, look.speed), timescale: 6000)
+            soundOffset = soundOffset + MediaTime(seconds: span.duration.seconds / max(VideoLook.minimumSpeed, look.speed), timescale: 6000)
             offset = offset + span.duration
         }
-        _ = burnIn
         return out
     }
 }
