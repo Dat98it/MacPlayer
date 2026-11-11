@@ -207,11 +207,23 @@ final class PlayerController: NSObject, ObservableObject {
         }
     }
 
-    /// Draws the frame on screen again (after a live change to a layer). While playing, the next frame already does.
+    /// Draws the frame on screen again after a live change (a filter, a colour, a transition, a layer or a text being dragged). While playing,
+    /// the next frame already does.
+    ///
+    /// It used to seek to the time the player already stood at; the player skips such a seek, so a filter chosen while paused did not show
+    /// until something else moved the playhead (0.12; measured: nothing drawn within 5 s). Handing the item its video composition again
+    /// makes it draw the current frame once more, from frames it already has, without seeking or decoding.
     func refreshFrame() {
-        guard !isPlaying, item != nil else { return }
-        scrub(to: currentTime)
+        guard !isPlaying, let item else { return }
+        refreshes += 1
+        if let vc = item.videoComposition, let copy = vc.mutableCopy() as? AVMutableVideoComposition {
+            item.videoComposition = copy
+        } else {
+            scrub(to: currentTime)
+        }
     }
+    /// How many times the frame on screen was drawn again (for the self-test).
+    private(set) var refreshes = 0
 
     func skip(seconds: Double) { Task { await seek(to: currentTime + MediaTime(seconds: seconds, timescale: 600)) } }
 

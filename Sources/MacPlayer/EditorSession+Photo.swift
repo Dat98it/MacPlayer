@@ -113,11 +113,12 @@ extension EditorSession {
         guard let base = photoBase else { return }
         photoRenderGeneration += 1
         let generation = photoRenderGeneration
-        var look = project.look
+        let source = canvasProject                // a drag in progress shows on the photo before it is in the project
+        var look = source.look
         if colorCompare { look.color = ColorAdjust() }
-        let overlays = project.overlays
+        let overlays = source.overlays.filter { !CanvasLift.contains($0.id) }      // a thing being dragged is drawn by the editor until the drop
         if photoCropEditing { look.crop = .full; look.canvas = .source }          // the whole picture, so the frame has all of it to sit on
-        let logos = PhotoLogo.load(project.overlayClips) { [weak self] path in
+        let logos = PhotoLogo.load(source.overlayClips.filter { !CanvasLift.contains($0.id) }) { [weak self] path in
             if let i = self?.photoLogoCache[path] { return i }
             let i = PhotoLogo.readImage(path); self?.photoLogoCache[path] = i; return i
         }
@@ -131,7 +132,7 @@ extension EditorSession {
         Task.detached(priority: .userInitiated) { [weak self] in
             let image = PhotoRenderer.render(base: job.base.image, look: job.look, overlays: job.overlays, logos: job.logos)
             let cg = PhotoRenderer.cgImage(image, colorSpace: job.base.colorSpace)
-            await MainActor.run { if let self, self.photoRenderGeneration == generation { self.photoImage = cg } }
+            await MainActor.run { if let self, self.photoRenderGeneration == generation { self.photoImage = cg; self.photoShownGeneration = generation } }
             guard box.list.count > 1 else { return }
             // An animation: every frame gets the same edit; they replace the one frame when all are ready.
             var drawn: [CGImage] = []

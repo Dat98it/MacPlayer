@@ -1,6 +1,6 @@
 # Báo cáo bàn giao MacPlayer
 
-Ngày: 05/11/2026 (cập nhật lần cuối 11/11/2026, bản 0.8.1; xem "Bổ sung 0.3.0–0.7.0", "Bản 0.7.1", "Bản 0.8.0" và "Bản 0.8.1" ở cuối) · Máy kiểm thử: Apple Silicon, macOS 27.0.1, Swift 6.4, chỉ có Command Line Tools.
+Ngày: 05/11/2026 (cập nhật lần cuối 11/11/2026, bản 0.8.2; xem "Bổ sung 0.3.0–0.7.0", "Bản 0.7.1", "Bản 0.8.0", "Bản 0.8.1" và "Bản 0.8.2" ở cuối) · Máy kiểm thử: Apple Silicon, macOS 27.0.1, Swift 6.4, chỉ có Command Line Tools.
 Nguồn yêu cầu: `MacPlayer-Thiet-ke-san-pham.md`.
 
 **Tóm tắt trung thực:** đây là một ứng dụng chạy được, với lõi lưu an toàn, cắt, render, playlist, dự án và hàng đợi đã kiểm thử kỹ. Nó **chưa phải bản thương mại hoàn chỉnh**: không có cấp phép, thanh toán, cập nhật, chữ ký phân phối; timeline nhiều nguồn/nhiều lớp và nhiều tính năng giai đoạn 3–4 chưa có giao diện hoặc chưa làm.
@@ -247,3 +247,377 @@ Test sau đợt này: Core 366 + 6 mới đều đạt; Media 223 (gồm 12 mớ
 
 **Kiểm thử:** 4 test Core mới (`TimelineViewportTests`); luồng self-test mới G0 tạo dự án trống trong cửa sổ thật, thêm 3 video khác loại, phát và kiểm: thanh hiện toàn bộ dự án, không cuộn khi đang xem toàn bộ, đầu phát chạy, preview không bị dựng lại, khung hình không bị bố trí lại, giao diện không nghẽn. Chụp cửa sổ thật trước/sau khi sửa với 3 video dọc tổng hợp cùng kích thước và thời lượng của bạn. **Chưa thử trên chính 3 file thật của bạn** (không mở media của bạn khi chưa được phép).
 
+
+## Bản 0.8.2: giao diện khựng khi chuyển qua lại bộ lọc màu và chuyển cảnh (11/11/2026)
+
+**Lỗi người bảo trì gặp:** trong trình chỉnh sửa video, chuyển qua lại giữa các bộ lọc màu và các kiểu chuyển cảnh thì giao diện bị đơ.
+
+**Nguyên nhân (tìm bằng đọc mã và đo; chưa bắt được trên máy và video thật của người bảo trì):**
+- Biểu đồ màu ở tab Màu làm mới theo vị trí đầu phát (làm tròn 0,25 s). Khi đang phát, nó đọc **chính xác** một khung **4 lần mỗi giây**, lại đọc từ **video nguồn đầu tiên tại thời điểm của timeline** (sai video, sai thời điểm). Với video keyframe thưa, mỗi lần mất 130–165 ms (đo trên video 1080×1920 keyframe mỗi 15 s), tức bộ giải mã bận khoảng một nửa thời gian, tranh với trình phát.
+- Ảnh xem trước của 11 bộ lọc và 18 chuyển cảnh được đọc và vẽ lại **mỗi lần mở tab** (chuyển tab làm mất ảnh đã vẽ), và phần vẽ chạy trên luồng giao diện.
+
+**Sửa:** `EditorSession+ToolFrames.swift`: một chỗ lấy khung cho công cụ: đúng đoạn tại đầu phát, đọc nhanh (khung gần nhất), mỗi khung một lần đọc, có bộ nhớ đệm; khi đang phát dùng lại khung gần nhất của cùng video. Biểu đồ màu không làm mới khi đang phát. Ô xem trước vẽ ở luồng nền và được giữ lại khi chuyển tab.
+
+**Kiểm thử:** self-test luồng G1 (dự án 3 video dọc keyframe thưa trong cửa sổ thật, đang phát và đang dừng): mở tab Màu khi đang phát đọc 0 khung (mã cũ: ~8 lần đọc chính xác trong 2 s); 18 lần chuyển tab + 12 lần chọn chỉ đọc 2 khung; giao diện nghẽn tối đa ~55 ms. Test Core 382, Media 223 đạt.
+
+**Chưa kiểm chứng:** chưa chạy trên chính video và ổ USB của người bảo trì; chưa thao tác chuột thật trên các ô. Mỗi lần chọn chuyển cảnh vẫn dựng lại preview (cần thiết vì cách vẽ thay đổi), nên hình có thể dừng một nhịp ngắn.
+
+
+
+## Bản 0.8.3: vẫn khựng khi chọn chuyển cảnh/bộ lọc trên dự án thật; con trỏ bàn tay (11/11/2026)
+
+**Người bảo trì báo:** với dự án `Bài tập cảm giác bóng.macplayer` (ổ Lexar), chọn qua lại giữa các chuyển cảnh/bộ lọc vẫn bị đơ. Yêu cầu thêm: mọi chỗ bấm được đổi con trỏ thành bàn tay.
+
+**Đã làm với dự án thật (chỉ trên bản sao file dự án; video trên ổ Lexar chỉ được đọc, mã băm không đổi):** dự án có 2 đoạn từ cùng một video 716×1276 dài 5:46, đoạn 2 có chuyển cảnh "Trượt trái" và bộ lọc "Kịch tính". Luồng G1 mở bản sao này trong cửa sổ thật, chọn 6 bộ lọc và 6 chuyển cảnh xen kẽ, khi dừng và khi đang phát.
+
+**Nguyên nhân còn lại tìm được:** mỗi lần chọn một kiểu chuyển cảnh khác, preview bị **dựng lại toàn bộ** (thay item của trình phát): hình đứng/đen một nhịp, nếu đang phát thì khựng. Bộ lọc thì đã đổi trực tiếp từ 0.7.
+
+**Sửa:** đổi kiểu chuyển cảnh (cùng độ dài, preview đã có bộ vẽ) được đưa thẳng cho bộ vẽ (`TransitionLive`, giống cách bộ lọc làm), không dựng lại preview. Thêm/bỏ chuyển cảnh hoặc đổi độ dài vẫn dựng lại vì đoạn phim dùng thay đổi.
+
+**Con trỏ bàn tay:** mọi nút, công tắc, menu chọn, ô chọn màu, thẻ và dòng bấm được (thẻ dự án, dòng danh sách phát, ô bộ lọc/chuyển cảnh, mã thời gian, nút tắt tiếng…) hiện bàn tay khi rê chuột (`PointerControls.swift`).
+
+**Kiểm thử:** test Media mới (kiểu chuyển cảnh mới được vẽ ngay, không dựng lại; xoá thì về như lúc dựng). G1 trên bản sao dự án thật, bản release: 12 lần chọn, **0 lần dựng lại preview** (trước: mỗi lần chọn chuyển cảnh một lần), giao diện nghẽn tối đa 58–80 ms, cả khi dừng và khi đang phát. Một lần build release trước đó đếm được 2 lần dựng lại, không rõ nguồn (khi ấy chưa ghi lý do); 6 lần chạy sau, có ghi lý do, đều là 0. Test Core 382 đạt; Media 224, trong đó `anExportedVideoIsSteadierThanTheOneItCameFrom` (chống rung) **lúc đạt lúc trượt**: mã 0.8.1 đã commit cũng trượt 1/3 lần, không do bản này. Self-test toàn bộ: 304 đạt, 1 lỗi đã biết (phím tắt menu hệ thống trùng). `check_localization`: 0 thiếu.
+
+**Chưa kiểm chứng (nói thẳng):** chưa bấm chuột thật trên các ô. Phép bấm tự động qua cửa sổ không chạy được vì app chạy nền không được macOS cho làm app đang dùng. **Con trỏ bàn tay chưa được nhìn thấy:** ảnh chụp cửa sổ không có con trỏ, mới chỉ build được. Không bắt được tình trạng "đơ" hàng giây nào: nhật ký hệ thống không có báo cáo treo của MacPlayer. Nếu bản 0.8.3 vẫn đơ, cần lấy mẫu (`sample`) đúng tiến trình đang chạy trong lúc tái hiện.
+
+
+## Bản 0.9.0: trình chỉnh sửa video kiểu CapCut, kéo-thả trong app (11/11/2026)
+
+**Yêu cầu:** chế độ chỉnh sửa khó dùng, chưa kéo-thả được trong app, giao diện chưa hợp lý. Người chưa biết dựng phim cũng phải dùng được; lấy CapCut (`/Volumes/Lexar 256GB/Applications/CapCut.app`) làm mẫu.
+
+**Cách tham khảo CapCut:** chỉ lấy **cách bố trí** quen thuộc của CapCut và các app dựng phim (thư viện bên trái, khung xem ở giữa, thuộc tính bên phải, timeline nhiều làn ở dưới, kéo-thả). Không mở CapCut, không đọc hay chép mã, ảnh, hiệu ứng hay chữ của nó; chỉ xem danh sách thư mục trong gói app.
+
+**Đã làm:**
+- **Bố cục mới cho dự án video.**
+  - Thư viện | Khung xem | Thuộc tính, ba bảng kéo đổi rộng được.
+  - Bên dưới, kéo hết chiều ngang: thanh công cụ và timeline.
+  - Nút Xuất ở góc trên bên phải. Bảng Thuộc tính đóng/mở bằng mục menu "Hiện/Ẩn công cụ" như trước.
+- **Thư viện:**
+  - **Media:** nhập file hoặc kéo từ Finder; thư mục được bung ra; file không phải media bị bỏ qua và có thông báo. Mỗi ô có ảnh nhỏ, độ dài, dấu ✓ khi đang dùng, nút + và menu chuột phải.
+  - **Âm thanh:** nhập nhạc, ghi âm giọng, hiệu ứng âm thanh.
+  - **Chữ:** 8 kiểu chữ và nhãn dán.
+  - **Bộ lọc:** 11 ô, xem trước trên chính khung hình của đoạn.
+  - **Chuyển cảnh:** 17 ô có hình minh hoạ.
+  - Dự án chỉ ghi nhớ **đường dẫn**: không chép, không sửa, và "Bỏ khỏi Thư viện" không đụng tới file.
+- **Timeline vẽ lại:**
+  - Ảnh thu nhỏ trên từng đoạn, sóng âm, nhãn tốc độ/bộ lọc/tắt tiếng, huy hiệu chuyển cảnh.
+  - Thêm làn **Chữ** và làn **Âm thanh**: trước đây chữ và nhạc không hiện trên timeline.
+  - Bấm để chọn; bấm chỗ trống để bỏ chọn và dời đầu phát. Kéo để dời, có bám dính. Kéo mép để đổi độ dài.
+  - Con trỏ đổi theo việc sẽ làm (↔ ở mép, bàn tay trên mục). Menu chuột phải theo thứ đang chọn.
+- **Âm thanh trên timeline:** kéo để dời, kéo mép để đổi độ dài (không vượt quá độ dài file).
+- **Thả vào timeline:**
+  - video chèn đúng vị trí, thả trên làn lớp thì thành lớp;
+  - ảnh thành lớp, nhạc vào làn âm thanh;
+  - bộ lọc lên đoạn, chuyển cảnh vào chỗ nối gần nhất;
+  - kiểu chữ hoặc nhãn dán vào một thời điểm.
+  - Khi đang kéo, chỗ sẽ thả được tô sáng.
+- **Thuộc tính theo thứ đang chọn:**
+  - đoạn video: Cơ bản, Màu, Hiệu ứng, Tốc độ, Âm thanh, Chuyển cảnh, Cắt nền;
+  - lớp, chữ, âm thanh: phần chỉnh tương ứng;
+  - chưa chọn gì: Tổng quan (có hướng dẫn 4 bước khi dự án trống), Phụ đề, Xuất.
+  - Đầu bảng có nút Nhân đôi, Xoá, Bỏ chọn.
+- **Phím:** ⌫ xoá thứ đang chọn (đoạn, lớp, chữ hoặc âm thanh), Esc bỏ chọn.
+
+**Kiểm thử:**
+- Test Core mới `MediaBinTests` (4). Tổng: Core 386, Media 224, đều đạt.
+- Luồng self-test mới **G2**: 34 kiểm tra trong cửa sổ thật. Các lần thả đi qua đúng mã nhận thả của timeline với pasteboard thật, gồm:
+  - bố cục và timeline kéo hết chiều ngang;
+  - nhập Thư viện, chặn trùng, bỏ file lạ;
+  - thả video, ảnh, nhạc, bộ lọc, chuyển cảnh, kiểu chữ;
+  - chọn, nhân đôi, xoá, hoàn tác, dời chữ và âm thanh, kéo mép âm thanh;
+  - Xuất, đóng/mở bảng Thuộc tính;
+  - lưu rồi mở lại; file gốc không đổi một byte.
+- Chụp cửa sổ thật với bản sao dự án của người bảo trì và với dự án thử.
+
+**Chưa kiểm chứng / chưa làm (nói thẳng):**
+- **Chưa kéo bằng chuột thật.** Kéo-thả SwiftUI từ Thư viện sang timeline (`onDrag`) và kéo từ Finder chưa được thử bằng tay; mã nhận thả thì đã được thử như trên.
+- **Dự án ảnh vẫn dùng bố cục cũ** (lưới công cụ bên phải).
+- **Ảnh chưa đặt được trên làn video chính:** ảnh luôn thành lớp chồng lên video. Muốn có trình chiếu ảnh như CapCut cần chuyển ảnh thành đoạn video; chưa làm.
+- Self-test toàn bộ (trước khi thêm kéo mép âm thanh): 335 đạt, 1 lỗi đã biết (phím tắt menu hệ thống trùng).
+
+
+## Bản 0.10.0: làm nốt các mục còn thiếu của 0.9.0 (11/11/2026)
+
+**1. Ảnh trên làn video chính. Đã làm.**
+- **Cách hoạt động:**
+  - Thả ảnh lên làn video (hoặc bấm + trên ảnh trong Thư viện) thì ảnh thành một đoạn riêng, mặc định 5 giây, kéo mép tới 60 giây.
+  - MacPlayer tạo một video ngắn không tiếng của ảnh (1 khung/giây) trong thư mục riêng của nó (`Stills`); ảnh gốc chỉ được đọc.
+  - Nếu video ngắn đó mất (máy khác, thư mục bị dọn), mở dự án thì nó được tạo lại từ ảnh. Ảnh gốc bị dời chỗ thì "Liên kết lại…" cho chọn ảnh.
+  - Thả lên làn Lớp thì ảnh vẫn là lớp chồng lên video như trước.
+- **Lỗi thật tìm ra khi thử:** video xuất có đoạn ảnh chỉ còn **15 khung/giây** (thay đổi khung/giây), vì phần ảnh chỉ có 1 khung/giây. Đã sửa ba chỗ:
+  - bộ vẽ nay vẽ đủ mọi khung (`containsTweening`); cũng nhờ vậy chữ động trên nền ảnh không còn bị đứng;
+  - đoạn ảnh không được quyết định nhịp khung của cả video;
+  - bộ xuất lấy nhịp theo bộ vẽ.
+  - Đã đo trên file xuất: 30 khung/giây đều, không còn khoảng hở 1 giây.
+
+**2. Dự án ảnh dùng bố cục mới. Đã làm.**
+- Thư viện bên trái có các tab:
+  - **Ảnh:** ảnh đầu tiên là ảnh chính, các ảnh sau thành logo; chỉ nhận ảnh.
+  - **Chữ:** kiểu chữ và nhãn dán.
+  - **Bộ lọc:** xem trước trên chính ảnh.
+- Kéo bộ lọc, kiểu chữ, nhãn dán thả thẳng lên ảnh. Thả chuyển cảnh thì có thông báo vì ảnh không có chỗ nối.
+- Bên phải là mọi công cụ ảnh (Cơ bản, Màu, Cắt nền, Hiệu ứng, Lớp, Chữ, Xuất); nút Xuất ở góc trên.
+
+**3. Kéo bằng chuột thật. Làm được phần máy tự kiểm được; phần còn lại cần người bấm.**
+- **Đã kiểm:** self-test dùng đúng `NSItemProvider` mà các ô Thư viện giao cho hệ thống khi kéo (file video/âm thanh, bộ lọc, kiểu chữ), đổ vào pasteboard theo từng kiểu dữ liệu như hệ thống làm, rồi thả vào timeline và lên ảnh qua đúng mã nhận thả.
+- **Phát hiện:** khi kéo một chuỗi văn bản, hệ thống còn gắn thêm kiểu `public.url`. Timeline chỉ nhận URL **file** nên không bị nhầm (đã kiểm).
+- **Chưa làm được:** một lần kéo bằng con trỏ thật. Kéo-thả của macOS đi theo con trỏ thật trên màn hình, mà quy tắc của dự án là không điều khiển chuột trên màn hình của người dùng; app chạy nền cũng không được macOS cho làm app đang dùng. Cách thử bằng tay (khoảng 1 phút):
+  1. Mở một dự án video. Kéo một video từ Finder vào Thư viện, rồi từ Thư viện xuống làn video.
+  2. Kéo một ảnh xuống làn video, rồi kéo một ảnh khác lên làn Lớp 1.
+  3. Kéo bộ lọc "Đơn sắc" thả lên một đoạn; kéo chuyển cảnh thả vào chỗ nối; kéo kiểu chữ "Neon" xuống làn Chữ.
+  4. Mở một dự án ảnh, kéo bộ lọc và kiểu chữ thả lên ảnh.
+
+**Kiểm thử 0.10.0:**
+- Core 387 (thêm test đoạn ảnh), đạt hết.
+- Media 227 (thêm `StillClipTests`: ảnh thành video tĩnh, ảnh gốc không đổi; video + ảnh xuất 150 khung đều 30/giây; chữ mờ dần trên nền ảnh thật sự đổi độ sáng). 226 đạt. Test chống rung lại trượt một lần trong cả bộ, rồi đạt 4/4 khi chạy riêng (đã biết là lúc đạt lúc trượt).
+- Self-test toàn bộ: 361 đạt, 1 lỗi đã biết (phím tắt menu hệ thống trùng). Gồm G2 (thêm: ảnh lên làn chính, kéo dài, xuất 30 khung/giây có đúng màu ảnh, tạo lại video tạm, kéo qua dữ liệu kéo thật của các ô) và G3 mới (dự án ảnh, 13 kiểm tra).
+- Chụp cửa sổ thật: dự án ảnh có Thư viện/Thuộc tính; dự án video có đoạn ảnh trên timeline.
+
+
+## Bản 0.11.0: thêm và dời chữ, nhãn dán, hình, ảnh ngay trên khung hình (11/11/2026)
+
+**Yêu cầu:** muốn thêm hay đổi vị trí chữ, nhãn dán, hình… mà không phải chọn qua hai bảng trái/phải; kéo-thả vào bất kỳ chỗ nào trên khung hình.
+
+**Đã làm:**
+- **Thả đúng chỗ:**
+  - Kéo kiểu chữ, nhãn dán, **hình** (nhóm mới trong tab Chữ: vuông, bo góc, tròn, tam giác, sao, tim, mũi tên, đường kẻ) từ Thư viện thả lên khung hình: phần tử nằm đúng điểm thả.
+  - Kéo một ảnh (từ Thư viện hoặc Finder) thả lên khung hình: ảnh thành lớp (video) hay logo (dự án ảnh) có tâm tại điểm thả.
+  - Làm được ở cả dự án video lẫn dự án ảnh.
+- **Kéo trên khung hình:**
+  - Mỗi chữ, nhãn dán, hình đang hiện có khung nét đứt. Bấm để chọn (bảng phải mở phần Chữ); thứ đang chọn có khung trắng và 4 núm tròn.
+  - Kéo thân để dời, kéo núm góc để phóng to/thu nhỏ.
+  - Gần giữa khung thì tự bám vào giữa, có đường gióng vàng; giữ ⌥ để thả tự do.
+  - Phần tử có keyframe thì được thêm keyframe tại đầu phát.
+  - Logo trong dự án ảnh nay cũng kéo, đổi cỡ ngay trên ảnh (trước chỉ chỉnh bằng thanh trượt).
+- **Hình đổi ngay khi kéo:** dự án video không phải dựng lại preview (`ElementLive`, giống cách bộ lọc và lớp làm). Mỗi lần kéo là một bước Hoàn tác.
+- **Dự án ảnh:** khung cắt không còn tự hiện khi mở công cụ Cơ bản. Bật "Chỉnh ngay trên ảnh" hoặc bấm một tỉ lệ để cắt; khi khung cắt hiện, các khung chữ và logo tạm nhường chỗ.
+
+**Lỗi thật tìm ra khi thử:** khi có thông báo dưới khung hình (ví dụ "Đã thêm vào Thư viện…"), thanh thông báo đòi tới khoảng 690 điểm chiều cao và **bóp khung hình còn 0**. Người dùng sẽ thấy hình biến mất lúc có thông báo. Đã sửa ở mọi bố cục: thông báo tối đa 2 dòng (rê chuột xem đủ), khung hình luôn giữ ít nhất 160 điểm.
+
+**Kiểm thử:**
+- Media: thêm `CanvasElementTests`.
+  - Preview đi theo lúc kéo ngay, còn bản xuất luôn vẽ đúng giá trị đã lưu.
+  - Khung tính ra khớp chỗ chữ thật sự được vẽ.
+- Tổng: Core 387 và Media 229, đều đạt.
+- Self-test toàn bộ: 380 đạt, 1 lỗi đã biết (phím tắt menu hệ thống trùng).
+- Self-test mới **G4** (18 kiểm tra). Thả đi qua đúng mã nhận thả của khung hình với dữ liệu kéo thật của các ô; kéo gửi sự kiện chuột vào chính các khung. Kiểm:
+  - thả chữ, hình, nhãn dán, ảnh vào đúng chỗ;
+  - khung vẽ đúng vị trí; chỗ trống để chuột đi xuống dưới;
+  - kéo dời, preview theo ngay, một lần Hoàn tác trả về chỗ cũ; kéo góc ×2; bám giữa;
+  - **bản xuất có hình ở chỗ mới và to gấp đôi** (đo điểm ảnh);
+  - dự án ảnh: thả hình và logo đúng chỗ, kéo hình (ảnh hiển thị đổi đúng điểm ảnh), kéo logo, khung nhường chỗ khi đang cắt;
+  - khung hình không bị bóp khi có thông báo.
+- Luồng N (cắt ảnh) được cập nhật theo cách bật khung cắt mới.
+
+**Chưa kiểm chứng:**
+- Chưa kéo bằng chuột thật trên màn hình (lý do như các bản trước). Các thao tác trên đi qua đúng mã xử lý chuột và thả của app, nhưng không qua phiên kéo của macOS.
+- Chưa có núm xoay trên khung (xoay vẫn chỉnh ở bảng Chữ).
+
+
+## Bản 0.12.0: kéo từ Thư viện, phím tắt, chọn nhiều/nhóm/khoá, và nguyên nhân thật của "UI đơ" (11/11/2026)
+
+**Yêu cầu:**
+1. Kéo thả Chữ, Hình, Nhãn dán… từ Thư viện vào khung hình chính.
+2. Phím tắt xoá (⌫) và dời bằng phím mũi tên.
+3. Chọn nhiều, nhóm, khoá như các app chuyên nghiệp.
+4. Dứt điểm bug UI đơ khi chuyển bộ lọc/chuyển cảnh. Người bảo trì nói thêm: bấm xong thì video ở giữa rất lâu mới đổi, và kiểu "đang chọn" ở bảng phải cũng rất lâu mới đổi.
+
+**4. Đơ UI: nguyên nhân thật, đã đo trên bản sao dự án "Bài tập cảm giác bóng":**
+- **Nguyên nhân chính:**
+  - Khi video đang dừng, mỗi lần đổi bộ lọc (cũng như màu, chuyển cảnh, lớp, chữ đang kéo) app "tua về đúng chỗ đang đứng" để vẽ lại khung hình.
+  - AVPlayer bỏ qua lần tua không đổi chỗ, nên khung hình **không được vẽ lại**. Đo được: không có khung mới nào trong 5 giây; hình chỉ đổi khi có thao tác khác làm đầu phát dịch chuyển.
+  - Nay app gán lại bộ vẽ cho video, buộc vẽ lại khung hiện tại ngay. Đo lại: bộ lọc và chuyển cảnh tới khung hình sau **1–2 ms**.
+- **Phụ:**
+  - Khi phát, mỗi khung hình (30 lần/giây) đều báo cho toàn bộ bảng bên vẽ lại. Nay chỉ 4 lần/giây: 80 → 13 lần trong 3 giây.
+  - Timeline vẽ lại toàn bộ (ảnh nhỏ, sóng âm) ở mỗi khung chỉ để dời vạch đầu phát. Nay vạch đầu phát là một view riêng: ~90 → 12 lần vẽ trong 3 giây.
+  - Phần luồng giao diện bận thêm khi phát (so với lúc đứng yên) còn khoảng 100 ms trên 3 giây (bản release).
+- **Về "kiểu đang chọn ở bảng phải lâu mới đổi":** đo được luồng giao diện không bị chặn quá 82–150 ms mỗi lần chọn. Phần nghẽn khi đang phát đã giảm như trên. **Chưa đo được trên đúng máy và màn hình 5K của người bảo trì.**
+
+**1. Kéo từ Thư viện:**
+- Các ô trong Thư viện nay dùng cơ chế kéo của AppKit (như Finder) thay cho `onDrag` của SwiftUI. Bấm là thêm, nhấn rồi kéo là thả vào chỗ muốn.
+- Khi kéo chữ, hình, nhãn dán hoặc ảnh qua khung hình, có vòng tròn đánh dấu và hai đường gióng tại chỗ sẽ thả.
+- Đã kiểm tra AVPlayerView không giành chỗ thả.
+- Nút + trên ô media nay luôn hiện, không chỉ khi rê chuột.
+
+**2. Phím tắt** (khi đang chọn chữ, hình, nhãn dán, lớp hay logo trên khung hình):
+- ⌫/⌦ xoá; ← → ↑ ↓ dời 1 điểm, ⇧ dời 10 điểm (nhấn liên tiếp tính một bước Hoàn tác); Esc bỏ chọn; ⌘D nhân đôi.
+- Bấm vào khung hình thì phím đi tới khung hình chứ không vào ô gõ chữ bên phải.
+- Không chọn gì trên khung hình thì mũi tên vẫn tua như cũ.
+
+**3. Chọn nhiều, nhóm, khoá:**
+- ⇧/⌘-bấm để chọn thêm hoặc bỏ bớt; kéo khung chọn trên vùng trống, khung bắt cả lớp/logo; bấm vùng trống để bỏ chọn.
+- Kéo một mục là dời cả nhóm đang chọn (một bước Hoàn tác).
+- ⌘G nhóm (bấm một mục là chọn cả nhóm), ⇧⌘G bỏ nhóm, ⌘L khoá/mở khoá. Mục khoá có biểu tượng 🔒, không dời và không xoá được trên khung hình.
+- Nhân đôi nhiều mục thì bản sao thành một nhóm riêng.
+- Các lệnh có ở menu Sửa, chuột phải và đầu bảng Thuộc tính ("Đã chọn N").
+- Làn Chữ trên timeline xếp các mục trùng thời gian thành nhiều hàng và ghi đúng tên hình.
+
+**Kiểm thử:**
+- Core 391 (thêm `CanvasSelectionTests`) và Media 229, đều đạt trong 3 lần chạy đủ bộ gần nhất.
+- Một lần trước đó, tiến trình test Media bị macOS dừng (SIGBUS) bên trong `CIContext.init` của hệ thống, khi test màu cũ chạy song song. Không lặp lại; đã ghi vào CLAUDE.md.
+- Self-test toàn bộ: 405 đạt, 1 lỗi đã biết (phím tắt menu hệ thống trùng).
+- Luồng mới **G5** (21 kiểm tra): ⇧-bấm, kéo cả hai, hoàn tác; khung chọn bắt cả lớp; phím mũi tên 1/10 điểm và hoàn tác một bước; nhóm; khoá chặn kéo/phím/xoá; ⌘D thành nhóm mới; ⌫, Esc; mũi tên vẫn tua khi không chọn gì; ô Thư viện bấm/rung nhẹ vẫn là bấm; dữ liệu kéo của ô thả đúng chỗ.
+- G1 thêm các phép đo ở mục 4.
+
+**Chưa kiểm chứng:**
+- Kéo bằng chuột thật, bao gồm phiên kéo của macOS từ Thư viện sang khung hình. Mã nguồn kéo là AppKit chuẩn, nhưng self-test không khởi động được một phiên kéo thật.
+- Hiệu ứng rê chuột trên ô media khi có lớp kéo AppKit phủ lên. Vì vậy nút + được để luôn hiện.
+
+
+## Bản 0.13.0: một chỗ để thêm chữ, báo căn giữa, gõ chữ ngay trên khung hình (11/11/2026)
+
+**Người bảo trì báo:** đã kéo được bằng chuột từ Thư viện sang khung hình. Cần thêm:
+1. Phần thêm chữ/hình/nhãn dán đang bị lặp ở cả hai bảng; đã hỏi lại và chốt **chỉ để ở Thư viện bên trái**.
+2. Báo cho người dùng biết khi đang căn giữa (giữa khung hình, hoặc giữa vật bao quanh).
+3. Bấm đúp vào chữ để gõ ngay, không phải gõ ở ô bên phải.
+
+**Đã làm:**
+1. **Bảng phải (tab Chữ)** bỏ các thẻ "Thêm", "Kiểu chữ", "Hình và nhãn dán".
+   - Còn lại: dòng hướng dẫn (khi chưa chọn gì), danh sách những gì trên khung hình, và phần chỉnh mục đang chọn.
+   - Phần chỉnh có menu **Kiểu** gọn để đổi kiểu cho chữ đang chọn.
+   - Kéo một kiểu chữ từ Thư viện thả **đè lên chữ có sẵn** thì chữ đó đổi kiểu (giữ nội dung); thả chỗ trống thì thêm chữ mới.
+2. **Căn giữa:**
+   - Khi kéo chữ, hình, nhãn dán, nhiều mục cùng lúc hoặc lớp/logo, tâm của nó bám vào giữa khung hình, hoặc vào giữa vật mà nó đang nằm trên (chữ trên hình, nhãn dán trên logo).
+   - Gần cả hai thì ưu tiên vật nhỏ hơn.
+   - Có đường gióng hồng và nhãn "Đã căn giữa: Giữa khung hình", "Đã căn giữa: Giữa Rectangle"…
+   - Vị trí được đặt đúng chính giữa (làm tròn tới một phần triệu). Giữ ⌥ để không bám.
+3. **Bấm đúp vào chữ** trên khung hình mở ô gõ ngay tại chỗ, đúng font, cỡ, màu, chữ cũ được chọn sẵn.
+   - Gõ tới đâu hình đổi tới đó; cả lần gõ là một bước Hoàn tác.
+   - Return là xong, ⌥Return xuống dòng, Esc trả lại chữ cũ.
+   - Hình (không phải chữ) không mở ô gõ.
+
+**Kiểm thử:**
+- Self-test mới **G6** (12 kiểm tra), tất cả đạt:
+  - căn giữa khung hình kèm nhãn; căn giữa hình bên dưới kèm nhãn; lớp căn giữa kèm nhãn;
+  - bấm đúp mở ô gõ; gõ hiện ngay; ⌥Return/Return; một lần Hoàn tác; Esc; hình không mở ô;
+  - thả kiểu chữ đè lên chữ thì đổi kiểu, thả chỗ trống thì thêm chữ.
+- G4 + G5 + G6: 50 kiểm tra đạt. Self-test toàn bộ: 416 đạt, 1 lỗi đã biết (phím tắt menu hệ thống trùng). Core 391 và Media 229 đạt.
+- Trong ngày, 2/8 lần chạy cả bộ test Media bị macOS dừng (SIGBUS) bên trong framework hệ thống (Metal khi tạo `CIContext`; ImageIO khi đọc GIF) ở các test cũ chạy song song. Chạy lại thì đạt; sáng cùng ngày, trước các thay đổi này, cũng có một lần tương tự. Chưa tìm được cách tái hiện chắc chắn.
+- Chụp cửa sổ: bảng phải tab Chữ chỉ còn hướng dẫn và danh sách.
+
+**Chưa kiểm chứng:** bấm đúp và gõ bằng chuột và bàn phím thật; nhãn căn giữa trên màn hình 5K của người bảo trì.
+
+
+## Bản 0.14.0: Thư viện hết nhấp nháy, mẫu chữ/hình/nhãn dán mới, cửa sổ Xuất cho mạng xã hội (11/11/2026)
+
+**1. Ô Thư viện nhấp nháy khi phát video. Đã sửa.**
+- **Nguyên nhân:** file đang dùng trong dự án nhưng chưa nằm trong kho Thư viện (dự án cũ) được gán mã nhận diện **mới** mỗi lần giao diện vẽ lại. Khi phát (4 lần/giây), các ô bị tạo lại, ảnh nhỏ mất rồi tải lại, gây nhấp nháy.
+- **Sửa:** mã cố định theo đường dẫn file; ô lấy ảnh nhỏ từ bộ nhớ đệm ngay khi được tạo.
+- **Đo trong self-test G2:** trước khi sửa, 33 lần tạo lại ô trong 2,5 giây phát; sau khi sửa, 0. Mình đã tạm bỏ phần sửa để xác nhận phép thử bắt được lỗi.
+
+**2. Mẫu chữ, hình, nhãn dán; hình vuông thành chữ nhật.**
+- **Lỗi:** kích thước hình tính theo phần trăm chiều rộng và chiều cao khung, nên "vuông 18% × 18%" trên khung 16:9 thành chữ nhật ngang. Nay chiều cao tính theo tỉ lệ khung. Self-test G4 đo trên khung hình: 125 × 125 điểm.
+- **Mới:**
+  - 9 kiểu chữ: Tiêu đề lớn, Phụ đề nền, Trích dẫn, Cổ điển, Sang trọng, Viết tay, Hashtag, Khuyến mãi, Tối giản.
+  - 10 **mẫu có sẵn**, chữ theo ngôn ngữ của người dùng: Nút đăng ký, Trực tiếp, Mới, Giảm 50%, Thích & chia sẻ, Theo dõi @…, Sắp ra mắt, Cảm ơn đã xem, Địa điểm, Tin nóng.
+  - 8 hình: thoi, ngũ giác, lục giác, bong bóng thoại, nhãn nổ, dấu tích, dấu cộng, vòng tròn rỗng.
+  - Nhãn dán: từ 24 lên hơn 60 (mũi tên, dấu, đánh dấu, bóng đá…).
+- Tất cả bấm hoặc kéo được như trước. Mẫu có sẵn bấm đúp để sửa chữ.
+
+**3. Xuất.**
+- Nút Xuất chỉ còn ở góc trên bên phải; bấm mở **cửa sổ Xuất**. Tab Xuất trong bảng phải đã bỏ (cả với dự án ảnh).
+- Gộp "Chất lượng" và "Cỡ" thành **một** lựa chọn có giải thích: Tốt nhất (như bản gốc) · 4K · Full HD 1080p (khuyên dùng) · HD 720p · Nhẹ 480p.
+- **Khung hình** cho mạng xã hội: Gốc, 16:9 YouTube, 9:16 TikTok/Reels/Shorts, 1:1 Instagram/Facebook, 4:5 Instagram dọc (mới), 4:3.
+  - Cách lấp: đủ hình viền đen, lấp đầy cắt mép, hoặc đủ hình viền mờ.
+  - Áp cho cả dự án; khung xem phía sau đổi ngay; có báo trước cỡ video sẽ xuất.
+- Định dạng, codec, âm thanh vào mục "Nâng cao" (thu gọn). Nút Huỷ / Xuất video ghim ở đáy.
+- **Sửa thêm:** cỡ xuất ra giới hạn theo **cạnh ngắn**. Video dọc 1080p nay là 1080 × 1920 thay vì 608 × 1080 (preview vẫn giới hạn chiều cao cho nhẹ).
+
+**Sửa lại thông tin sai ở báo cáo 0.12/0.13:** các lần tiến trình test Media bị dừng (SIGBUS) **không phải do hệ thống**.
+- Nguyên nhân là chính các test mình viết từ 0.11: chúng đưa con trỏ mảng `&array` cho `CGContext` rồi vẽ sau đó, nên ghi vào vùng nhớ không còn thuộc về chúng.
+- Đã sửa cả 5 chỗ (3 test, 2 hàm đọc điểm ảnh của self-test). Sau đó chạy cả bộ 3 lần liền, cả 3 sạch. Đã ghi quy tắc vào CLAUDE.md.
+
+**Kiểm thử:**
+- Core: thêm `ExportPresetTests` (chất lượng+cỡ, khung cho mọi đoạn, 4:5, hình vuông đúng tỉ lệ, video dọc theo cạnh ngắn) và một test mã nhận diện ổn định.
+- Media: hình vuông vẽ ra đúng 80 × 80 điểm ảnh trên khung 320 × 180; mọi hình mới đều vẽ được; vòng tròn rỗng ruột.
+- Self-test:
+  - G2: bấm Xuất mở cửa sổ, Huỷ đóng, không còn tab Xuất thứ hai; xuất khung 9:16 ra video dọc; Thư viện không bị tạo lại khi phát.
+  - G4: hình vuông vuông trên khung hình.
+- Chụp cửa sổ Xuất bằng `screencapture -l` (chỉ cửa sổ MacPlayer).
+
+**Chưa kiểm chứng:**
+- Xuất thật một video 9:16/1:1 từ video của người bảo trì rồi đăng lên mạng xã hội.
+- Font của một số kiểu chữ mới (Didot, Bradley Hand, Impact, Helvetica Neue Condensed) lấy từ macOS: nếu máy thiếu font, macOS tự dùng font thay thế.
+- Self-test toàn bộ: 420 đạt; 1 lỗi đã biết (phím tắt menu hệ thống trùng) và 1 lỗi của chính phép thử G1: lần chọn bộ lọc đầu tiên trên video chưa có hiệu ứng bị tính là chậm, trong khi nó dựng lại preview theo thiết kế. Đã sửa phép thử để chỉ đo khi bộ vẽ đã bật; chạy lại G1 trên video thử và trên bản sao dự án của người bảo trì: các lần chọn bộ lọc lên hình sau 0–1 ms, chuyển cảnh 1–2 ms.
+- Test Core 396 và Media 231 đạt trong 3 lần chạy liền.
+
+
+## Bản 0.14.1: tab Chữ chia thành tab con (11/11/2026)
+
+**Yêu cầu:** phần Chữ, Hình, Nhãn dán phải cuộn rất dài; chuyển sang dạng tab.
+
+**Đã làm:**
+- Tab Chữ của Thư viện có 4 tab con: **Kiểu chữ · Mẫu sẵn · Hình · Nhãn dán**. Nút "Thêm chữ" vẫn ở trên cùng.
+- Mỗi tab có dòng hướng dẫn riêng. Hình hiện to hơn, kèm tên và màu thật; nhãn dán to hơn. Tab đang mở được nhớ trong lúc app chạy.
+- **Lỗi tìm ra khi chụp màn hình:** thanh tab kiểu "segmented" của macOS đòi bề rộng tối thiểu lớn hơn bảng, đẩy cả cột ra ngoài và bị cắt hai mép. Đã thay bằng thanh tab tự vẽ co giãn theo bảng.
+
+**Kiểm thử:**
+- Chụp cửa sổ từng tab con (4 ảnh): không bị cắt, đủ nội dung.
+- Self-test G2 (80) và G4/G5/G6 (51) đạt. Không đổi gì ở phần lõi.
+
+**Chưa kiểm chứng:** bấm các tab bằng chuột thật.
+
+
+## Bản 0.14.2: kéo đối tượng trên khung hình mượt, khung chọn theo kịp (11/11/2026)
+
+**Người bảo trì báo:** kéo, rê đối tượng trong vùng chỉnh sửa khá đơ; viền chọn không theo kịp đối tượng.
+
+**Nguyên nhân (đọc mã, rồi đo):** mỗi sự kiện chuột khi kéo (60–120 lần/giây) đều:
+- ghi một bước sửa vào dự án, khiến mọi bảng SwiftUI (Thư viện, Thuộc tính, thanh công cụ) và cả timeline vẽ lại;
+- yêu cầu trình phát vẽ lại khung hình; các yêu cầu dồn hàng nên hình chạy sau viền;
+- tính lại bố cục chữ (CoreText) của mọi mục trên khung hình ở mỗi lần vẽ khung và mỗi lần dò chuột.
+
+Với dự án ảnh, mỗi sự kiện còn vẽ lại cả tấm ảnh.
+
+**Sửa:**
+- Trong lúc kéo, khung chọn và hình chạy theo một "bản nháp", **không ghi vào dự án**. Khi thả chuột mới ghi một lần (một bước Hoàn tác).
+- Trình phát vẽ lại khung hình tối đa một lần mỗi khung màn hình (1/60 giây). Dự án ảnh vẽ lại tối đa 30 lần/giây, không chồng việc.
+- Khung của chữ được nhớ sẵn, không tính lại bố cục mỗi lần.
+- Áp dụng cho kéo chữ/hình/nhãn dán, kéo góc đổi cỡ, kéo nhiều mục và kéo lớp/logo.
+
+**Kiểm thử:**
+- Self-test mới **G7**: 90 lần dời, mỗi lần một khung màn hình, trên video thử và trên bản sao dự án "Bài tập cảm giác bóng" (có 4 chữ, 3 hình và 1 logo trên khung). Kết quả:
+  - các bảng vẽ lại **0 lần**, timeline 1 lần;
+  - trình phát vẽ lại 86–88 khung;
+  - mỗi lần dời tốn 0,1 ms trên luồng giao diện;
+  - khung chọn **trùng vị trí chuột ở mọi lần** (lệch 0 điểm);
+  - thả xong đúng chỗ, và cả lần kéo là một bước Hoàn tác.
+- G2/G4/G5/G6 đạt (80 + 51). Core 396, Media 231 đạt. Self-test toàn bộ: 427 đạt, 1 lỗi đã biết (phím tắt menu hệ thống trùng).
+
+**Chưa kiểm chứng:**
+- Kéo bằng chuột hoặc trackpad thật trên màn hình 5K.
+- Chưa có số đo "trước khi sửa" bằng chính G7: nó được viết cùng lúc với phần sửa. Nhận định "mỗi lần dời một lần ghi dự án" ở trên lấy từ đọc mã.
+
+
+## Bản 0.14.3: kéo đối tượng đi liền theo chuột (11/11/2026)
+
+**Người bảo trì báo:** sau bản 0.14.2, kéo đối tượng trên khung hình vẫn rất giật.
+
+**Nguyên nhân thật (bản 0.14.2 chưa xử lý):**
+- Bản 0.14.2 đã bỏ việc ghi dự án ở mỗi lần nhích chuột, nhưng vẫn bắt trình phát (AVPlayer) dựng lại khung hình đến 60 lần/giây.
+- Đường này có độ trễ và nhịp không đều, nên chữ, hình chạy sau viền chọn.
+- Bài đo G7 của bản 0.14.2 chỉ đếm số lần *yêu cầu* vẽ, không đo hình *thực sự* nằm đâu trên màn hình. Vì vậy nó báo "mượt" trong khi người dùng thấy giật. Đây là sai sót trong cách đo của tôi.
+
+**Sửa:**
+- Ở lần nhích chuột đầu tiên, app "nhấc" đối tượng ra. App vẽ đối tượng một lần thành ảnh, bằng chính mã vẽ của trình phát nên trông y hệt. Ảnh đặt nổi trên khung hình, và trình phát bỏ đối tượng đó ra khỏi khung.
+- Mỗi lần nhích chuột chỉ dời hoặc phóng ảnh nổi; màn hình tự làm việc này ở tốc độ của nó.
+- Khi thả: ghi vào dự án một lần, trình phát vẽ lại một lần. Ảnh nổi chỉ được gỡ sau khi trình phát đã vẽ đối tượng ở chỗ mới, nên không nháy.
+- Áp dụng cho: chữ, hình, nhãn dán, kéo góc đổi cỡ, kéo nhiều đối tượng, logo hoặc ảnh lớp, ở dự án video và dự án ảnh.
+- Vẫn theo cách cũ: lớp video, lớp có chế độ hoà trộn hoặc tách nền, và khi video đang phát.
+
+**Lỗi sập phát hiện thêm khi thử trên dự án "Tư duy BĐ":**
+- Cả 3 video của dự án không còn ở đường dẫn cũ, nên lần tua đầu tiên làm app sập.
+- Đã sửa: thời gian không hợp lệ giờ được hiểu là 0.
+
+**Kiểm thử:**
+- G7 chạy trên video thử và trên bản sao 3 dự án thật: "Bài tập cảm giác bóng", "Tập thể lực", "Tư duy BĐ". File gốc không bị mở.
+- Kết quả: ảnh đang kéo lệch chuột **0 điểm** ở cả 90 lần nhích. Trình phát vẽ **0 khung** trong lúc kéo; nhấc ra 1 lần.
+- Sau khi thả khoảng 100 ms, trình phát đã tự vẽ đối tượng ở chỗ mới và ảnh nổi được gỡ.
+- Kéo logo: lệch 0 điểm, 0 khung.
+- "Tư duy BĐ" thiếu video nên không đo kéo được; chỉ xác nhận app không còn sập.
+- G4/G5/G6: 51 đạt; G2/G3: 80 đạt. Core 396, Media 231 đạt.
+- Self-test toàn bộ: 432 đạt, 1 lỗi đã biết (phím tắt menu hệ thống trùng).
+
+**Chưa kiểm chứng:**
+- Kéo bằng chuột hoặc trackpad thật trên màn hình 5K. Sự kiện chuột trong bài đo được gửi thẳng tới view, không qua hệ thống.
+- Kéo trên dự án ảnh chỉ được G4 kiểm tra về vị trí, chưa đo độ mượt.

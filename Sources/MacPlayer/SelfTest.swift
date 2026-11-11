@@ -43,6 +43,10 @@ enum SelfTest {
         try? fm.copyItem(at: mediaDir.appendingPathComponent("demo.mp4"), to: demo)
         let original = (try? Data(contentsOf: demo)) ?? Data()
 
+        if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_SWITCH"] != nil { await toolSwitchFlow(env: env, work: work, app: app); finish(); return }
+        if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_DRAG"] != nil { await dragSmoothnessFlow(env: env, work: work, app: app); finish(); return }
+        if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_CANVAS"] != nil { await canvasFlow(env: env, work: work, app: app); await selectionFlow(env: env, work: work, app: app); await centringAndTypingFlow(env: env, work: work, app: app); finish(); return }
+        if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_WORKSPACE"] != nil { await workspaceFlow(env: env, work: work, app: app); await photoWorkspaceFlow(env: env, work: work, app: app); await canvasFlow(env: env, work: work, app: app); finish(); return }
         if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_THREE"] != nil {
             for _ in 0..<(Int(ProcessInfo.processInfo.environment["MACPLAYER_ONLY_THREE"] ?? "") ?? 1) { await threeVideosFlow(env: env, work: work, app: app) }
             finish(); return
@@ -180,6 +184,13 @@ enum SelfTest {
 
         // G. multi-source timeline
         await threeVideosFlow(env: env, work: work, app: app)
+        await toolSwitchFlow(env: env, work: work, app: app)
+        await workspaceFlow(env: env, work: work, app: app)
+        await photoWorkspaceFlow(env: env, work: work, app: app)
+        await canvasFlow(env: env, work: work, app: app)
+        await selectionFlow(env: env, work: work, app: app)
+        await centringAndTypingFlow(env: env, work: work, app: app)
+        await dragSmoothnessFlow(env: env, work: work, app: app)
         await timelineFlow(env: env, work: work, demo: demo, demoBytes: original)
 
         // H. layers over the timeline
@@ -580,6 +591,157 @@ enum SelfTest {
         wc.closeVideo(); wc.window?.orderOut(nil)
     }
 
+    /// Going back and forth between the colour filters and the transitions, clicking one of each, in a video project shown in a window:
+    /// the interface must keep answering (it froze: every tile picture was drawn on the main thread, again at every visit of a tool).
+    static func toolSwitchFlow(env: AppEnvironment, work: URL, app: AppDelegate) async {
+        print("== G1: switching between filters and transitions keeps the interface answering")
+        app.quitWhenLastWindowCloses = false
+        let fm = FileManager.default
+        var urls = (ProcessInfo.processInfo.environment["MACPLAYER_SWITCH_MEDIA"] ?? "").split(separator: "|").map { URL(fileURLWithPath: String($0)) }
+        if urls.isEmpty, ProcessInfo.processInfo.environment["MACPLAYER_SWITCH_PROJECT"] == nil {
+            for i in 0..<3 {
+                // Keyframes far apart, as in many phone and app exports: reading one exact frame means decoding many.
+                var spec = SyntheticMedia.Spec(); spec.width = 640; spec.height = 1136; spec.seconds = 5; spec.keyframeInterval = 150
+                let u = work.appendingPathComponent("switch-\(i).mp4"); try? fm.removeItem(at: u)
+                try? await SyntheticMedia.generate(to: u, spec: spec); urls.append(u)
+            }
+        }
+        let path = work.appendingPathComponent("switch.macplayer").path; try? fm.removeItem(atPath: path)
+        let s: EditorSession
+        if let existing = ProcessInfo.processInfo.environment["MACPLAYER_SWITCH_PROJECT"] {
+            // A copy of a real project (its media is only read).
+            try? fm.copyItem(atPath: existing, toPath: path)
+            guard let opened = try? await EditorSession.openProject(path: path) else { check(false, "open the project"); return }
+            s = opened
+        } else {
+            guard let made = try? await EditorSession.makeProjectFile(kind: .video, media: nil, at: path) else { check(false, "make a project"); return }
+            s = made
+        }
+        let wc = MainWindowController(playlists: app.playlists); app.adopt(wc)
+        wc.setSession(s, fromPlaylist: false); wc.showWindow(nil)
+        if ProcessInfo.processInfo.environment["MACPLAYER_SWITCH_PROJECT"] == nil { await s.addVideos(urls) }
+        await waitFor(20) { s.player.duration.seconds > 1 }
+        s.selectedClipIDs = [s.project.timeline[1].id]
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+
+        // Watches the main loop while the person clicks around.
+        final class Watch { var worst = 0.0; var busy = 0.0; var on = true; var refreshes = 0 }
+        let watch = Watch()
+        let watcher = Task { @MainActor in
+            while watch.on {
+                let a = ProcessInfo.processInfo.systemUptime
+                try? await Task.sleep(nanoseconds: 5_000_000)
+                let late = ProcessInfo.processInfo.systemUptime - a - 0.005
+                watch.worst = max(watch.worst, late); watch.busy += max(0, late)
+            }
+        }
+        // Playing with the library's filters and the Effects settings open: how often the panels are asked to redraw, and how busy the
+        // main thread is. Every frame used to redraw every panel (30 times a second).
+        let refreshSub = s.objectWillChange.sink { _ in watch.refreshes += 1 }
+        s.activeTool = .effects
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        let idle0 = watch.busy
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+        let busyIdle = watch.busy - idle0
+        let busy0 = watch.busy, ref0 = watch.refreshes
+        let draws0 = wc.contentController.timeline?.draws ?? 0
+        s.player.play()
+        if let extra = ProcessInfo.processInfo.environment["MACPLAYER_SWITCH_PLAYSECS"].flatMap(Double.init) { print("   PLAYING NOW"); try? await Task.sleep(nanoseconds: UInt64(extra * 1e9)) }
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+        s.player.pause()
+        let busyPlaying = watch.busy - busy0, refreshesPlaying = watch.refreshes - ref0
+        let stripDraws = (wc.contentController.timeline?.draws ?? 0) - draws0
+        check(stripDraws <= 25, "while playing, the timeline moves its playhead without drawing the whole strip each frame (\(stripDraws) draws in 3 s)")
+        refreshSub.cancel()
+        // Paused in the middle of a clip, far from a keyframe: how soon does a new filter reach the picture?
+        await s.player.seek(to: MediaTime(seconds: min(s.duration.seconds * 0.6, s.duration.seconds - 1)))
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        var delays: [Double] = []
+        for f in [FilterPreset.mono, .warm, .noir, .vivid, .cool, .film] {
+            // The very first effect on a plain video switches the compositor on: that one rebuilds the preview, on purpose. Only the
+            // choices made with the compositor on must reach the picture at once.
+            let live = s.previewHasCompositor
+            let before = CompositorStats.framesDrawn
+            let t0 = ProcessInfo.processInfo.systemUptime
+            s.editEffects("Filter") { $0.filter = f; $0.filterAmount = 1 }
+            await waitFor(5) { CompositorStats.framesDrawn > before }
+            if live { delays.append(CompositorStats.framesDrawn > before ? CompositorStats.lastRequestUptime - t0 : 5) }
+            else { await waitFor(5) { s.previewHasCompositor } }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+        }
+        print("   paused: a new filter reached the picture after " + delays.map { String(format: "%.0f ms", $0 * 1000) }.joined(separator: ", "))
+        check(delays.count >= 5 && delays.allSatisfy { $0 < 0.3 }, "paused, a filter chosen is drawn on the picture at once (it was not drawn at all until the playhead moved)")
+        // The same for a transition, with the playhead on the cut (where the transition shows).
+        if s.project.timeline.count > 1, let cut = TimelineEditor.starts(s.project.timeline)[s.project.timeline[1].id] {
+            s.select(.clip(s.project.timeline[1].id))
+            if s.project.activeLook.transitionIn == nil { s.chooseTransition(.dissolve, label: "Transition"); await waitFor(5) { s.previewHasCompositor && s.player.duration.seconds > 1 }; try? await Task.sleep(nanoseconds: 600_000_000) }
+            await s.player.seek(to: cut); try? await Task.sleep(nanoseconds: 600_000_000)
+            var tdelays: [Double] = []
+            for k in [TransitionKind.wipeLeft, .spin, .pixelate, .circleOpen] {
+                let before = CompositorStats.framesDrawn, t0 = ProcessInfo.processInfo.systemUptime
+                s.chooseTransition(k, label: "Transition")
+                await waitFor(5) { CompositorStats.framesDrawn > before }
+                tdelays.append(CompositorStats.framesDrawn > before ? CompositorStats.lastRequestUptime - t0 : 5)
+                try? await Task.sleep(nanoseconds: 300_000_000)
+            }
+            print("   paused on the cut: a new transition reached the picture after " + tdelays.map { String(format: "%.0f ms", $0 * 1000) }.joined(separator: ", "))
+            check(tdelays.allSatisfy { $0 < 0.3 }, "paused, a transition chosen is drawn on the picture at once")
+        }
+        print("   playing 3 s with filters and effects open: panels asked to redraw \(refreshesPlaying) times, timeline drawn \(stripDraws) times, main thread late \(Int(busyPlaying * 1000)) ms (paused, the same 3 s: \(Int(busyIdle * 1000)) ms)")
+        check(refreshesPlaying <= 20, "while playing, the panels are not redrawn at every frame (\(refreshesPlaying) times in 3 s)")
+        // Playing with the Colour tool open: its histogram must not read the video again and again (it read a frame every quarter of
+        // a second, exactly, from the first video, and fought the player for the decoder).
+        s.activeTool = .color
+        try? await Task.sleep(nanoseconds: 800_000_000)
+        let readsBeforePlay = ToolFrameCache.shared.reads
+        s.player.play()
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        let readsWhilePlaying = ToolFrameCache.shared.reads - readsBeforePlay
+        check(readsWhilePlaying == 0, "playing with the Colour tool open reads no frames for it (\(readsWhilePlaying) read in 2 s)")
+        if ProcessInfo.processInfo.environment["MACPLAYER_SWITCH_PLAYING"] == nil { s.player.pause() }
+        let readsBeforeSwitching = ToolFrameCache.shared.reads
+        let filters: [FilterPreset] = [.vivid, .mono, .warm, .noir, .cinematic, .vintage]
+        let kinds: [TransitionKind] = [.dissolve, .slideLeft, .zoomIn, .wipeRight, .spin, .pixelate]
+        // With MACPLAYER_SWITCH_CLICKS the choices are clicked on the tiles, through the window, as a person does.
+        let clicks = ProcessInfo.processInfo.environment["MACPLAYER_SWITCH_CLICKS"] != nil
+        if clicks { SidebarProbe.enabled = true; wc.window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
+        defer { SidebarProbe.enabled = false }
+        try? await Task.sleep(nanoseconds: 500_000_000)          // a rebuild still finishing from opening and playing is not counted
+        let loadsBefore = s.previewLoads
+        let t0 = Date()
+        for round in 0..<6 {
+            s.activeTool = .effects
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            if clicks, let win = wc.window { await clickLabel(EffectsPane.name(filters[round]), in: win) }
+            else { s.editEffects("Filter") { $0.filter = filters[round]; $0.filterAmount = 1 } }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            s.activeTool = .transitions
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            if clicks, let win = wc.window { await clickLabel(TransitionsPane.name(kinds[round]), in: win) }
+            else { s.chooseTransition(kinds[round], label: "Transition") }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            if ProcessInfo.processInfo.environment["MACPLAYER_SWITCH_DEBUG"] != nil { print("   round \(round): rebuilds so far \(s.previewLoads - loadsBefore), compositor=\(s.previewHasCompositor)") }
+            if clicks { print("   round \(round): key=\(wc.window?.isKeyWindow == true) active=\(NSApp.isActive) filter=\(s.project.timeline[1].look.effects.filter) transition=\(String(describing: s.project.timeline[1].look.transitionIn?.kind))") }
+            s.activeTool = .color
+            try? await Task.sleep(nanoseconds: 250_000_000)
+        }
+        s.player.pause()
+        let spent = Date().timeIntervalSince(t0)
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        watch.on = false; _ = await watcher.value
+        let loads = s.previewLoads - loadsBefore
+        let switchReads = ToolFrameCache.shared.reads - readsBeforeSwitching
+        check(switchReads <= 4, "going back and forth between tools reuses the pictures already read (\(switchReads) frames read for 18 switches)")
+        let builds = s.previewBuildTimes.suffix(loads).map { String(format: "%.2f", $0) }.joined(separator: " ")
+        print("   preview rebuilds (s): \(builds); edits that asked for one: \(s.rebuildReasons.suffix(6))")
+        print("   18 tool switches and 12 choices in \(String(format: "%.1f", spent)) s; main loop held up \(Int(watch.worst * 1000)) ms at worst; preview built \(loads) times")
+        // Only switching the compositor on (the first filter, the first transition) builds the preview; choosing between them does not.
+        check(loads <= 2, "choosing between filters and between transitions does not rebuild the preview (\(loads) rebuilds for 12 choices)")
+        check(watch.worst < 0.25, "switching tools and choosing filters and transitions never holds the interface up long (worst \(Int(watch.worst * 1000)) ms)")
+        check(s.project.timeline[1].look.transitionIn?.kind == .pixelate && s.project.timeline[1].look.effects.filter == .vintage, "the last choices are kept")
+        wc.closeVideo(); wc.window?.orderOut(nil)
+    }
+
     static func timelineFlow(env: AppEnvironment, work: URL, demo: URL, demoBytes: Data) async {
         print("== G: timeline of several videos")
         let fm = FileManager.default
@@ -879,8 +1041,11 @@ enum SelfTest {
 
         guard let s = await editor(a) else { check(false, "open a photo"); return }
         await waitFor(10) { s.photoImage != nil }
-        // While the Picture tool is open the frame is shown on the whole picture; leaving it shows the cut.
-        check(s.photoCropEditing && s.activeTool == .picture, "the Picture tool shows the crop frame")
+        // Since 0.11 the frame is shown only when asked for ("Adjust on the picture", or a shape), so text and logos can be dragged on the photo.
+        check(!s.photoCropEditing && s.activeTool == .picture, "the Picture tool opens without the crop frame in the way")
+        s.photoCropAdjusting = true
+        // While it is on, the frame is shown on the whole picture; leaving the tool shows the cut.
+        check(s.photoCropEditing && s.activeTool == .picture, "ticking “Adjust on the picture” shows the crop frame")
         s.setPhotoCropFrame(CropRect(x: 0.5, y: 0, width: 0.5, height: 1), coalesce: nil)
         try? await Task.sleep(nanoseconds: 500_000_000)
         check(s.photoImage?.width == 800, "with the frame showing, the picture is the whole one (\(s.photoImage?.width ?? 0) px)")
@@ -1047,6 +1212,21 @@ enum SelfTest {
         s.deleteOverlay(picID)
         check(s.project.overlayClips.count == 1 && (try? s.planExport(req)) != nil, "removing that layer unblocks it")
         s.close()
+    }
+
+    /// A click on the tool tile with that name, as the hardware sends it (pressed and released, queued together), and a hover before it.
+    @discardableResult
+    static func clickLabel(_ label: String, in win: NSWindow) async -> Bool {
+        guard let f = SidebarProbe.tileFrames[label], let host = win.contentView else { print("   (no tile named \(label))"); return false }
+        // SwiftUI measures from the top of the window's content; the window measures from the bottom unless the view is flipped.
+        let p = host.convert(NSPoint(x: f.midX, y: host.isFlipped ? f.midY : host.bounds.height - f.midY), to: nil)
+        for (type, n) in [(NSEvent.EventType.mouseMoved, 0), (.leftMouseDown, 1), (.leftMouseUp, 2)] {
+            if let e = NSEvent.mouseEvent(with: type, location: p, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: win.windowNumber, context: nil, eventNumber: n, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0) {
+                NSApp.postEvent(e, atStart: false)
+            }
+        }
+        return true
     }
 
     static func mouse(_ type: NSEvent.EventType, _ p: CGPoint, _ win: NSWindow, _ mods: NSEvent.ModifierFlags = []) -> NSEvent {

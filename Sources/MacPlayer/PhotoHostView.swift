@@ -13,6 +13,13 @@ final class PhotoHostView: NSView {
     private var dragFrom: CGPoint?
     private var offsetAtDragStart = CGSize.zero
     var onDropFiles: (([URL]) -> Void)?
+    /// A filter, a text style, a shape or a sticker dragged from the library onto the photo, with where (fractions of the photo).
+    var onDropPayload: ((DragPayload, CGPoint?) -> Void)?
+    /// Pictures dropped on the photo (logos, where they are dropped).
+    var onDropPictures: (([URL], CGPoint?) -> Void)?
+    /// Logos and elements, moved and sized right on the photo (a photo project).
+    let layers = OverlayManipulatorView()
+    let elements = ElementManipulatorView()
     private var crop: PhotoCropOverlayView?
     private var animationTimer: Timer?
     private var frameIndex = 0
@@ -24,13 +31,25 @@ final class PhotoHostView: NSView {
         layer?.backgroundColor = NSColor.black.cgColor
         imageLayer.minificationFilter = .trilinear; imageLayer.magnificationFilter = .linear
         layer?.addSublayer(imageLayer)
-        registerForDraggedTypes([.fileURL])
+        registerForDraggedTypes([.fileURL, .string])
         session.$photoImage.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.needsLayout = true }.store(in: &bag)
         session.$photoZoom.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.needsLayout = true; self?.window?.invalidateCursorRects(for: self ?? NSView()) }.store(in: &bag)
         session.$photoOffset.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.needsLayout = true }.store(in: &bag)
         session.$photoFrames.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.frameIndex = 0; self?.restartAnimation() }.store(in: &bag)
         session.$photoPlaying.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.restartAnimation() }.store(in: &bag)
         setAccessibilityLabel(L("Photo")); setAccessibilityRole(.group)
+        if session.isEditor {
+            // Under the crop frame, which takes the mouse while the crop is being adjusted (then these step aside).
+            addSubview(layers); addSubview(elements)
+            layers.attach(session); elements.attach(session)
+            layers.videoRect = { [weak self] in self?.pictureRect() ?? .zero }
+            elements.pictureRect = { [weak self] in self?.pictureRect() ?? .zero }
+            elements.layerFrames = { [weak self] in self?.layers.frames() ?? [] }
+        layers.things = { [weak self] id in self?.elements.things(excluding: [id]) ?? [] }
+            elements.takesEmptyClicks = { [weak session] in (session?.photoZoom ?? 1) <= 1 }      // zoomed in, a drag moves the photo
+            let active: () -> Bool = { [weak session] in !(session?.photoCropEditing ?? false) }
+            elements.isActive = active; layers.isActive = active
+        }
         let overlay = PhotoCropOverlayView(session: session, host: self)
         addSubview(overlay); crop = overlay
     }
@@ -60,6 +79,8 @@ final class PhotoHostView: NSView {
         CATransaction.commit()
         crop?.frame = bounds
         crop?.needsDisplay = true
+        layers.frame = bounds; elements.frame = bounds
+        layers.needsDisplay = true; elements.needsDisplay = true
     }
 
     // MARK: Animation
@@ -135,8 +156,30 @@ final class PhotoHostView: NSView {
 
     // MARK: Dropping files
 
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        let p = convert(sender.draggingLocation, from: nil)
+        let pb = sender.draggingPasteboard
+        let urls = (pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        let item = urls.isEmpty ? pb.string(forType: .string).flatMap(DragPayload.parse) : nil
+        let placeable: Bool
+        switch item { case .text?, .sticker?, .shape?, .preset?: placeable = true; case nil: placeable = !urls.isEmpty && urls.allSatisfy { ImageFiles.isCandidate($0.path) }; default: placeable = false }
+        elements.dropPoint = placeable && pictureFraction(p, in: pictureRect()) != nil ? p : nil
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) { elements.dropPoint = nil }
+    override func draggingEnded(_ sender: NSDraggingInfo) { elements.dropPoint = nil }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        elements.dropPoint = nil
+        let at = pictureFraction(convert(sender.draggingLocation, from: nil), in: pictureRect())
+        let files = (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        if let str = sender.draggingPasteboard.string(forType: .string), let item = DragPayload.parse(str), files.isEmpty {
+            if case .text(let t?) = item, let o = elements.textElement(at: convert(sender.draggingLocation, from: nil)), let s = elements.session { s.restyleText(o.id, t); return true }
+            onDropPayload?(item, at); return true
+        }
+        if let onDropPictures, !files.isEmpty, files.allSatisfy({ ImageFiles.isCandidate($0.path) }) { onDropPictures(files, at); return true }
         guard let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty else { return false }
         onDropFiles?(urls)
         return true

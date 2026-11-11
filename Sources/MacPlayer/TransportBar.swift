@@ -42,7 +42,7 @@ struct TransportBar: View {
                 } else {
                     Text(Timecode.format(player.currentTime, frameRate: fr))
                         .font(.system(.body, design: .monospaced)).frame(width: 110)
-                        .onTapGesture { edit.text = Timecode.format(player.currentTime); edit.editing = true }
+                        .onTapGesture { edit.text = Timecode.format(player.currentTime); edit.editing = true }.clickable()
                         .accessibilityLabel(LF("Time %@", Timecode.format(player.currentTime, frameRate: fr)))
                         .accessibilityHint(L("Click to type a time"))
                         .help(L("Click to type a time"))
@@ -69,7 +69,7 @@ struct TransportBar: View {
             .frame(width: 44).help(L("Repeat")).accessibilityLabel(L("Repeat"))
 
             Image(systemName: player.isMuted || player.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                .onTapGesture { player.isMuted.toggle() }.accessibilityLabel(L("Mute")).accessibilityAddTraits(.isButton)
+                .onTapGesture { player.isMuted.toggle() }.clickable().accessibilityLabel(L("Mute")).accessibilityAddTraits(.isButton)
             Slider(value: Binding(get: { Double(player.volume) }, set: { player.volume = Float($0) }), in: 0...1).frame(width: 70).accessibilityLabel(L("Volume"))
 
             if session.isProject {

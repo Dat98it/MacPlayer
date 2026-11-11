@@ -1,5 +1,6 @@
 import AVFoundation
 import AppKit
+import CoreImage
 import Combine
 import MacPlayerCore
 import MacPlayerMedia
@@ -87,6 +88,10 @@ final class EditorSession: NSObject, ObservableObject {
     @Published var selectedOverlayID: UUID?
     /// The sound (music, voice-over, effect) being edited, and the microphone recorder that makes voice-overs.
     @Published var selectedSoundID: UUID?
+    /// The text, shape or sticker (an element on the picture) being edited.
+    @Published var selectedTextID: UUID?
+    /// Everything selected on the picture (texts, shapes, stickers, layers, logos): one or more; a group comes whole (0.12).
+    @Published var canvasSelection: Set<UUID> = []
     @Published var denoiseProgress: [DenoiseTarget: Double] = [:]
     @Published var fxProgress: [DenoiseTarget: Double] = [:]
     let recorder = VoiceRecorder()
@@ -106,7 +111,7 @@ final class EditorSession: NSObject, ObservableObject {
     @Published var photoDraft = PhotoSaveDraft()
     /// The Picture tool of a photo shows a frame to drag. While it does, the picture is drawn whole (turned and flipped, but not cut), so the frame
     /// can be seen on all of it; `photoCropRatio` is the shape the frame is kept in (width / height in pixels), nil for free.
-    @Published var photoCropAdjusting = true
+    @Published var photoCropAdjusting = false
     @Published var photoCropEditing = false
     @Published var photoCropRatio: Double?
     /// An animated picture (GIF, animated PNG or WebP): when its frames change, the frames as drawn now (with the edit), and whether they are playing.
@@ -146,6 +151,22 @@ final class EditorSession: NSObject, ObservableObject {
     private var waveformTask: Task<Void, Never>?
     private var positionTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
+    /// A drag on the picture in progress (see `showDraft`): not yet in the project.
+    var canvasDraft: Project?
+    var frameRefreshQueued = false
+    var photoDraftQueued = false
+    /// How many times a drag asked the player to draw the frame again (for the self-test).
+    var frameRefreshes = 0
+    /// How many drags lifted things off the preview (for the self-test).
+    var liftRefreshes = 0
+    /// The last photo drawing put on screen (a drop waits for the one that has the dropped thing in it).
+    var photoShownGeneration = 0
+    /// Pictures of logos, read once, for drawing a layer being dragged.
+    var liftPictures: [String: CIImage] = [:]
+    /// The last arrow-key move of things on the picture (a burst of presses is one undo step).
+    var lastNudge = 0.0
+    /// When the panels were last told that the playhead moved (see `init`).
+    private var lastTimeTick = 0.0
 
     // MARK: Opening
 
@@ -259,7 +280,17 @@ final class EditorSession: NSObject, ObservableObject {
         self.projectPath = projectPath
         super.init()
         player.preservePitch = env.prefs.preserveVoicePitch
-        player.$currentTime.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        // The panels follow the playhead. While the video plays they are told four times a second, not at every frame: redrawing the library,
+        // the properties and the bars 30 times a second kept the main thread busy about a third of the time and made the interface stutter
+        // (0.12). The timeline and the frames on the picture follow every frame themselves (`player.$currentTime`). A seek or a step is passed on at once.
+        player.$currentTime.sink { [weak self] _ in
+            guard let self else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            if self.player.isPlaying, now - self.lastTimeTick < 0.25 { return }
+            self.lastTimeTick = now
+            self.objectWillChange.send()
+        }.store(in: &cancellables)
+        player.$isPlaying.removeDuplicates().sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
         $selectedClipIDs.dropFirst().sink { [weak self] ids in self?.syncActiveClip(ids) }.store(in: &cancellables)
         $activeTool.dropFirst().sink { [weak self] tool in self?.updateCropEditing(tool: tool) }.store(in: &cancellables)
         $photoCropAdjusting.dropFirst().sink { [weak self] on in self?.updateCropEditing(adjusting: on) }.store(in: &cancellables)
@@ -292,13 +323,22 @@ final class EditorSession: NSObject, ObservableObject {
 
     /// How many times the preview was built (the self-test checks that playing does not keep rebuilding it).
     private(set) var previewLoads = 0
+    /// How long each rebuild of a project's preview took, in seconds (for the self-test).
+    var previewBuildTimes: [Double] = []
+    /// Why the preview was last asked to rebuild (the edit's label; "undo"/"redo"/"other"), for the self-test.
+    var rebuildReasons: [String] = []
 
     func loadPlayer(at start: MediaTime?) async {
         if isPhoto { renderPhoto(); return }
         previewLoads += 1
         let generation = player.seekGeneration
-        EffectsLive.clear(); ColorLive.clear(); colorCompare = false
-        if isProject { await loadProjectPreview(at: start, since: generation); return }
+        EffectsLive.clear(); ColorLive.clear(); TransitionLive.clear(); ElementLive.clear(); colorCompare = false
+        if isProject {
+            let t0 = Date()
+            await loadProjectPreview(at: start, since: generation)
+            previewBuildTimes.append(Date().timeIntervalSince(t0))
+            return
+        }
         // Watching: the file plays as it is.
         guard let url = sourceURL else { return }
         previewHasCompositor = false
@@ -338,7 +378,7 @@ final class EditorSession: NSObject, ObservableObject {
         guard p != project else { return }
         history.commit(p, label: label, coalesce: coalesce)
         markChanged()
-        if refreshPreview { schedulePreviewRefresh() }
+        if refreshPreview { rebuildReasons.append(label); schedulePreviewRefresh() }
     }
 
     func endCoalescing() { var h = history; h.endCoalescing(); history = h }

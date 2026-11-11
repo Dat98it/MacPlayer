@@ -2,7 +2,7 @@
 
 Xem và chỉnh sửa **video lẫn ảnh**: cắt đoạn, ghép nhiều video, chỉnh màu chuyên nghiệp (đường cong, bánh xe màu, HSL, LUT), tách nền và mặt nạ, chuyển cảnh và keyframe, hiệu ứng giọng, chữ và hình dán, rồi xuất ngay trên Mac. Mọi xử lý diễn ra trên máy; không có tài khoản, không thu thập dữ liệu, không có tính năng trực tuyến.
 
-> **Trạng thái: bản 0.8.1 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
+> **Trạng thái: bản 0.14.3 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
 
 ## Yêu cầu
 
@@ -76,6 +76,71 @@ Mở app là màn hình **Trang chủ** với hai nút lớn: **Danh sách phát
 - **Tự lưu thẳng vào file dự án** vài giây sau mỗi chỉnh sửa (thanh trên hiện "Đã lưu 14:02" / "Đang lưu…" / "Chưa lưu được"). ⌘S = lưu ngay. Ghi theo thứ tự, một lần một, qua file tạm rồi đổi tên, đọc lại để kiểm tra; một bản khôi phục cũng được ghi trên máy trước. File dự án bị app khác sửa thì **không ghi đè**: thanh trên cho chọn giữ chỉnh sửa của bạn hay dùng file trên đĩa. Không ghi được (ổ bị gỡ, chỉ đọc) thì giữ bản khôi phục và thử lại; đóng cửa sổ khi đó sẽ hỏi Thử lại / Lưu vào chỗ khác / Vẫn đóng.
 - **Hai loại dự án:** *dự án video* (timeline nhiều video, lớp phủ video/ảnh, âm thanh, phụ đề) và *dự án ảnh* (**đúng một ảnh**, cộng chữ/hình và **logo**). Thả sai loại bị chặn với lời giải thích; thả ảnh vào dự án video thì hỏi "Thêm làm lớp phủ?", thả ảnh thứ hai vào dự án ảnh thì hỏi "Thêm làm logo?". **Đổi ảnh…** giữ màu/hiệu ứng/chữ/logo, đặt lại khung cắt nếu ảnh mới khác tỉ lệ, hoàn tác được.
 - **Chế độ nhanh đã bỏ**: dự án `.quick` cũ (`.macplayer`/`.macvideo`) được **nâng cấp khi mở**: video thành dự án video một đoạn mang đúng chỉnh sửa cũ, ảnh thành dự án ảnh; vùng chọn In–Out cũ vẫn giữ trong file. Trước lần ghi đầu, bản cũ của file dự án được chép vào thư mục khôi phục. Bản MacPlayer cũ không mở file định dạng mới (từ chối an toàn, không mất dữ liệu).
+
+## Trình chỉnh sửa video kiểu CapCut (0.9.0)
+
+Mở một dự án video là thấy ngay bố cục quen thuộc của các app dựng phim:
+
+- **Trái: Thư viện.** Gồm các tab **Media**, **Âm thanh**, **Chữ**, **Bộ lọc**, **Chuyển cảnh**.
+  - Bấm **Nhập media** hoặc kéo file từ Finder vào. File chỉ được ghi nhớ đường dẫn, không bị sao chép hay thay đổi.
+  - Dấu ✓ là file đang được dùng trong dự án.
+- **Giữa:** khung xem và nút phát. **Phải: Thuộc tính** của thứ đang chọn:
+  - đoạn video: Cơ bản, Màu, Hiệu ứng, Tốc độ, Âm thanh, Chuyển cảnh, Cắt nền;
+  - lớp, chữ hoặc âm thanh: phần chỉnh của chính nó;
+  - chưa chọn gì: Tổng quan dự án, Phụ đề, Xuất.
+- **Dưới, kéo hết chiều ngang:** thanh công cụ (Hoàn tác/Làm lại, Tách, Nhân đôi, Xoá, Đánh dấu, Chữ, thu phóng) và timeline.
+  - Timeline có các làn **Video** (kèm ảnh thu nhỏ), **Chữ**, **Lớp 1–3** và **Âm thanh**.
+- **Kéo-thả:**
+  - video thả vào đúng chỗ trên làn video;
+  - ảnh thả lên làn lớp;
+  - nhạc thả lên làn âm thanh;
+  - **bộ lọc** thả lên một đoạn;
+  - **chuyển cảnh** thả vào chỗ nối giữa hai đoạn;
+  - **kiểu chữ** hoặc nhãn dán thả vào một thời điểm.
+- **Chỉnh trên timeline:**
+  - Kéo một mục để dời; mục bám vào đầu phát, chỗ nối và hai đầu timeline.
+  - Kéo mép để đổi độ dài.
+  - ⌫ xoá thứ đang chọn, Esc bỏ chọn.
+- Nút **Xuất** ở góc trên bên phải.
+- **Ảnh trên làn video chính (0.10.0):**
+  - Thả ảnh lên làn video (hoặc bấm + trên ảnh) để ảnh thành một đoạn riêng, mặc định 5 giây.
+  - Kéo mép để ảnh hiện tối đa 60 giây. Ghép nhiều ảnh thành trình chiếu, có chuyển cảnh và chữ như với video.
+  - MacPlayer tạo một video ngắn của ảnh trong thư mục riêng của nó; ảnh gốc chỉ được đọc. Nếu video ngắn đó mất, MacPlayer tự tạo lại từ ảnh.
+  - Thả ảnh lên làn **Lớp** thì ảnh vẫn thành lớp chồng lên video (logo, ảnh nhỏ).
+- **Thao tác ngay trên khung hình (0.11.0):**
+  - Kéo kiểu chữ, nhãn dán, **hình** (vuông, tròn, sao, mũi tên…) hoặc ảnh từ Thư viện (hay ảnh từ Finder) thả lên khung hình: nó nằm đúng chỗ thả.
+  - Bấm vào chữ, nhãn dán, hình, lớp hay logo trên khung hình để chọn. Kéo để dời; kéo một góc để phóng to/thu nhỏ.
+  - Đến gần giữa khung, nó tự bám vào giữa (đường gióng vàng); giữ ⌥ để thả tự do.
+  - Khung hình đổi ngay khi kéo. Mỗi lần kéo là một bước Hoàn tác.
+  - Dự án ảnh: khung cắt chỉ hiện khi bật "Chỉnh ngay trên ảnh" hoặc chọn một tỉ lệ.
+- **Chọn nhiều, nhóm, khoá (0.12.0):**
+  - ⇧-bấm (hoặc ⌘-bấm) để chọn thêm; kéo một khung trên vùng trống của khung hình để chọn mọi thứ bên trong (chữ, hình, nhãn dán, lớp, logo).
+  - Kéo một mục thì cả nhóm đang chọn cùng di chuyển.
+  - **⌘G** nhóm lại (bấm một mục là chọn cả nhóm), **⇧⌘G** bỏ nhóm, **⌘L** khoá/mở khoá. Mục đã khoá không bị dời hay xoá trên khung hình.
+  - Các lệnh này có trong menu Sửa, chuột phải và đầu bảng Thuộc tính.
+- **Phím tắt trên khung hình (0.12.0):**
+  - **⌫** xoá; **← → ↑ ↓** dời 1 điểm (**⇧**: 10 điểm); **Esc** bỏ chọn; **⌘D** nhân đôi.
+  - Khi không chọn gì trên khung hình, mũi tên vẫn tua video như trước.
+- **0.13.0:**
+  - Chữ, hình, nhãn dán **chỉ thêm từ tab Chữ của Thư viện bên trái**. Bảng phải chỉ để chỉnh mục đang chọn (menu **Kiểu** đổi kiểu chữ).
+  - Kéo một kiểu chữ thả đè lên chữ có sẵn thì chữ đó đổi kiểu.
+  - **Báo căn giữa:** khi kéo, tâm của vật bám vào giữa khung hình hoặc giữa vật nằm dưới nó (chữ trên hình, nhãn dán trên logo), hiện đường hồng kèm nhãn "Đã căn giữa: …".
+  - **Bấm đúp vào chữ** trên khung hình để gõ ngay: Return xong, ⌥Return xuống dòng, Esc huỷ.
+- **0.14.0:**
+  - **Mẫu mới:** 17 kiểu chữ; nhóm **Mẫu có sẵn** (Đăng ký, Trực tiếp, Mới, Giảm 50%, Thích & chia sẻ, Theo dõi, Sắp ra mắt, Cảm ơn đã xem, Địa điểm, Tin nóng); 16 hình (thêm thoi, ngũ giác, lục giác, bong bóng thoại, nhãn nổ, dấu tích, dấu cộng, vòng tròn); hơn 60 nhãn dán.
+  - Hình vuông/tròn luôn đúng tỉ lệ trên mọi khung hình.
+  - **Xuất:**
+    - chỉ một nút ở góc trên bên phải, mở cửa sổ Xuất;
+    - chọn **khung hình** theo nền tảng (Gốc, 16:9 YouTube, 9:16 TikTok/Reels/Shorts, 1:1, 4:5 Instagram dọc, 4:3) và cách lấp (viền đen, cắt mép, viền mờ);
+    - **một** lựa chọn chất lượng (Tốt nhất, 4K, Full HD, HD, Nhẹ) thay cho "Chất lượng" và "Cỡ".
+    - Video dọc 1080p là 1080 × 1920.
+  - Ô Thư viện không còn nhấp nháy khi phát video.
+- **0.14.3:** kéo chữ, hình, nhãn dán, logo trên khung hình giờ đi liền theo chuột: trong lúc kéo app tự vẽ đối tượng nổi trên khung hình, trình phát chỉ vẽ lại khi bắt đầu và khi thả. Sửa lỗi sập khi mở dự án mà mọi video đều đã bị dời đi.
+- **0.14.2:** kéo chữ, hình, nhãn dán, lớp trên khung hình mượt hơn: khung chọn và hình đi đúng theo chuột; các bảng bên không vẽ lại trong lúc kéo, dự án chỉ ghi một lần khi thả.
+- **0.14.1:** tab Chữ của Thư viện chia thành 4 tab con: **Kiểu chữ · Mẫu sẵn · Hình · Nhãn dán**. Mỗi lần hiện một nhóm, không phải cuộn dài; hình và nhãn dán hiện to hơn, hình có tên.
+- **Dự án ảnh (0.10.0)** dùng cùng bố cục:
+  - Thư viện bên trái có các tab **Ảnh** (ảnh đầu tiên là ảnh chính, các ảnh sau thành logo), **Chữ** và **Bộ lọc**. Kéo thả thẳng lên ảnh.
+  - Bên phải là mọi công cụ chỉnh ảnh, kèm nút Xuất.
 
 ## Dự án video (timeline nhiều nguồn)
 

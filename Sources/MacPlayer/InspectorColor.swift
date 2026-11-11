@@ -115,7 +115,12 @@ struct ColorPane: View {
 
     // MARK: Histogram
 
-    private var scopeKey: String { "\(colour.hashValue)|\(Int(session.player.currentTime.seconds * 4))|\(session.project.activeClipID?.uuidString ?? "")" }
+    /// What the histogram depends on. While the video plays it is not redrawn (it would read a frame four times a second, fighting the
+    /// player for the decoder); it follows the picture again as soon as playing stops.
+    private var scopeKey: String {
+        let at = session.player.isPlaying ? "playing" : String(Int(session.player.currentTime.seconds * 4))
+        return "\(colour.hashValue)|\(at)|\(session.project.activeClipID?.uuidString ?? "")"
+    }
 
     private var scopeCard: some View {
         let h = scope.value
@@ -141,24 +146,19 @@ struct ColorPane: View {
 
     private func refreshScope() async {
         try? await Task.sleep(nanoseconds: 200_000_000)          // a slider being dragged only draws the last one
-        if Task.isCancelled { return }
-        var frame: CGImage?
-        let size = CGSize(width: 240, height: 135)
-        if session.isPhoto || session.sourceURL != nil {
-            let t = min(max(session.player.currentTime, .zero), session.duration)
-            frame = await session.stillImage(at: session.isPhoto ? .zero : t, maxSize: size)
-        } else if let clip = session.project.timeline.first(where: { $0.id == session.project.activeClipID }) ?? session.project.timeline.first,
-                  let src = session.project.sources.first(where: { $0.id == clip.sourceID }) {
-            let mid = clip.sourceStart + MediaTime(seconds: min(1, clip.sourceSpan.duration.seconds / 2), timescale: 600)
-            frame = try? await FrameGrabber.image(url: URL(fileURLWithPath: src.path), at: mid, accuracy: .nearest, maxSize: size)
-        }
-        guard let frame, !Task.isCancelled else { return }
-        let graded = EffectPreview.image(from: frame, colour: colour) ?? frame
-        scope.value = Self.histogram(of: graded)
+        if Task.isCancelled || session.player.isPlaying { return }
+        guard let (frame, _) = await session.toolFrame(maxSize: CGSize(width: 240, height: 135)), !Task.isCancelled else { return }
+        let c = colour
+        final class Frame: @unchecked Sendable { let image: CGImage; init(_ i: CGImage) { image = i } }
+        let f = Frame(frame)
+        let h = await Task.detached(priority: .userInitiated) { () -> Histogram? in
+            Self.histogram(of: EffectPreview.image(from: f.image, colour: c) ?? f.image)
+        }.value
+        if !Task.isCancelled { scope.value = h }
     }
 
     /// Counts the pixels of a picture (drawn into 8-bit RGBA first, whatever it was).
-    static func histogram(of image: CGImage) -> Histogram? {
+    nonisolated static func histogram(of image: CGImage) -> Histogram? {
         let w = image.width, h = image.height
         guard w > 0, h > 0 else { return nil }
         var bytes = [UInt8](repeating: 0, count: w * h * 4)

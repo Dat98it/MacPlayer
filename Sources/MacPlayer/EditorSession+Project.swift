@@ -13,7 +13,12 @@ extension EditorSession {
         var urls: [UUID: URL] = [:], infs: [UUID: MediaInfo] = [:]
         for src in project.sources {
             var url = URL(fileURLWithPath: src.path)
-            if !env.fs.exists(url.path), let moved = Bookmarks.resolve(src.bookmark), env.fs.exists(moved.path) { url = moved }
+            if let photo = src.stillOf {
+                // A photo clip: its little video is made again from the photo when it is gone (another Mac, a cleaned folder, a moved photo).
+                var p = URL(fileURLWithPath: photo)
+                if !env.fs.exists(p.path), let moved = Bookmarks.resolve(src.bookmark), env.fs.exists(moved.path) { p = moved }
+                if !env.fs.exists(url.path), env.fs.exists(p.path), let made = try? await StillClip.make(from: p) { url = made }
+            } else if !env.fs.exists(url.path), let moved = Bookmarks.resolve(src.bookmark), env.fs.exists(moved.path) { url = moved }
             if env.fs.exists(url.path), let info = try? await MediaProbe.probe(url: url) { urls[src.id] = url; infs[src.id] = info }
         }
         sourceURLs = urls; infos = infs
@@ -25,7 +30,7 @@ extension EditorSession {
     func reportMissing() {
         let missing = project.sources.filter { sourceURLs[$0.id] == nil }
         if !missing.isEmpty {
-            flash(LF("The video “%@” was not found. Use File ▸ Relink Video… to point to it.", missing.map { PathUtil.fileName(of: $0.path) }.joined(separator: ", ")), error: true)
+            flash(LF("The video “%@” was not found. Use File ▸ Relink Video… to point to it.", missing.map { PathUtil.fileName(of: $0.mediaPath) }.joined(separator: ", ")), error: true)
         }
     }
 
@@ -37,6 +42,22 @@ extension EditorSession {
 
     /// Points a missing source at the file the user chose. The clips keep their times.
     func relinkSource(_ id: UUID, to url: URL) async {
+        // A photo clip whose photo moved: its little video is made from the photo chosen now.
+        if project.source(id)?.stillOf != nil {
+            guard ImageFiles.isCandidate(url.path) else { flash(L("Choose a photo."), error: true); return }
+            do {
+                let video = try await StillClip.make(from: url)
+                let new = try await MediaProbe.probe(url: video)
+                edit("Relink photo", refreshPreview: false) { p in
+                    guard let i = p.sources.firstIndex(where: { $0.id == id }) else { return }
+                    p.sources[i].path = video.path; p.sources[i].stillOf = url.path; p.sources[i].bookmark = Bookmarks.make(url); p.sources[i].info = new
+                }
+                sourceURLs[id] = video; infos[id] = new
+                await loadPlayer(at: player.effectiveTime)
+                flash(L("Photo relinked."))
+            } catch { flash((error as? CustomStringConvertible)?.description ?? error.localizedDescription, error: true) }
+            return
+        }
         do {
             let new = try await MediaProbe.probe(url: url)
             guard new.hasVideo else { flash(L("This file has no picture."), error: true); return }
@@ -53,15 +74,15 @@ extension EditorSession {
         } catch { flash((error as? CustomStringConvertible)?.description ?? error.localizedDescription, error: true) }
     }
 
-    /// Adds whole videos to the end of the timeline (or after the selected clip).
-    func addVideos(_ urls: [URL]) async {
+    /// Adds whole videos at `index` on the timeline (where they were dropped); without one, after the selected clip, else at the end.
+    func addVideos(_ urls: [URL], at index: Int? = nil) async {
         guard isProject, canEdit else { return }
         let decision = ProjectRules.canAdd(paths: urls.map(\.path), to: project)
         guard decision == .ok else { flash(Self.ruleText(decision), error: true); return }
         var lastAdded: UUID?
         // Where the first new clip goes: after the selected clip, else at the end. Each further video goes right after the one before it,
         // so several videos added at once keep the order they were given in.
-        var insertAt: Int? = project.timeline.lastIndex { selectedClipIDs.contains($0.id) }.map { $0 + 1 }
+        var insertAt: Int? = index ?? project.timeline.lastIndex { selectedClipIDs.contains($0.id) }.map { $0 + 1 }
         for url in urls {
             do {
                 let info = try await MediaProbe.probe(url: url)
@@ -69,6 +90,7 @@ extension EditorSession {
                 let ref = SourceRef(path: url.path, bookmark: Bookmarks.make(url), fingerprint: try? env.fs.fingerprint(url.path), info: info)
                 var newID: UUID?
                 edit("Add video", refreshPreview: false) { p in
+                    MediaBin.add([url.path], to: &p.mediaBin, bookmark: { _ in ref.bookmark })
                     let sid = p.addSource(ref)
                     let c = TimelineClip(sourceID: sid, sourceStart: .zero, sourceEnd: info.duration, name: url.deletingPathExtension().lastPathComponent)
                     p.timeline.insert(c, at: min(insertAt ?? p.timeline.count, p.timeline.count))
@@ -81,6 +103,37 @@ extension EditorSession {
         }
         if sourceURL == nil, let f = project.sources.first { sourceURL = sourceURLs[f.id]; info = infos[f.id] }
         loadWaveforms()
+        if let id = lastAdded { selectedClipIDs = [id] }
+        await loadPlayer(at: player.effectiveTime)
+    }
+
+    /// Puts photos on the main track at `index` (else after the selected clip, else at the end), each for a few seconds. A photo is played
+    /// from a short silent video MacPlayer makes of it in its own folder; the photo itself is only read.
+    func addPhotosToTimeline(_ urls: [URL], at index: Int? = nil) async {
+        guard isProject, canEdit else { return }
+        var insertAt: Int? = index ?? project.timeline.lastIndex { selectedClipIDs.contains($0.id) }.map { $0 + 1 }
+        var lastAdded: UUID?
+        for url in urls {
+            do {
+                let video = try await StillClip.make(from: url)
+                let info = try await MediaProbe.probe(url: video)
+                let ref = SourceRef(path: video.path, bookmark: Bookmarks.make(url), fingerprint: nil, info: info, stillOf: url.path)
+                var newID: UUID?
+                edit("Add photo", refreshPreview: false) { p in
+                    MediaBin.add([url.path], to: &p.mediaBin, bookmark: { _ in ref.bookmark })
+                    // The same photo twice uses the same little video.
+                    let sid = p.sources.first(where: { $0.stillOf.map { PathUtil.same($0, url.path) } ?? false })?.id ?? { p.sources.append(ref); return ref.id }()
+                    let length = MediaTime(seconds: min(StillClip.defaultLength, info.duration.seconds), timescale: 600)
+                    let c = TimelineClip(sourceID: sid, sourceStart: .zero, sourceEnd: length, name: url.deletingPathExtension().lastPathComponent)
+                    p.timeline.insert(c, at: min(insertAt ?? p.timeline.count, p.timeline.count))
+                    newID = c.id
+                }
+                if let sid = project.timeline.first(where: { $0.id == newID })?.sourceID { sourceURLs[sid] = video; infos[sid] = info }
+                if let i = insertAt { insertAt = i + 1 }
+                lastAdded = newID
+            } catch { flash(LF("“%@” cannot be opened.", url.lastPathComponent) + " " + ((error as? CustomStringConvertible)?.description ?? error.localizedDescription), error: true) }
+        }
+        if sourceURL == nil, let f = project.sources.first { sourceURL = sourceURLs[f.id]; info = infos[f.id] }
         if let id = lastAdded { selectedClipIDs = [id] }
         await loadPlayer(at: player.effectiveTime)
     }
@@ -155,7 +208,7 @@ extension EditorSession {
 
     func loadProjectPreview(at start: MediaTime?, since generation: Int? = nil) async {
         LayerLive.clear() // the rebuilt preview carries the current values itself
-        EffectsLive.clear(); ColorLive.clear(); colorCompare = false
+        EffectsLive.clear(); ColorLive.clear(); TransitionLive.clear(); ElementLive.clear(); colorCompare = false
         let used = Set(project.timeline.map(\.sourceID) + project.overlayClips.compactMap(\.sourceID))
         if !missingSourceIDs.intersection(used).isEmpty {
             // With media missing, the preview would not match the timeline's positions, so it waits for a relink.

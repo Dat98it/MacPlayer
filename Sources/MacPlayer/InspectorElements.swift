@@ -6,30 +6,40 @@ import MacPlayerMedia
 /// Text, shapes and stickers on the picture: ready-made text looks, things to add, and every setting of the one selected.
 struct TextPane: View {
     @ObservedObject var session: EditorSession
-    @StateObject private var selected = Box<UUID?>(nil)
     @StateObject private var tiles = Box<[TextTemplate: NSImage]>([:])
 
     static let fonts: [(String, String)] = [("Helvetica-Bold", "Helvetica"), ("HelveticaNeue-Medium", "Helvetica Neue"), ("Avenir-Light", "Avenir"), ("AvenirNext-Heavy", "Avenir Next"),
                                             ("Futura-Bold", "Futura"), ("Georgia-Bold", "Georgia"), ("Palatino-Bold", "Palatino"), ("Optima-Bold", "Optima"),
                                             ("MarkerFelt-Wide", "Marker Felt"), ("BradleyHandITCTT-Bold", "Bradley Hand"), ("Menlo-Bold", "Menlo"), ("Impact", "Impact")]
-    static let stickers = ["😀", "😂", "😍", "😎", "🤩", "😭", "🔥", "💯", "👍", "👏", "🙏", "❤️", "💔", "⭐️", "✨", "🎉", "🎬", "📍", "💡", "⚡️", "☀️", "🌈", "🎵", "🏆"]
+    static let stickers = ["😀", "😂", "😍", "😎", "🤩", "😭", "😱", "🤔", "🥳", "😴",
+                           "👍", "👏", "🙏", "💪", "👉", "👆", "🤝", "✌️",
+                           "❤️", "💔", "🔥", "💯", "⭐️", "✨", "🎉", "🎁",
+                           "✅", "❌", "⚠️", "❓", "❗️", "🔔", "📌", "📍", "💬", "💡",
+                           "➡️", "⬅️", "⬆️", "⬇️", "🔝", "🆕",
+                           "🎬", "🎥", "📷", "🎵", "🎤", "⏰", "📅", "🛒", "💰", "🏆", "🥇", "⚽️", "🏀", "🏃", "☀️", "🌈", "⚡️", "❄️"]
 
     static func templateName(_ t: TextTemplate) -> String {
         switch t {
         case .classic: return L("Classic"); case .neon: return L("Neon"); case .comic: return L("Comic"); case .cinematic: return L("Cinematic title")
         case .typewriter: return L("Typewriter"); case .lowerThird: return L("Lower third"); case .highlight: return L("Highlight"); case .pill: return L("Pill")
+        case .headline: return L("Headline"); case .subtitleBox: return L("Subtitle box"); case .quote: return L("Quote"); case .retro: return L("Retro")
+        case .elegant: return L("Elegant"); case .handwritten: return L("Handwritten"); case .hashtag: return L("Hashtag"); case .sale: return L("Sale"); case .minimal: return L("Minimal")
         }
     }
     static func shapeIcon(_ k: ShapeKind) -> String {
         switch k {
         case .rectangle: return "square.fill"; case .roundedRectangle: return "app.fill"; case .ellipse: return "circle.fill"; case .triangle: return "triangle.fill"
         case .star: return "star.fill"; case .heart: return "heart.fill"; case .arrow: return "arrow.right"; case .line: return "minus"
+        case .diamond: return "diamond.fill"; case .pentagon: return "pentagon.fill"; case .hexagon: return "hexagon.fill"; case .speechBubble: return "bubble.left.fill"
+        case .burst: return "seal.fill"; case .checkmark: return "checkmark"; case .cross: return "plus"; case .ring: return "circle"
         }
     }
     static func shapeName(_ k: ShapeKind) -> String {
         switch k {
-        case .rectangle: return L("Rectangle"); case .roundedRectangle: return L("Rounded"); case .ellipse: return L("Circle"); case .triangle: return L("Triangle")
+        case .rectangle: return L("Square"); case .roundedRectangle: return L("Rounded"); case .ellipse: return L("Circle"); case .triangle: return L("Triangle")
         case .star: return L("Star"); case .heart: return L("Heart"); case .arrow: return L("Arrow"); case .line: return L("Line")
+        case .diamond: return L("Diamond"); case .pentagon: return L("Pentagon"); case .hexagon: return L("Hexagon"); case .speechBubble: return L("Speech bubble")
+        case .burst: return L("Badge"); case .checkmark: return L("Tick"); case .cross: return L("Plus"); case .ring: return L("Ring")
         }
     }
     static func animationName(_ k: ElementAnimationKind) -> String {
@@ -42,30 +52,12 @@ struct TextPane: View {
     var body: some View {
         let overlays = session.project.overlays
         VStack(alignment: .leading, spacing: 12) {
-            ToolCard(title: L("Add"), icon: "plus.rectangle.on.rectangle") {
-                HStack {
-                    Button(L("Title")) { addText(L("Title"), y: 0.5, size: 0.1) }
-                    Button(L("Caption")) { addText(L("Caption"), y: 0.85, size: 0.05) }
-                    Button(L("Lower third")) { var o = newText(L("Name · Role")); TextTemplate.lowerThird.apply(to: &o); insert(o) }
-                }.controlSize(.small)
-                Text(session.isPhoto ? L("Text, shapes and stickers are drawn into the photo when you save it.")
-                                     : L("New items appear at the playhead for 3 seconds. Text is drawn into the picture when you export, so a fast cut is not possible with text.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            ToolCard(title: L("Text styles"), icon: "textformat") {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
-                    ForEach(TextTemplate.allCases, id: \.self) { t in templateTile(t) }
-                }
-                Text(selectedText == nil ? L("Add a text, then choose a style for it.") : L("Choose a style for the selected text.")).font(.caption).foregroundColor(.secondary)
-            }
-            ToolCard(title: L("Shapes and stickers"), icon: "star.square") {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 34), spacing: 6)], spacing: 6) {
-                    ForEach(ShapeKind.allCases, id: \.self) { k in
-                        Button { addShape(k) } label: { Image(systemName: Self.shapeIcon(k)).frame(width: 30, height: 26) }.buttonStyle(.bordered).help(Self.shapeName(k)).accessibilityLabel(Self.shapeName(k))
-                    }
-                }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 30), spacing: 4)], spacing: 4) {
-                    ForEach(Self.stickers, id: \.self) { e in Button { addSticker(e) } label: { Text(e).font(.system(size: 20)) }.buttonStyle(.plain).accessibilityLabel(LF("Sticker %@", e)) }
-                }
+            // Adding lives in one place only: the library's Text tab on the left (click, or drag onto the picture). Here: what is on the
+            // picture, and the settings of the one selected (0.13).
+            if selectedText == nil {
+                Label(L("Add text, shapes and stickers from the Text tab of the library on the left: click one, or drag it onto the picture. Double-click a text on the picture to type in it."), systemImage: "arrow.left")
+                    .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .padding(10).background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.08)))
             }
             ToolCard(title: LF("On the picture (%d)", overlays.count), icon: "list.bullet") {
                 if overlays.isEmpty { Text(L("Nothing yet.")).foregroundColor(.secondary) }
@@ -73,13 +65,12 @@ struct TextPane: View {
             }
             if let o = selectedText { editor(o) }
         }
-        .task { await loadTiles() }
     }
 
     /// A photo has no time: what is put on it is always there.
     private static let always = MediaTime(seconds: 100_000)
 
-    private var selectedText: TextOverlay? { session.project.overlays.first { $0.id == selected.value } }
+    private var selectedText: TextOverlay? { session.project.overlays.first { $0.id == session.selectedTextID } }
 
     // MARK: Adding
 
@@ -88,7 +79,7 @@ struct TextPane: View {
         let start = session.player.currentTime
         return TextOverlay(text: text, start: start, end: min(session.duration, start + MediaTime(seconds: 3)), sizeFraction: size, y: y)
     }
-    private func insert(_ o: TextOverlay) { session.edit("Add to the picture") { $0.overlays.append(o) }; selected.value = o.id }
+    private func insert(_ o: TextOverlay) { session.edit("Add to the picture") { $0.overlays.append(o) }; session.selectedTextID = o.id }
     private func addText(_ t: String, y: Double, size: Double) { insert(newText(t, y: y, size: size)) }
     private func addShape(_ k: ShapeKind) {
         let start = session.isPhoto ? MediaTime.zero : session.player.currentTime
@@ -108,7 +99,7 @@ struct TextPane: View {
     // MARK: List and templates
 
     private func row(_ o: TextOverlay) -> some View {
-        let isSel = selected.value == o.id
+        let isSel = session.selectedTextID == o.id
         return HStack {
             Image(systemName: o.shape.map { Self.shapeIcon($0.kind) } ?? "textformat").foregroundColor(.secondary).frame(width: 18)
             Text(o.shape.map { Self.shapeName($0.kind) } ?? (o.text.isEmpty ? L("(empty)") : o.text)).lineLimit(1).font(.callout.weight(.medium))
@@ -118,7 +109,7 @@ struct TextPane: View {
         }
         .padding(8).background(RoundedRectangle(cornerRadius: 6).fill(isSel ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08)))
         .contentShape(Rectangle())
-        .onTapGesture { selected.value = o.id; if !session.isPhoto { Task { await session.player.seek(to: o.start) } } }
+        .onTapGesture { session.selectedTextID = o.id; if !session.isPhoto { Task { await session.player.seek(to: o.start) } } }.clickable()
     }
 
     private func templateTile(_ t: TextTemplate) -> some View {
@@ -160,6 +151,13 @@ struct TextPane: View {
     }
 
     @ViewBuilder private func textControls(_ o: TextOverlay) -> some View {
+        // Another ready-made look for this text (the library's styles add a new one; dropping one on a text on the picture restyles it too).
+        Menu {
+            ForEach(TextTemplate.allCases, id: \.self) { t in
+                Button(Self.templateName(t)) { update(o.id, LF("Text style %@", Self.templateName(t))) { t.apply(to: &$0) } }
+            }
+        } label: { Label(L("Style"), systemImage: "textformat") }
+        .fixedSize()
         TextField(L("Text"), text: Binding(get: { o.text }, set: { t in update(o.id, "Edit text", key: "text") { $0.text = t } })).textFieldStyle(.roundedBorder)
         Picker(L("Font"), selection: Binding(get: { o.fontName }, set: { f in update(o.id, "Text font") { $0.fontName = f } })) {
             ForEach(Self.fonts, id: \.0) { Text($0.1).tag($0.0) }

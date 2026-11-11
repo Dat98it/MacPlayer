@@ -8,10 +8,16 @@ public struct SourceRef: Codable, Identifiable, Equatable, Sendable {
     public var bookmark: Data?
     public var fingerprint: FileFingerprint?
     public var info: MediaInfo?
+    /// Set when this source is a photo on the main track: the photo's path. `path` is then the short video MacPlayer made of it in its own
+    /// folder, which is made again from the photo when it is gone (0.10).
+    public var stillOf: String?
 
-    public init(id: UUID = UUID(), path: String, bookmark: Data? = nil, fingerprint: FileFingerprint? = nil, info: MediaInfo? = nil) {
-        self.id = id; self.path = path; self.bookmark = bookmark; self.fingerprint = fingerprint; self.info = info
+    public init(id: UUID = UUID(), path: String, bookmark: Data? = nil, fingerprint: FileFingerprint? = nil, info: MediaInfo? = nil, stillOf: String? = nil) {
+        self.id = id; self.path = path; self.bookmark = bookmark; self.fingerprint = fingerprint; self.info = info; self.stillOf = stillOf
     }
+
+    /// The file the person chose: the photo for a photo clip, else the video.
+    public var mediaPath: String { stillOf ?? path }
 }
 
 /// Normalised crop rectangle (0...1, origin top-left) in the source picture.
@@ -46,6 +52,8 @@ public struct CropRect: Codable, Equatable, Sendable {
 
 public enum CanvasPreset: String, Codable, CaseIterable, Sendable {
     case source, landscape16x9, portrait9x16, square1x1, standard4x3
+    /// 0.14: Instagram's tall post.
+    case portrait4x5
     public var aspect: Double? {
         switch self {
         case .source: return nil
@@ -53,6 +61,7 @@ public enum CanvasPreset: String, Codable, CaseIterable, Sendable {
         case .portrait9x16: return 9.0 / 16
         case .square1x1: return 1
         case .standard4x3: return 4.0 / 3
+        case .portrait4x5: return 4.0 / 5
         }
     }
 }
@@ -233,6 +242,10 @@ public struct TextOverlay: Codable, Identifiable, Equatable, Sendable {
     /// Size multiplier and turn (degrees clockwise) of the whole element.
     public var scale: Double?
     public var rotation: Double?
+    /// Elements and layers with the same group move and get selected together (0.12).
+    public var groupID: UUID?
+    /// A locked element cannot be moved, resized or deleted on the picture (0.12).
+    public var locked: Bool?
 
     public init(id: UUID = UUID(), text: String, start: MediaTime, end: MediaTime, fontName: String = "Helvetica-Bold", sizeFraction: Double = 0.06,
                 colorHex: String = "#FFFFFF", backgroundHex: String? = nil, alignment: TextAlignmentChoice = .center,
@@ -324,6 +337,8 @@ public struct Project: Codable, Identifiable, Equatable, Sendable {
     public var overlayClips: [OverlayClip]
     /// Music, voice-overs and sound effects on the timeline (video project). Use `soundClips`.
     public var soundClipStore: [SoundClip]?
+    /// The files brought into the project's library (0.9). Use `mediaBin`. Left out of the file when empty, so older MacPlayers still read it.
+    public var binStore: [BinItem]?
     /// The clip the Picture and Audio tools edit in a video project.
     public var activeClipID: UUID?
     /// Last playhead, so reopening continues where the user was.

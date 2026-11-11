@@ -25,7 +25,7 @@ extension EditorSession {
         guard previewHasCompositor, let key = colorKey else { edit(label, coalesce: coalesce) { change(&$0.activeLook.color) }; return }
         edit(label, coalesce: coalesce, refreshPreview: false) { change(&$0.activeLook.color) }
         ColorLive.set(project.activeLook.color, for: key)
-        if !player.isPlaying { Task { await player.seek(to: player.currentTime) } }
+        player.refreshFrame()
     }
 
     /// Shows the picture as it was before the colour changes (while a button is held), or with them again.
@@ -35,7 +35,7 @@ extension EditorSession {
         if isPhoto { renderPhoto(); return }
         guard previewHasCompositor, let key = colorKey else { return }
         ColorLive.set(on ? ColorAdjust() : project.activeLook.color, for: key)
-        if !player.isPlaying { Task { await player.seek(to: player.currentTime) } }
+        player.refreshFrame()
     }
 
     /// Puts one colour setting on every clip of the project.

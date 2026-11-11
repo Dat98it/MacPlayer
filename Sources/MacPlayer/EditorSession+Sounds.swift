@@ -58,7 +58,10 @@ extension EditorSession {
             position = c.end
         }
         guard !added.isEmpty else { return }
-        edit(kind == .voice ? "Add voice-over" : "Add sound") { $0.soundClips += added }
+        edit(kind == .voice ? "Add voice-over" : "Add sound") { p in
+            if kind != .voice { MediaBin.add(added.map(\.path), to: &p.mediaBin, bookmark: { path in added.first { $0.path == path }?.bookmark }) }
+            p.soundClips += added
+        }
         selectedSoundID = added.last?.id
         if let last = added.last, last.end > duration { flash(L("The sound is longer than the video. The part after the end of the video is not used.")) }
     }
@@ -218,6 +221,25 @@ extension EditorSession {
         edit(label, coalesce: coalesce, refreshPreview: false) { change(&$0.activeLook.effects) }
         EffectsLive.set(project.activeLook.effects, for: key)
         // Paused: draw the frame on show again with the new settings.
-        if !player.isPlaying { Task { await player.seek(to: player.currentTime) } }
+        player.refreshFrame()
     }
 }
+
+extension EditorSession {
+    /// Chooses the transition into the clip being edited. Changing only its kind (the cut already has a transition, same length) hands the
+    /// new kind to the compositor directly, like a filter: rebuilding the preview on every choice made the picture stall each time.
+    /// Adding, removing, or a change of length moves footage, so the preview is built again then.
+    func chooseTransition(_ kind: TransitionKind?, label: String) {
+        let current = project.activeLook.transitionIn
+        guard kind != current?.kind else { return }
+        let key = project.activeClipID
+        if let kind, let current, previewHasCompositor, let key, isProject {
+            edit(label, refreshPreview: false) { $0.activeLook.transitionIn?.kind = kind }
+            TransitionLive.set(kind, for: key)
+            player.refreshFrame()
+            return
+        }
+        edit(label) { $0.activeLook.transitionIn = kind.map { ClipTransition(kind: $0, duration: current?.duration ?? 0.8) } }
+    }
+}
+

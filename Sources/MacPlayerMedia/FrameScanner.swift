@@ -79,7 +79,8 @@ public enum FrameScanner {
 
 extension MediaTime {
     public var cmTime: CMTime { CMTime(value: value, timescale: timescale) }
-    public init(_ t: CMTime) { self.init(value: t.value, timescale: t.timescale) }
+    /// A time AVFoundation gives (an invalid or endless one — a player with nothing in it — is taken as zero rather than stopping the app).
+    public init(_ t: CMTime) { if t.isNumeric && t.timescale > 0 { self.init(value: t.value, timescale: t.timescale) } else { self.init(value: 0, timescale: 600) } }
 }
 
 /// Looks at the compressed samples of a file (no decoding): how many, where keyframes are, and the

@@ -75,6 +75,10 @@ Other launch flags: `--selftest <dir with demo.mp4>` (real-app flows A–N, prin
 | `MACPLAYER_DEV_TREE=<folder>` | playlist "Demo" from a folder, shown as tree (`MACPLAYER_DEV_SIDEBAR=list\|grid\|select\|play\|time\|rename`) |
 | `MACPLAYER_DEV_ADD=a.mp4\|b.mp4`, `MACPLAYER_DEV_AUTOPLAY=1` | with a project file on the command line: add these videos, then start playing (sandbox only; to watch playback in a real window and capture it with `screencapture -l`) |
 | `MACPLAYER_ONLY_THREE=<n>`, `MACPLAYER_THREE_PORTRAIT=1` | `--selftest`: run only flow G0 (new project of three videos, played in a window) n times; portrait = the maintainer's 1080×1918/1920 phone videos |
+| `MACPLAYER_ONLY_SWITCH=1`, `MACPLAYER_SWITCH_MEDIA=a\|b\|c`, `MACPLAYER_SWITCH_PROJECT=<copy.macplayer>`, `MACPLAYER_SWITCH_PLAYING=1`, `MACPLAYER_SWITCH_CLICKS=1`, `MACPLAYER_SWITCH_DEBUG=1` | `--selftest`: run only flow G1 (switching between filters, transitions and colour in a window), with these videos or a copy of this project (copied again into the work folder; only its media is read), while playing; CLICKS clicks the tiles through the window (only works when the app is the active one, which a background run is not) |
+| `MACPLAYER_ONLY_DRAG=1`, `MACPLAYER_DRAG_PROJECT=<copy.macplayer>` | `--selftest`: only flow G7 (how smooth a drag on the picture is) |
+| `MACPLAYER_ONLY_CANVAS=1` | `--selftest`: only flows G4 (text/shapes/pictures put and moved on the picture) and G5 (several selected, groups, locks, keys) |
+| `MACPLAYER_ONLY_WORKSPACE=1`, `MACPLAYER_LIBRARY_TAB=media\|audio\|text\|filters\|transitions` | `--selftest`: only flows G2 (video editor workspace, drag-and-drop) and G3 (photo project workspace); start the library on that tab (snapshots) |
 | `MACPLAYER_LAYOUT=list\|grid\|tree`, `MACPLAYER_TREE_FILES=list\|grid`, `MACPLAYER_PREVIEW_SCALE=0.75…3` | start with that sidebar setup (sandbox only) |
 | `MACPLAYER_DEV_CROP`, `MACPLAYER_OPEN_POPOVER`, `MACPLAYER_TREE_SPEED_ONLY`, `MACPLAYER_LIBRARY_ONLY`, `MACPLAYER_KEEP_OUTPUT`, `MACPLAYER_DEBUG_*`, `MACPLAYER_AX_DEBUG`, `MACPLAYER_WAIT_ACTIVE` | self-test / debugging aids |
 
@@ -137,6 +141,99 @@ journals are still recovered at launch and old queue jobs of that kind fail inst
 renamed (the file) and moved to the Trash from the list.
 **0.8.1 Fix**: the timeline strip of a project that started empty kept a near-zero width after videos were added (it looked frozen and flickered
 while playing); the visible range is now `Core/TimelineViewport.swift` and follows the project's length. Self-test flow G0 covers it.
+**0.8.2 Fix**: the tools' pictures (filter tiles, transition tiles, histogram) come from `EditorSession+ToolFrames.swift`: the clip under the playhead, read
+quickly, once, cached; nothing is read while playing (the histogram used to decode an exact frame of the first video 4×/s and stall playback); tiles are drawn off
+the main thread and kept across tool switches. Self-test flow G1 covers it.
+**0.8.3**: choosing another transition *kind* (same length, compositor already on) goes through `EditorSession.chooseTransition` → `TransitionLive`
+(RecipeCompositor, keyed by the incoming clip's `liveKey`, like `EffectsLive`): no preview rebuild. Adding/removing a transition or changing its length still
+rebuilds. Everything clickable shows the pointing hand: `PointerControls.swift` shadows SwiftUI's `Button`/`Toggle`/`Picker`/`Menu`/`ColorPicker` inside the
+module (each wraps SwiftUI's own control + `.pointerStyle(.link)`); views with `onTapGesture` add `.clickable()`. A new SwiftUI control initializer that the
+shadow types do not offer fails to compile: add it to `PointerControls.swift` (or write `SwiftUI.X` explicitly).
+**0.9.0 Editor workspace** (CapCut-like layout; CapCut was only looked at as a layout reference, nothing copied). A *video* project no longer uses the
+window's inspector split item: `ContentViewController.buildWorkspace` → `EditorWorkspace.swift` (nested `NSSplitViewController`: `LibraryPanel` |
+picture+transport | `PropertiesPanel`; below, full width, `TimelineToolbar` + `TimelineView`). Since 0.10 photo projects use it too (no timeline;
+`buildPhoto`). The window's own inspector split item is no longer used by editors (`InspectorView` is unused by them); `toggleInspector`/`panelsCollapsed`
+map to the workspace's Properties item.
+- **Library** (`LibraryPanel.swift`): tabs Media / Audio / Text / Filters / Transitions. Files are only *referenced*: `Project.mediaBin`
+  (`binStore`, optional, omitted when empty; `Core/MediaBin.swift`), `libraryItems` = bin + anything already used (old projects). Tiles drag file URLs;
+  filters/transitions/text styles/stickers drag a `DragPayload` string (`macplayer:filter:noir`…).
+- **Selection** (`EditorSession+Library.swift`): `EditSelection` (.none/.clip/.layer/.text/.sound), `select(_:)` keeps one kind selected;
+  `InspectorTab.propertyTabs(for:)` decides the Properties chips. `selectedTextID` replaces TextPane's private selection. `deleteSelection`,
+  `duplicateSelection`, `place(urls, videoIndex:at:lane:)`, `applyFilter(_:toClip:)`, `applyTransition(_:intoClip:)`, `addText(_:at:)`, `addSticker`,
+  `moveText`/`trimText`/`moveSound`.
+- **Timeline** (`TimelineView.swift`, rewritten): tracks ruler / main (filmstrip from `Filmstrip.swift`, sound band, badges) / Text / 3 layer lanes /
+  Sound; height `TimelineView.projectHeight`. Click selects (empty space deselects + moves playhead), drag moves (snaps to playhead/cuts/ends), edges trim,
+  ⌫ deletes, Esc deselects. Drops: `target(for:)` → `DropTarget`; `testDrop`/`testPoint` let the self-test drop through the real code.
+- Self-test flow **G2** (`SelfTestWorkspace.swift`, `MACPLAYER_ONLY_WORKSPACE=1`); `MACPLAYER_LIBRARY_TAB=media|audio|text|filters|transitions` for snapshots.
+**0.10.0 Photos on the main track, photo projects in the workspace.** A photo dropped on the main track (or added with +) becomes a clip of its own:
+`Media/StillClip.swift` makes a silent 1-fps, 60 s H.264 `.mov` of it in `<support>/Stills` (name = hash of path+size+date; the photo is only read);
+`SourceRef.stillOf` = the photo's path, `mediaPath` = what to show (use it for every displayed name). `resolveSources` remakes a missing still from the
+photo; `relinkSource` takes a photo for such a source. `addPhotosToTimeline(_:at:)`. A photo dropped on a *layer line* is still a layer. Pace: a piece under
+10 fps never sets the composition's frame rate (`firstFPS`) and forces the compositor (`hasStill`); `RecipeInstruction.containsTweening = true` (else
+AVFoundation drew only the source's frames: 1 fps over a photo, frozen text animations); `ReencodeExporter` uses the composition's frame duration for its
+rate. Photo projects: library tabs Pictures (→ photo, then logos) / Text / Filters; Properties shows all photo tools; `PhotoHostView.onDropPayload` takes
+filters/text/stickers (`applyDropped`). Self-test G2 (+ photo clip, export pace, remade still, drags through the tiles' own `NSItemProvider`s via
+`pasteboard(from:)`) and **G3** (photo workspace). Media tests `StillClipTests`.
+**0.11.0 On the picture.** Text/stickers/shapes (`TextOverlay`) are selected, moved and resized right on the picture: `CanvasElements.swift`
+(`ElementManipulatorView`, in `PlayerHostView.elements` and `PhotoHostView.elements`; frames from `ElementGeometry.baseRect` = the renderer's own text layout,
+`OverlayRenderer.layout`; moved/scaled/turned like `OverlayLayer.visible`). A drag calls `EditorSession.placeElement(_:from:dx:dy:scaleBy:)` (one undo step,
+coalesced; keyframed elements get a keyframe at the playhead) and pushes `ElementLive` (Media; read by `OverlayLayer` only when `live`, i.e. previews), so the
+picture follows without a rebuild. Logos of photo projects use `OverlayManipulatorView` too (`PhotoHostView.layers`, `isActive` false while the crop frame is
+out). Drops on the picture carry a position (`pictureFraction`): `applyDropped(_:position:)`, `addText/addSticker/addShape(_:at:position:)`,
+`addOverlayPicture(_:center:)`, `addLogo(_:center:)`; new `DragPayload.shape`; the library's Text tab has Shapes. Photo crop on the picture is now opt-in
+(`photoCropAdjusting` defaults to false; a ratio button turns it on). Fix: `NoticeBar` is two lines at most and the picture keeps ≥160 pt
+(`keepPictureRoom`) — a message used to squeeze the picture to 0 height. Self-test **G4** (`SelfTestCanvas.swift`, `MACPLAYER_ONLY_CANVAS=1`), Media
+tests `CanvasElementTests`.
+**0.12.0 Several things on the picture; the freeze for real.**
+- **Freeze (the real cause):** a filter/colour/transition/layer change while paused called `player.seek(to: currentTime)`; AVPlayer skips a seek to
+  where it already is, so nothing was drawn until the playhead moved (measured: no frame within 5 s). `PlayerController.refreshFrame()` now hands the item
+  a copy of its video composition (redraws the current frame at once, ~1 ms to the compositor; no seek, no decode). Never go back to seeking to the
+  current time to redraw. Also: the session tells the panels about the playhead only 4×/s while playing (`lastTimeTick`; was 30×/s), and the timeline's
+  playhead is a subview (`PlayheadView`) so the strip is not redrawn every frame. `CompositorStats` (Media) counts compositor requests for the self-test.
+- **Library drags** use AppKit (`LibraryDragSourceView` via `.libraryDrag(writer, onClick:)`), not SwiftUI `onDrag`. The picture shows a target while
+  something placeable hovers (`ElementManipulatorView.dropPoint`).
+- **Selection of several:** `EditorSession.canvasSelection` (texts + layers; groups expanded by `Core/CanvasSelection.swift`), `selectCanvas`,
+  `toggleCanvas` (⇧/⌘-click), selection frame on an empty part of the picture, `moveCanvas` (one undo step per drag), `nudgeCanvas` (arrows, a burst =
+  one step), `duplicateSelection`/`deleteSelection` for several, `groupCanvas`/`ungroupCanvas`/`toggleLockCanvas` (Edit menu ⌘D ⌘G ⇧⌘G ⌘L, right-click
+  `canvasMenu`, Properties header). `TextOverlay`/`OverlayClip` gained optional `groupID` and `locked`. Keys: `MainWindowController.handleCanvasKey`
+  (⌫ ⌦ ← → ↑ ↓ Esc; with nothing selected on the picture the arrows still skip in time). An empty part of the picture now takes the mouse (selection
+  frame); the photo's double-click zoom is forwarded, and a zoomed photo keeps its drag-to-pan (`takesEmptyClicks`).
+- Timeline: texts that overlap in time share the Text line in rows. Self-test **G5** (`SelfTestSelection.swift`, runs with `MACPLAYER_ONLY_CANVAS=1`);
+  G1 measures panel redraws, timeline draws and how soon a filter/transition reaches the picture while paused. Core tests `CanvasSelectionTests`.
+**0.13.0** Adding text/shapes/stickers lives only in the library's Text tab (left); `TextPane` (right) is the list on the picture + the selected
+item's settings (a "Style" menu restyles; a library style dropped *on* a text restyles it: `restyleText`, `ElementManipulatorView.textElement(at:)`).
+Centring: `CenterSnap` (in `CanvasElements.swift`) snaps a dragged centre to the picture's centre or to the centre of a thing whose frame holds it,
+and `CenterSnap.draw` shows pink lines with a label ("Giữa khung hình", "Giữa <name>"); used by single/several element drags and by layer drags
+(`OverlayManipulatorView.things`). Positions from `placeElement` are rounded to 1e-6. Typing on the picture: double-click a text →
+`ElementManipulatorView.beginTyping` (an `InlineTextField` over it; each change is an edit coalesced `inline-<id>`; Return ends, Option-Return new line, Esc
+restores). Self-test **G6** (`centringAndTypingFlow` in `SelfTestSelection.swift`, also under `MACPLAYER_ONLY_CANVAS=1`).
+**0.14.0** Library tiles no longer flicker while playing: files used but not in the bin got a new `BinItem` id at every look (now
+`BinItem.stableID(for:)`; `ForEach(…, id: \.path)`; `MediaTile` starts from `LibraryThumbs`' cache). Shapes: `ShapeSpec.made(kind, width:, aspect:)`
+sets the height from the picture's shape (a square was 18% × 18% of a 16:9 picture: a wide rectangle); 8 new `ShapeKind`s (diamond, pentagon,
+hexagon, speechBubble, burst, checkmark, cross, ring — even-odd fill). 9 new `TextTemplate`s; `TextPreset` (app, `LibraryPanel.swift`: ready-made
+texts with localized words; `DragPayload.preset`, `addPreset`); more stickers. Export: only the header's button, which opens `ExportSheet`
+(`ContentViewController.showExport/closeExport`, `exportSheet`); `.export` is gone from the Properties tabs. `ExportPane` = frame per social network
+(`Project.frameShape/frameFill/setFrame`, `Core/ExportPresets.swift`, new `CanvasPreset.portrait4x5`), one `ExportPreset` choice (quality + size),
+save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit the **shorter** side (`RenderGeometry.outputSize(limitsShortSide:)`,
+`ReencodeExporter`, estimate; the preview still limits the height). `MACPLAYER_OPEN_EXPORT=1` with `--snapshot` prints `SHEET_WINDOW <n>` for
+`screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
+**0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
+share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.14.3 Lifted drags.** 0.14.2 still asked AVPlayer for a frame per move (reassigning `videoComposition`), and the picture lagged behind the frame
+on a real mouse. Now the first move of a drag *lifts* what moves: `CanvasLiftLayers` (one per view: `ElementManipulatorView`, `OverlayManipulatorView`)
+asks `EditorSession.liftPicture(_:pic:scale:)` for its pixels, drawn by the preview's own code (`CanvasLift.element` / `CanvasLift.layer` in
+RecipeCompositor.swift), puts them in a `CALayer` and only moves/scales it (`liftPlacement`) at every move. `CanvasLift.set(ids)` makes the compositor
+(`live` only) and `renderPhoto` leave those ids out; `beginLift` asks for one frame. `commitDraft(_:keyed:whenShown:)` pushes the final `ElementLive`/
+`LayerLive`, clears the lift, asks for one frame and calls `whenShown` (the view removes its pictures) once the compositor drew a frame (or the photo's
+`photoShownGeneration` arrived) plus 1/30 s, 0.5 s at most. Not lifted (still the 0.14.2 path): video layers, layers with a blend or a cut-out subject,
+anything while playing. A lifted layer is drawn above texts until the drop. `MediaTime(CMTime)` takes an invalid time as zero (a project whose media
+are all missing crashed on its first seek). G7 now checks the lifted picture against the mouse, no player frame while moving, the drop, and a logo drag.
+**0.14.2 Smooth drags on the picture.** A drag no longer edits the project at every mouse move: the views build a draft from the project as it was
+at the press (`EditorSession.place(_:in:from:…)`, `setOverlayValue(_:in:_:)`, `CanvasSelection.nudge` on a copy) and call `showDraft(_:ids:)`, which
+sets `canvasDraft` (read by both views through `canvasProject`, redrawn on `.canvasDraftChanged`), pushes `ElementLive`/`LayerLive` and asks the player
+for a frame at most once per 1/60 s (`refreshFrameSoon`; a photo re-renders at most every 1/30 s, `renderPhotoSoon`; `renderPhoto` draws
+`canvasProject`). The drop calls `commitDraft(label, keyed:)`: one edit. `ElementManipulatorView` caches text layouts (`rectCache`). Self-test **G7**
+(`SelfTestDrag.swift`, `MACPLAYER_ONLY_DRAG=1`, `MACPLAYER_DRAG_PROJECT=<copy>`): 90 moves — no panel redraws, frame on the mouse, one undo step.
 **0.7.0 Sound** (8 voice presets + manual bass/mid/treble/pitch/room/echo through an offline AVAudioEngine render, hand-drawn volume curve per sound clip).
 
 ## 6. Rendering and data-flow rules that are easy to break
@@ -189,7 +286,7 @@ while playing); the visible range is now `Core/TimelineViewport.swift` and follo
 - Write Core tests for every model/math change (Swift Testing: `@Test`, `#expect`). Write Media tests that check **real pixels or samples** (see `ColorGradeTests`, `MaskTests`,
   `SoundFXTests`, `Support.swift` helpers `frame(_:at:)`, `Pixels`, `Fixtures.shared.source()` = 320×180 video with red/green/blue corner markers).
 - Vision cannot be tested on synthetic pictures: tests replace `SubjectMasker.provider`. Audio effects are tested with generated tones (zero-crossing counts, RMS).
-- Always run the whole suite before a release. **Known flaky:** `StabilizerTests.anExportedVideoIsSteadierThanTheOneItCameFrom` fails about half of the runs on the maintainer's machine, also before the
+- Always run the whole suite before a release. **Never hand `CGContext(data: &array, …)` an array pointer and draw later**: the pointer is only valid during that call, and drawing afterwards wrote over freed memory — the Media test process then died at random (SIGBUS inside Metal/ImageIO/autorelease; 0.11–0.13, wrongly blamed on the system at first, fixed in 0.14). Use `CGContext(data: nil, …)` and read `ctx.data` (see `rgbaBytes` in `CanvasElementTests.swift`). **Known flaky:** `StabilizerTests.anExportedVideoIsSteadierThanTheOneItCameFrom` fails about half of the runs on the maintainer's machine, also before the
   0.4.0–0.7.0 work (verified on the older commit); do not "fix" other code for it.
 - `Scripts/crash_test.py` modes: `copy`, `batch`, `autosave` (kill while the project is written over and over: the file must always decode).
 - The in-app self-test (`--selftest`) had 2 failing checks on the current macOS 27 setup even before the 0.4–0.7 work (window size kept through photo slideshow; a duplicate-shortcut check that sees the

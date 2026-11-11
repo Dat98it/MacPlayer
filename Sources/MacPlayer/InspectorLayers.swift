@@ -60,7 +60,7 @@ struct LayersPane: View {
         .padding(8)
         .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08)))
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(selected ? Color.accentColor : Color.clear, lineWidth: 1.5))
-        .onTapGesture { session.selectedOverlayID = c.id; session.selectedClipIDs = []; if !session.isPhoto { Task { await session.player.seek(to: c.start) } } }
+        .onTapGesture { session.selectedOverlayID = c.id; session.selectedClipIDs = []; if !session.isPhoto { Task { await session.player.seek(to: c.start) } } }.clickable()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(LF("Layer %@, line %d, from %@ to %@", c.name, c.lane + 1, Timecode.format(c.start), Timecode.format(c.end)))
         .contextMenu {

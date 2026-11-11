@@ -83,7 +83,7 @@ struct TimelinePane: View {
                     Label(L("Some videos are missing. The preview and export wait until you relink them."), systemImage: "exclamationmark.triangle.fill").font(.callout).foregroundColor(.red)
                     ForEach(missingSources) { src in
                         HStack {
-                            Text(PathUtil.fileName(of: src.path)).font(.caption).lineLimit(1)
+                            Text(PathUtil.fileName(of: src.mediaPath)).font(.caption).lineLimit(1)
                             Spacer()
                             Button(L("Relink…")) { relink(src.id) }.font(.caption)
                         }
@@ -93,7 +93,7 @@ struct TimelinePane: View {
 
             ForEach(Array(clips.enumerated()), id: \.element.id) { i, c in
                 let selected = session.selectedClipIDs.contains(c.id)
-                let srcName = PathUtil.fileName(of: session.project.source(c.sourceID)?.path ?? "")
+                let srcName = PathUtil.fileName(of: session.project.source(c.sourceID)?.mediaPath ?? "")
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("\(i + 1)").font(.caption.monospacedDigit()).foregroundColor(.secondary).frame(width: 18)
@@ -114,7 +114,7 @@ struct TimelinePane: View {
                 .padding(8)
                 .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08)))
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(selected ? Color.accentColor : Color.clear, lineWidth: 1.5))
-                .onTapGesture { session.selectedClipIDs = [c.id]; if let t = starts[c.id] { Task { await session.player.seek(to: t) } } }
+                .onTapGesture { session.selectedClipIDs = [c.id]; if let t = starts[c.id] { Task { await session.player.seek(to: t) } } }.clickable()
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel(LF("Clip %d, %@, %@", i + 1, c.name.isEmpty ? srcName : c.name, Format.duration(c.duration)))
             }
@@ -147,7 +147,8 @@ struct TimelinePane: View {
     }
 
     private func relink(_ id: UUID) {
-        let p = NSOpenPanel(); p.allowedContentTypes = [.movie, .video]; p.allowsMultipleSelection = false
+        let p = NSOpenPanel(); p.allowsMultipleSelection = false
+        p.allowedContentTypes = session.project.source(id)?.stillOf != nil ? [.image] : [.movie, .video]
         if p.runModal() == .OK, let u = p.url { Task { await session.relinkSource(id, to: u) } }
     }
 }

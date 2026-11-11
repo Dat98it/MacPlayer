@@ -78,26 +78,28 @@ struct EffectsPane: View {
                 Text(Self.name(p)).font(.system(size: 10, weight: selected ? .semibold : .regular)).lineLimit(1)
             }
         }
-        .buttonStyle(.plain).help(Self.name(p)).accessibilityLabel(Self.name(p)).accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .buttonStyle(.plain)
+        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { if SidebarProbe.enabled { SidebarProbe.tileFrames[Self.name(p)] = $0 } }
+        .help(Self.name(p)).accessibilityLabel(Self.name(p)).accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 
-    /// One real frame of the video, with each filter drawn on it, so the choice is made by looking.
+    /// One real frame of the clip under the playhead, with each filter drawn on it, so the choice is made by looking. The frame is read
+    /// quickly and the tiles are drawn off the main thread; both are kept, so coming back to this tool shows them at once.
     private func loadSample() async {
-        var frame: CGImage?
-        if session.sourceURL != nil {
-            let t = min(max(session.player.currentTime, .zero), session.duration)
-            frame = await session.stillImage(at: t, maxSize: CGSize(width: 180, height: 120))
-        } else if let clip = session.project.timeline.first(where: { $0.id == session.project.activeClipID }) ?? session.project.timeline.first,
-                  let src = session.project.sources.first(where: { $0.id == clip.sourceID }) {
-            let mid = clip.sourceStart + MediaTime(seconds: min(1, clip.sourceSpan.duration.seconds / 2), timescale: 600)
-            frame = try? await FrameGrabber.image(url: URL(fileURLWithPath: src.path), at: mid, accuracy: .nearest, maxSize: CGSize(width: 180, height: 120))
+        guard let (frame, key) = await session.toolFrame(maxSize: CGSize(width: 180, height: 120)) else { return }
+        let tileKey = "filters|" + key
+        if let cached = ToolFrameCache.shared.tiles[tileKey] {
+            tiles.value = Dictionary(uniqueKeysWithValues: FilterPreset.allCases.compactMap { p in cached[p.rawValue].map { (p, $0) } })
+            return
         }
-        guard let frame else { return }
-        var out: [FilterPreset: NSImage] = [:]
-        for p in FilterPreset.allCases {
+        final class Frame: @unchecked Sendable { let image: CGImage; init(_ i: CGImage) { image = i } }
+        let f = Frame(frame)
+        let drawn = await EditorSession.drawOffMain(FilterPreset.allCases) { p in
             var e = LookEffects(); e.filter = p
-            if let cg = EffectPreview.image(from: frame, effects: e) { out[p] = NSImage(cgImage: cg, size: .zero) }
+            return EffectPreview.image(from: f.image, effects: e)
         }
-        tiles.value = out
+        if Task.isCancelled { return }
+        tiles.value = drawn
+        ToolFrameCache.shared.rememberTiles(Dictionary(uniqueKeysWithValues: drawn.map { ($0.key.rawValue, $0.value) }), for: tileKey)
     }
 }

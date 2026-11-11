@@ -72,6 +72,8 @@ public enum CompositionBuilder {
         var cursor = CMTime.zero
         var firstDisplay: PixelSize?
         var firstFPS = 30.0
+        /// A photo clip (one picture a second) is among the pieces: the picture then always goes through the compositor, at a steady pace.
+        var hasStill = false
         var firstTransform: CGAffineTransform = .identity
 
         // First pass: what each piece needs (the part of the source to use, its size and speed).
@@ -91,7 +93,7 @@ public enum CompositionBuilder {
             var span = piece.span
             var gridLength: CMTime?
             if frameAccurate {
-                let rate = FrameRate(approximately: fps > 0 ? fps : 30)
+                let rate = FrameRate(approximately: fps >= 10 ? fps : 30)
                 if usesCompositor {
                     let c = CutPlanning.centerSampled(span, frameRate: rate, duration: duration)
                     span = c.source; gridLength = c.length.cmTime
@@ -104,9 +106,10 @@ public enum CompositionBuilder {
             if n == 0 || firstDisplay == nil {
                 let r = natural.applying(transform)
                 firstDisplay = PixelSize(width: Int(abs(r.width).rounded()), height: Int(abs(r.height).rounded()))
-                firstFPS = fps > 0 ? fps : 30
+                firstFPS = fps >= 10 ? fps : 30      // a photo clip (one picture a second) must not set the pace of the whole video
                 firstTransform = transform
             }
+            if fps > 0, fps < 10 { hasStill = true }
             pieceHDR.append(await HDRFormat.of(vSrc))
             preps.append(Prep(piece: piece, asset: a, vSrc: vSrc, transform: transform, natural: natural, sourceDuration: duration, span: span, gridLength: gridLength,
                               range: CMTimeRange(start: span.start.cmTime, duration: span.duration.cmTime)))
@@ -315,11 +318,12 @@ public enum CompositionBuilder {
         }
 
         // Picture processing only when something asks for it.
-        let layer = OverlayLayer(overlays: overlays, cues: cues, style: subtitleStyle)
-        let needsCompositor = !layer.isEmpty || !layerDraws.isEmpty || plans.contains { $0.plan.look.changesPicture } || joinOnGrid
+        let layer = OverlayLayer(overlays: overlays, cues: cues, style: subtitleStyle, live: !frameAccurate)
+        let needsCompositor = !layer.isEmpty || !layerDraws.isEmpty || plans.contains { $0.plan.look.changesPicture } || joinOnGrid || hasStill
         let display = firstDisplay ?? PixelSize(width: 1920, height: 1080)
         let lookForSize = plans[0].plan.look
-        let outSize = RenderGeometry.outputSize(source: display, look: lookForSize, maxHeight: maxHeight)
+        // An export limits the shorter side (a tall video at 1080p is 1080 × 1920); the preview limits the height, to stay light.
+        let outSize = RenderGeometry.outputSize(source: display, look: lookForSize, maxHeight: maxHeight, limitsShortSide: frameAccurate)
         var renderSize = CGSize(width: outSize.width, height: outSize.height)
 
         // An all-HDR export stays HDR through the compositor: it works on 10-bit pictures. Any SDR piece among them makes the whole output SDR

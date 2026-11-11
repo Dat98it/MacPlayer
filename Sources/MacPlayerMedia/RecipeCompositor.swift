@@ -31,13 +31,16 @@ final class OverlayLayer: @unchecked Sendable {
     let overlays: [TextOverlay]
     let cues: [SubtitleCue]
     let style: SubtitleStyle
+    /// A preview: elements may follow `ElementLive` (one being dragged on the picture). Exports never do.
+    let live: Bool
     private let lock = NSLock()
     private var cache: [String: CIImage] = [:]
 
-    init(overlays: [TextOverlay], cues: [SubtitleCue], style: SubtitleStyle) {
+    init(overlays: [TextOverlay], cues: [SubtitleCue], style: SubtitleStyle, live: Bool = false) {
         self.overlays = overlays
         self.cues = cues.sorted { $0.start < $1.start }
         self.style = style
+        self.live = live
     }
 
     var isEmpty: Bool { overlays.isEmpty && cues.isEmpty }
@@ -61,7 +64,12 @@ final class OverlayLayer: @unchecked Sendable {
     func visible(at t: Double, size: CGSize) -> [(CIImage, Double)] {
         var out: [(CIImage, Double)] = []
         for o in overlays {
-            guard let st = ElementAnimator.state(of: o, at: t), st.alpha > 0.001 else { continue }
+            guard var st = ElementAnimator.state(of: o, at: t), st.alpha > 0.001 else { continue }
+            if live && CanvasLift.contains(o.id) { continue }          // being dragged: the editor draws it until the drop
+            if live, let l = ElementLive.placement(for: o.id) {
+                // Being dragged: moved and sized from where the preview was built, at once (the next rebuild has the new values in it).
+                st.x += l.x - o.x; st.y += l.y - o.y; st.scale *= l.scale / max(0.01, o.scale ?? 1)
+            }
             let still = o.id.uuidString + "|\(o.x)|\(o.y)|\(o.sizeFraction)|\(o.colorHex)|\(o.backgroundHex ?? "-")|\(o.fontName)|\(o.alignment)"
             var img: CIImage?
             if let shape = o.shape {
@@ -113,7 +121,9 @@ struct TransitionDraw {
 final class RecipeInstruction: NSObject, AVVideoCompositionInstructionProtocol {
     let timeRange: CMTimeRange
     let enablePostProcessing = false
-    let containsTweening = false
+    /// True: frames are drawn at the composition's own pace even where the source has few (a photo clip has one picture a second) — text,
+    /// animations and transitions keep moving, and an export comes out at a constant frame rate.
+    let containsTweening = true
     let requiredSourceTrackIDs: [NSValue]?
     let passthroughTrackID = kCMPersistentTrackID_Invalid
     let trackID: CMPersistentTrackID
@@ -150,6 +160,7 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
     func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {}
 
     func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
+        CompositorStats.framesDrawn += 1; CompositorStats.lastRequestUptime = ProcessInfo.processInfo.systemUptime
         queue.async {
             autoreleasepool {
                 guard let inst = request.videoCompositionInstruction as? RecipeInstruction,
@@ -273,11 +284,13 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
         if let (incoming, t) = second {
             let arriving = mainPicture(source: incoming, plan: t.plan, time: time, outputSize: outputSize)
             let progress = t.end > t.start ? min(max((time - t.start) / (t.end - t.start), 0), 1) : 1
-            out = TransitionRenderer.blend(outgoing: out, incoming: arriving, kind: t.kind, progress: progress, frame: frame)
+            let kind = t.plan.liveKey.flatMap { TransitionLive.kind(for: $0) } ?? t.kind
+            out = TransitionRenderer.blend(outgoing: out, incoming: arriving, kind: kind, progress: progress, frame: frame)
         }
 
         // Layers (Picture in Picture, logos), lowest lane first, over the colour-adjusted main picture.
         for (d, pb) in layerFrames {
+            if d.live && CanvasLift.contains(d.spec.id) { continue }
             let spec = d.live ? (LayerLive.spec(for: d.spec.id) ?? d.spec) : d.spec
             var li: CIImage
             if let pb { li = normalized(CIImage(cvPixelBuffer: pb).oriented(d.orientation)) } else if let im = d.image { li = normalized(im) } else { continue }
@@ -382,6 +395,34 @@ public enum EffectsLive {
     static func effects(for key: UUID) -> LookEffects? { lock.lock(); defer { lock.unlock() }; return overrides[key] }
 }
 
+/// An element (text, sticker, shape) being dragged on the picture: where it is and how big, by its id, so the preview follows the mouse
+/// without being built again (0.11).
+/// How many frames the compositor has been asked for, and when the last one was (for the self-test: how soon a choice reaches the picture).
+public enum CompositorStats {
+    nonisolated(unsafe) public static var framesDrawn = 0
+    nonisolated(unsafe) public static var lastRequestUptime = 0.0
+}
+
+public enum ElementLive {
+    public struct Placement: Equatable, Sendable { public var x: Double, y: Double, scale: Double; public init(x: Double, y: Double, scale: Double) { self.x = x; self.y = y; self.scale = scale } }
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var overrides: [UUID: Placement] = [:]
+    public static func set(_ p: Placement, for id: UUID) { lock.lock(); overrides[id] = p; lock.unlock() }
+    public static func clear() { lock.lock(); overrides.removeAll(); lock.unlock() }
+    public static func placement(for id: UUID) -> Placement? { lock.lock(); defer { lock.unlock() }; return overrides[id] }
+}
+
+/// A transition's kind changed while the preview plays, by the incoming clip: the compositor draws the new kind at the next frame,
+/// so choosing between transitions does not rebuild the preview (0.8.3).
+public enum TransitionLive {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var overrides: [UUID: TransitionKind] = [:]
+
+    public static func set(_ kind: TransitionKind, for key: UUID) { lock.lock(); overrides[key] = kind; lock.unlock() }
+    public static func clear() { lock.lock(); overrides.removeAll(); lock.unlock() }
+    static func kind(for key: UUID) -> TransitionKind? { lock.lock(); defer { lock.unlock() }; return overrides[key] }
+}
+
 public enum LayerLive {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var overrides: [UUID: LayerSpec] = [:]
@@ -397,4 +438,44 @@ public enum LayerLive {
 final class RecipeCompositor10: RecipeCompositor {
     override var sourcePixelBufferAttributes: [String: any Sendable]? { [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange] }
     override var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] { [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange] }
+}
+
+/// Things being dragged on the picture (0.14.3). While a drag lasts the editor draws them itself, as pictures it moves at the screen's
+/// own pace, and the preview leaves them out: the player is asked for a frame when the drag starts and when it ends, not at every move.
+/// The pictures come from the same drawing code as the preview's, so what is dragged looks exactly like what is dropped.
+public enum CanvasLift {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var lifted: Set<UUID> = []
+    private static let context = CIContext(options: [.cacheIntermediates: false])
+
+    public static func set(_ ids: Set<UUID>) { lock.lock(); lifted = ids; lock.unlock() }
+    public static var ids: Set<UUID> { lock.lock(); defer { lock.unlock() }; return lifted }
+    public static func contains(_ id: UUID) -> Bool { lock.lock(); defer { lock.unlock() }; return lifted.contains(id) }
+
+    /// A text, shape or sticker as the preview draws it at `t` on a picture of `size` pixels (`still`: as a photo draws it): its pixels,
+    /// where they lie on the picture (Core Image's way up: y from the bottom), and its opacity.
+    public static func element(_ o: TextOverlay, at t: Double, size: CGSize, still: Bool) -> (image: CGImage, rect: CGRect, alpha: Double)? {
+        let layer = OverlayLayer(overlays: still ? PhotoRenderer.stilled([o]) : [o], cues: [], style: SubtitleStyle())
+        guard let (img, alpha) = layer.visible(at: still ? PhotoRenderer.stillTime : t, size: size).first else { return nil }
+        return pixels(img, size: size).map { ($0.0, $0.1, alpha) }
+    }
+
+    /// A picture layer (a logo) as the preview draws it at `t`: placed, bordered, turned, see-through as its spec says.
+    public static func layer(_ spec: LayerSpec, picture: CIImage, at t: Double, size: CGSize) -> (image: CGImage, rect: CGRect)? {
+        let frame = CGRect(origin: .zero, size: size)
+        let drawn = RecipeCompositor.drawLayer(RecipeCompositor.normalized(picture), spec: spec, border: CompositionBuilder.ciColor(hex: spec.transform.borderHex),
+                                               time: t, subjectMode: .previewVideo, over: CIImage.empty(), frame: frame)
+        return pixels(drawn, size: size)
+    }
+
+    /// The spec a photo's logo is drawn with (always shown, never animated).
+    public static func photoSpec(_ c: OverlayClip, path: String) -> LayerSpec { PhotoLogo.still(c, path: path) }
+    public static let photoLayerTime = 1.0
+
+    private static func pixels(_ img: CIImage, size: CGSize) -> (CGImage, CGRect)? {
+        let r = img.extent.intersection(CGRect(origin: .zero, size: size)).integral
+        guard !r.isNull, r.width >= 1, r.height >= 1, r.width * r.height < 80_000_000,
+              let cg = context.createCGImage(img, from: r, format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)) else { return nil }
+        return (cg, r)
+    }
 }

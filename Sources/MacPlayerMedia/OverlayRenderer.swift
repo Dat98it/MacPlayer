@@ -82,20 +82,7 @@ enum OverlayRenderer {
             }
         }
         let setter = CTFramesetterCreateWithAttributedString(attributed)
-
-        // Wrap within 90% of the width (leave the safe margin).
-        let maxWidth = size.width * 0.9
-        let fit = CTFramesetterSuggestFrameSizeWithConstraints(setter, CFRange(location: 0, length: 0), nil, CGSize(width: maxWidth, height: size.height), nil)
-        let boxW = min(maxWidth, ceil(fit.width) + fontSize * 0.2), boxH = ceil(fit.height)
-        let pad = box.backgroundHex == nil ? 0 : fontSize * 0.25
-        // Rect in CG coordinates (origin bottom-left).
-        let cx = CGFloat(box.centerX) * size.width
-        let originY: CGFloat
-        if let cy = box.centerY { originY = (1 - CGFloat(cy)) * size.height - boxH / 2 } else { originY = CGFloat(box.bottomMargin) * size.height + pad }
-        var rect = CGRect(x: cx - boxW / 2, y: originY, width: boxW, height: boxH)
-        // Keep inside the picture.
-        rect.origin.x = min(max(rect.origin.x, 0), size.width - rect.width)
-        rect.origin.y = min(max(rect.origin.y, pad), size.height - rect.height - pad)
+        let (rect, pad) = layout(box, setter: setter, fontSize: fontSize, size: size)
 
         if let bg = box.backgroundHex {
             ctx.setFillColor(color(hex: bg, alpha: 0.65))
@@ -107,6 +94,43 @@ enum OverlayRenderer {
         let frame = CTFramesetterCreateFrame(setter, CFRange(location: 0, length: 0), path, nil)
         CTFrameDraw(frame, ctx)
         return ctx.makeImage()
+    }
+
+    /// Where the text goes in a picture of `size` (CG coordinates, origin bottom-left), and the padding of its background.
+    static func layout(_ box: TextBox, setter: CTFramesetter, fontSize: CGFloat, size: CGSize) -> (CGRect, CGFloat) {
+        // Wrap within 90% of the width (leave the safe margin).
+        let maxWidth = size.width * 0.9
+        let fit = CTFramesetterSuggestFrameSizeWithConstraints(setter, CFRange(location: 0, length: 0), nil, CGSize(width: maxWidth, height: size.height), nil)
+        let boxW = min(maxWidth, ceil(fit.width) + fontSize * 0.2), boxH = ceil(fit.height)
+        let pad = box.backgroundHex == nil ? 0 : fontSize * 0.25
+        let cx = CGFloat(box.centerX) * size.width
+        let originY: CGFloat
+        if let cy = box.centerY { originY = (1 - CGFloat(cy)) * size.height - boxH / 2 } else { originY = CGFloat(box.bottomMargin) * size.height + pad }
+        var rect = CGRect(x: cx - boxW / 2, y: originY, width: boxW, height: boxH)
+        // Keep inside the picture.
+        rect.origin.x = min(max(rect.origin.x, 0), size.width - rect.width)
+        rect.origin.y = min(max(rect.origin.y, pad), size.height - rect.height - pad)
+        return (rect, pad)
+    }
+
+    /// The box an element covers in a picture of `size` before it is moved, scaled or turned by its animation: as fractions of the picture,
+    /// from the top-left. Nil for an empty text. (For the handles drawn over the picture.)
+    public static func elementRect(_ o: TextOverlay, size: CGSize) -> CGRect? {
+        if let shape = o.shape {
+            return CGRect(x: o.x - shape.width / 2, y: o.y - shape.height / 2, width: shape.width, height: shape.height)
+        }
+        let box = box(for: o)
+        var text = box.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if box.uppercase { text = text.uppercased() }
+        guard !text.isEmpty, size.width > 8, size.height > 8 else { return nil }
+        let fontSize = max(8, CGFloat(box.sizeFraction) * size.height)
+        let font = CTFontCreateWithName(box.fontName as CFString, fontSize, nil)
+        var attrs: [NSAttributedString.Key: Any] = [NSAttributedString.Key(kCTFontAttributeName as String): font]
+        if box.letterSpacing != 0 { attrs[NSAttributedString.Key(kCTKernAttributeName as String)] = box.letterSpacing * fontSize }
+        let setter = CTFramesetterCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
+        let (r, pad) = layout(box, setter: setter, fontSize: fontSize, size: size)
+        let outer = r.insetBy(dx: -pad, dy: -pad)
+        return CGRect(x: outer.minX / size.width, y: 1 - outer.maxY / size.height, width: outer.width / size.width, height: outer.height / size.height)
     }
 
     // MARK: Shapes
@@ -121,7 +145,7 @@ enum OverlayRenderer {
         let bw = max(1, spec.width * size.width), bh = max(1, spec.height * size.height)
         let rect = CGRect(x: centerX * size.width - bw / 2, y: (1 - centerY) * size.height - bh / 2, width: bw, height: bh)
         let path = shapePath(spec.kind, in: rect)
-        if let fill = spec.fillHex { ctx.setFillColor(color(hex: fill)); ctx.addPath(path); ctx.fillPath() }
+        if let fill = spec.fillHex { ctx.setFillColor(color(hex: fill)); ctx.addPath(path); ctx.fillPath(using: spec.kind == .ring ? .evenOdd : .winding) }
         if let stroke = spec.strokeHex, spec.strokeWidth > 0 {
             ctx.setStrokeColor(color(hex: stroke)); ctx.setLineWidth(max(1, spec.strokeWidth * size.height)); ctx.setLineJoin(.round)
             ctx.addPath(path); ctx.strokePath()
@@ -134,6 +158,11 @@ enum OverlayRenderer {
         // Points are given in a unit square with the origin at the top-left, then placed in `r`.
         func pt(_ x: Double, _ y: Double) -> CGPoint { CGPoint(x: r.minX + CGFloat(x) * r.width, y: r.maxY - CGFloat(y) * r.height) }
         let p = CGMutablePath()
+        func poly(_ q: [(Double, Double)]) { for (i, v) in q.enumerated() { i == 0 ? p.move(to: pt(v.0, v.1)) : p.addLine(to: pt(v.0, v.1)) }; p.closeSubpath() }
+        func regular(_ n: Int, rotation: Double) {
+            for i in 0..<n { let a = rotation + Double(i) * 2 * Double.pi / Double(n); let q = pt(0.5 + cos(a) * 0.5, 0.5 + sin(a) * 0.5); i == 0 ? p.move(to: q) : p.addLine(to: q) }
+            p.closeSubpath()
+        }
         switch kind {
         case .rectangle, .line: p.addRect(r)
         case .roundedRectangle: let c = min(r.width, r.height) * 0.2; p.addRoundedRect(in: r, cornerWidth: c, cornerHeight: c)
@@ -156,6 +185,28 @@ enum OverlayRenderer {
         case .arrow:
             for (i, q) in [(0.0, 0.3), (0.6, 0.3), (0.6, 0.02), (1.0, 0.5), (0.6, 0.98), (0.6, 0.7), (0.0, 0.7)].enumerated() { i == 0 ? p.move(to: pt(q.0, q.1)) : p.addLine(to: pt(q.0, q.1)) }
             p.closeSubpath()
+        case .diamond: poly([(0.5, 0), (1, 0.5), (0.5, 1), (0, 0.5)])
+        case .pentagon: regular(5, rotation: -Double.pi / 2)
+        case .hexagon: regular(6, rotation: 0)
+        case .speechBubble:
+            // A rounded box with a tail at its lower left.
+            let box = CGRect(x: r.minX, y: r.minY + r.height * 0.22, width: r.width, height: r.height * 0.78)
+            let c = min(box.width, box.height) * 0.22
+            p.addRoundedRect(in: box, cornerWidth: c, cornerHeight: c)
+            p.move(to: pt(0.2, 0.7)); p.addLine(to: pt(0.12, 1)); p.addLine(to: pt(0.42, 0.7)); p.closeSubpath()
+        case .burst:
+            for i in 0..<24 {
+                let a = -Double.pi / 2 + Double(i) * Double.pi / 12, rad = i % 2 == 0 ? 0.5 : 0.4
+                let q = pt(0.5 + cos(a) * rad, 0.5 + sin(a) * rad)
+                i == 0 ? p.move(to: q) : p.addLine(to: q)
+            }
+            p.closeSubpath()
+        case .checkmark: poly([(0.04, 0.55), (0.38, 0.9), (0.97, 0.2), (0.84, 0.08), (0.38, 0.62), (0.17, 0.42)])
+        case .cross: poly([(0.36, 0), (0.64, 0), (0.64, 0.36), (1, 0.36), (1, 0.64), (0.64, 0.64), (0.64, 1), (0.36, 1), (0.36, 0.64), (0, 0.64), (0, 0.36), (0.36, 0.36)])
+        case .ring:
+            // Filled with the even-odd rule: the inner circle stays empty.
+            p.addEllipse(in: r)
+            p.addEllipse(in: r.insetBy(dx: r.width * 0.16, dy: r.height * 0.16))
         }
         return p
     }
@@ -174,4 +225,10 @@ enum OverlayRenderer {
         TextBox(text: cue.plainText, fontName: style.fontName, sizeFraction: style.sizeFraction, colorHex: style.colorHex, outlineHex: style.outlineHex,
                 backgroundHex: style.backgroundHex, alignment: style.alignment, centerX: 0.5, centerY: nil, bottomMargin: style.bottomMargin)
     }
+}
+
+/// Where elements sit on the picture, for drawing their handles (the app layer cannot see the renderer itself).
+public enum ElementGeometry {
+    /// The box of an element before its animation moves, scales or turns it: fractions of the picture, from the top-left.
+    public static func baseRect(_ o: TextOverlay, pictureSize: CGSize) -> CGRect? { OverlayRenderer.elementRect(o, size: pictureSize) }
 }

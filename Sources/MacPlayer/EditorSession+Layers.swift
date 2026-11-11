@@ -38,7 +38,17 @@ extension EditorSession {
 
     // MARK: Adding
 
-    func addOverlayVideos(_ urls: [URL]) async {
+    /// The lane asked for when nothing is on it at that time, else the first free one; nil when all are busy.
+    func freeLane(_ wanted: Int?, start: MediaTime, duration: MediaTime) -> Int? {
+        if let w = wanted, w >= 0, w < OverlayClip.laneCount {
+            let end = start + duration
+            if !project.overlayClips.contains(where: { $0.lane == w && $0.start < end && start < $0.end }) { return w }
+        }
+        return OverlayEditor.firstFreeLane(project.overlayClips, start: start, duration: duration)
+    }
+
+    /// Adds videos as layers at `start` (the playhead by default), on `lane` when it is free there, else on the first free one.
+    func addOverlayVideos(_ urls: [URL], at start0: MediaTime? = nil, lane wanted: Int? = nil) async {
         guard isProject else { return }
         guard !project.timeline.isEmpty else { flash(L("Add a video to the timeline first."), error: true); return }
         var last: UUID?
@@ -47,14 +57,15 @@ extension EditorSession {
                 let info = try await MediaProbe.probe(url: url)
                 guard info.hasVideo, info.isExportable, let v = info.primaryVideo else { flash(LF("“%@” has no picture or cannot be used here.", url.lastPathComponent), error: true); continue }
                 let total = project.timelineDuration
-                let start = min(player.currentTime, max(.zero, total - MediaTime(seconds: 0.5)))
+                let start = min(start0 ?? player.currentTime, max(.zero, total - MediaTime(seconds: 0.5)))
                 let length = min(info.duration, total - start)
-                guard let lane = OverlayEditor.firstFreeLane(project.overlayClips, start: start, duration: length) else {
+                guard let lane = freeLane(wanted, start: start, duration: length) else {
                     flash(L("All three layers are busy at this point. Move the playhead or remove a layer."), error: true); continue
                 }
                 let ref = SourceRef(path: url.path, bookmark: Bookmarks.make(url), fingerprint: try? env.fs.fingerprint(url.path), info: info)
                 var made: OverlayClip?
                 edit("Add layer", refreshPreview: false) { p in
+                    MediaBin.add([url.path], to: &p.mediaBin, bookmark: { _ in ref.bookmark })
                     let sid = p.addSource(ref)
                     var t = OverlayTransform(); t.width = 0.3
                     OverlayEditor.apply(.bottomRight, to: &t, outputAspect: outputAspect, layerAspect: Double(v.width) / Double(max(1, v.height)))
@@ -69,9 +80,10 @@ extension EditorSession {
         await loadPlayer(at: player.effectiveTime)
     }
 
-    func addOverlayPicture(_ url: URL) async {
+    /// Adds a picture as a layer for 5 seconds at `start` (the playhead by default), on `lane` when it is free there.
+    func addOverlayPicture(_ url: URL, at start0: MediaTime? = nil, lane wanted: Int? = nil, center: CGPoint? = nil) async {
         guard canEdit else { return }
-        if isPhoto { addLogo(url); return }
+        if isPhoto { addLogo(url, center: center); return }
         guard isProject else { return }
         guard !project.timeline.isEmpty else { flash(L("Add a video to the timeline first."), error: true); return }
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil), let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
@@ -79,24 +91,26 @@ extension EditorSession {
             flash(LF("“%@” cannot be opened.", url.lastPathComponent), error: true); return
         }
         let total = project.timelineDuration
-        let start = min(player.currentTime, max(.zero, total - MediaTime(seconds: 0.5)))
+        let start = min(start0 ?? player.currentTime, max(.zero, total - MediaTime(seconds: 0.5)))
         let length = min(MediaTime(seconds: 5), total - start)
-        guard let lane = OverlayEditor.firstFreeLane(project.overlayClips, start: start, duration: length) else {
+        guard let lane = freeLane(wanted, start: start, duration: length) else {
             flash(L("All three layers are busy at this point. Move the playhead or remove a layer."), error: true); return
         }
         var made: UUID?
         edit("Add layer", refreshPreview: false) { p in
+            MediaBin.add([url.path], to: &p.mediaBin, bookmark: { Bookmarks.make(URL(fileURLWithPath: $0)) })
             var t = OverlayTransform(); t.width = 0.18
             OverlayEditor.apply(.topRight, to: &t, outputAspect: outputAspect, layerAspect: w / h)
+            if let center { t.centerX = Double(center.x); t.centerY = Double(center.y) }
             let c = OverlayClip(name: url.deletingPathExtension().lastPathComponent, kind: .image(path: url.path, bookmark: Bookmarks.make(url)), lane: lane, start: start, duration: length, transform: t)
             p.overlayClips.append(c); made = c.id
         }
-        selectedOverlayID = made; selectedClipIDs = []; activeTool = .layers
+        if let made { select(.layer(made)) }; activeTool = .layers
         await loadPlayer(at: player.effectiveTime)
     }
 
     /// A logo on a photo project: a picture laid over the photo, always shown. The photo itself stays the only photo of the project.
-    func addLogo(_ url: URL) {
+    func addLogo(_ url: URL, center: CGPoint? = nil) {
         guard isPhoto else { return }
         guard !project.sources.isEmpty else { flash(L("Choose the photo of this project first."), error: true); return }
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil), let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
@@ -107,12 +121,13 @@ extension EditorSession {
         edit("Add logo") { p in
             var t = OverlayTransform(); t.width = 0.2
             OverlayEditor.apply(.topRight, to: &t, outputAspect: outputAspect, layerAspect: w / h)
+            if let center { t.centerX = Double(center.x); t.centerY = Double(center.y) }
             let lane = min(OverlayClip.laneCount - 1, p.overlayClips.count)
             let c = OverlayClip(name: url.deletingPathExtension().lastPathComponent, kind: .image(path: url.path, bookmark: Bookmarks.make(url)), lane: lane,
                                 start: .zero, duration: MediaTime(seconds: 200_000), transform: t)
             p.overlayClips.append(c); made = c.id
         }
-        selectedOverlayID = made; activeTool = .layers
+        if let made { select(.layer(made)) }; activeTool = .layers
     }
 
     // MARK: Editing
@@ -166,6 +181,25 @@ extension EditorSession {
 
     /// Changes position, size or opacity at the playhead. A layer with keyframes gets (or updates) one here, as video editors
     /// do; one without keyframes changes its base values.
+    /// The same change on a draft of the project (a drag on the picture, written once at the drop).
+    func setOverlayValue(_ id: UUID, in p: inout Project, _ change: (inout OverlayState) -> Void) {
+        guard let i = p.overlayClips.firstIndex(where: { $0.id == id }) else { return }
+        Self.applyOverlayValue(&p.overlayClips[i], at: player.currentTime, change)
+    }
+
+    static func applyOverlayValue(_ c: inout OverlayClip, at now: MediaTime, _ change: (inout OverlayState) -> Void) {
+        var s = OverlayEditor.editableState(c, at: now)
+        change(&s)
+        if c.keyframes.isEmpty {
+            c.transform.centerX = s.centerX; c.transform.centerY = s.centerY; c.transform.width = s.width; c.transform.opacity = s.opacity; c.transform.rotation = s.rotation
+            c.transform = c.transform.clamped()
+        } else {
+            var clamped = OverlayTransform(); clamped.centerX = s.centerX; clamped.centerY = s.centerY; clamped.width = s.width; clamped.opacity = s.opacity; clamped.rotation = s.rotation
+            clamped = clamped.clamped()
+            OverlayEditor.setKeyframe(&c, at: now - c.start, to: OverlayState(centerX: clamped.centerX, centerY: clamped.centerY, width: clamped.width, opacity: clamped.opacity, rotation: clamped.rotation))
+        }
+    }
+
     func setOverlayValue(_ id: UUID, _ label: String, _ change: @escaping (inout OverlayState) -> Void) {
         let now = player.currentTime
         updateOverlay(id, label, coalesce: "ovval-\(label)") { c in

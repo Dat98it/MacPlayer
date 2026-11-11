@@ -70,9 +70,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     /// `--snapshot <png>`: after a few seconds, writes the main window's own contents to a PNG and quits.
     /// Draws the app's own views, so no screen-recording permission is involved and nothing else on screen is captured.
     private func scheduleSnapshot(to path: String) {
+        // MACPLAYER_OPEN_EXPORT (test runs): the picture is of the export window instead.
+        if env.isSandbox, ProcessInfo.processInfo.environment["MACPLAYER_OPEN_EXPORT"] != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { MainActor.assumeIsolated { self.active?.contentController.showExport() } }
+            // A sheet does not draw itself into an image: its window number is printed, for `screencapture -l` of that window alone.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { MainActor.assumeIsolated { if let n = self.active?.window?.attachedSheet?.windowNumber { print("SHEET_WINDOW \(n)"); fflush(stdout) } } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 9) { exit(0) }
+            return
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + (CommandLine.arguments.contains("--project-demo") ? 12 : 4)) {
             MainActor.assumeIsolated {
-                guard let v = self.active?.window?.contentView, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { exit(2) }
+                let w = self.active?.window
+                guard let v = (w?.attachedSheet ?? w)?.contentView, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { exit(2) }
                 v.cacheDisplay(in: v.bounds, to: rep)
                 try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
                 exit(0)
@@ -451,8 +460,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     @objc func saveVideo(_ sender: Any?) {
         guard let s = activeEditor, s.isProject else { return }
-        s.activeTool = .export
         active?.window?.makeKeyAndOrderFront(nil)
+        if let c = active, c.contentController.workspace != nil { c.contentController.showExport(); return }
         if let c = active, let item = (c.window?.contentViewController as? NSSplitViewController)?.splitViewItems.last, item.isCollapsed { c.toggleInspector() }
     }
 
@@ -466,9 +475,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             Task { await s.relink(to: u) }
             return
         }
-        p.allowedContentTypes = [.movie, .video]
         guard let id = s.project.sources.first(where: { s.missingSourceIDs.contains($0.id) })?.id ?? s.project.sources.first?.id else { return }
-        p.message = LF("Choose the video to use for “%@”.", PathUtil.fileName(of: s.project.source(id)?.path ?? ""))
+        p.allowedContentTypes = s.project.source(id)?.stillOf != nil ? [.image] : [.movie, .video]
+        p.message = LF("Choose the video to use for “%@”.", PathUtil.fileName(of: s.project.source(id)?.mediaPath ?? ""))
         guard p.runModal() == .OK, let u = p.url else { return }
         Task { await s.relinkSource(id, to: u) }
     }
@@ -503,6 +512,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     }
 
     @objc func splitClip(_ sender: Any?) { activeEditor?.splitAtPlayhead() }
+    @objc func duplicateSelected(_ sender: Any?) { activeEditor?.duplicateSelection() }
+    @objc func groupSelected(_ sender: Any?) { activeEditor?.groupCanvas() }
+    @objc func ungroupSelected(_ sender: Any?) { activeEditor?.ungroupCanvas() }
+    @objc func lockSelected(_ sender: Any?) { activeEditor?.toggleLockCanvas() }
 
     /// Files dropped on a window. In a project they are added by its rules; on the list of projects a project file opens; elsewhere
     /// they open as usual.
@@ -515,14 +528,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             let files = urls.filter { !fs.isDirectory($0.path) }
             guard files.count == urls.count else { s.flash(L("Folders cannot be added to a project. Add the files themselves."), error: true); return }
             if s.isProject {
-                if files.allSatisfy({ ImageFiles.isCandidate($0.path) }), files.count == 1 {
-                    let a = NSAlert(); a.messageText = LF("Add “%@” as a layer over the video?", files[0].lastPathComponent)
-                    a.informativeText = L("This is a video project: photos go over the picture as layers (a logo, a watermark).")
-                    a.addButton(withTitle: L("Add as Layer")); a.addButton(withTitle: L("Cancel"))
-                    if a.runModal() == .alertFirstButtonReturn { Task { await s.addOverlayPicture(files[0]) } }
-                    return
-                }
-                Task { await s.addVideos(files) }
+                // Videos and photos go on the main track (a photo as a clip of its own), sounds under it: as if dropped at the end of the timeline.
+                Task { await s.place(files) }
                 return
             }
             // A photo project.
@@ -598,6 +605,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         case #selector(openDocument(_:)): item.title = editing ? L("Open Project…") : L("Open…"); return true
         case #selector(renameCurrentFile(_:)), #selector(trashCurrentFile(_:)), #selector(editCurrentFile(_:)): return s?.role == .viewer && s?.sourceURL != nil
         case #selector(renameCurrentProject(_:)), #selector(trashCurrentProject(_:)), #selector(saveDocument(_:)): return e != nil
+        case #selector(duplicateSelected(_:)): return e != nil && e?.selection != EditSelection.none
+        case #selector(groupSelected(_:)): return (e?.canvasSelection.count ?? 0) > 1
+        case #selector(ungroupSelected(_:)): return e?.canvasHasGroup ?? false
+        case #selector(lockSelected(_:)):
+            item.title = e?.canvasAllLocked == true ? L("Unlock") : L("Lock")
+            return !(e?.canvasSelection.isEmpty ?? true)
         case #selector(undo(_:)): item.title = e?.undoTitle ?? L("Undo"); return e?.history.canUndo ?? false
         case #selector(redo(_:)): item.title = e?.redoTitle ?? L("Redo"); return e?.history.canRedo ?? false
         case #selector(playPause(_:)), #selector(stepBack(_:)), #selector(stepForward(_:)), #selector(skipBack(_:)), #selector(skipForward(_:)):
@@ -675,6 +688,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         add(edit, L("Copy"), #selector(NSText.copy(_:)), "c", target: nil)
         add(edit, L("Paste"), #selector(NSText.paste(_:)), "v", target: nil)
         add(edit, L("Select All"), #selector(NSText.selectAll(_:)), "a", target: nil)
+        edit.addItem(.separator())
+        add(edit, L("Duplicate"), #selector(duplicateSelected(_:)), "d")
+        add(edit, L("Group"), #selector(groupSelected(_:)), "g")
+        add(edit, L("Ungroup"), #selector(ungroupSelected(_:)), "g", [.command, .shift])
+        add(edit, L("Lock"), #selector(lockSelected(_:)), "l")
 
         let play = top(L("Playback"))
         add(play, L("Play / Pause   Space"), #selector(playPause(_:)))

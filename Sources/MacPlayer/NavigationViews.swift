@@ -185,7 +185,7 @@ struct ProjectsView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 200, maximum: 260), spacing: 16)], spacing: 16) {
                 ForEach(list) { e in
                     ProjectCard(entry: e, image: projects.thumbnail(e.projectID), selected: state.selected == e.id)
-                        .onTapGesture(count: 2) { app?.openProject(entry: e) }
+                        .onTapGesture(count: 2) { app?.openProject(entry: e) }.clickable()
                         .simultaneousGesture(TapGesture().onEnded { state.selected = e.id })
                         .contextMenu { menu(e) }
                 }
@@ -285,6 +285,8 @@ struct ProjectCard: View {
 struct EditorHeader: View {
     @ObservedObject var session: EditorSession
     var onBack: () -> Void
+    /// A video project: the Export button at the right.
+    var onExport: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 8) {
@@ -298,8 +300,13 @@ struct EditorHeader: View {
                 .buttonStyle(.borderless).help(L("Rename the project")).accessibilityLabel(L("Rename the project"))
             Spacer(minLength: 8)
             saveStatus
+            if let onExport {
+                Button(action: onExport) { Label(L("Export"), systemImage: "square.and.arrow.up").padding(.horizontal, 6) }
+                    .buttonStyle(.borderedProminent).controlSize(.regular).disabled(session.isPhoto ? session.project.sources.isEmpty : session.project.timeline.isEmpty)
+                    .help(session.isPhoto ? L("Save the edited photo as a new file") : L("Make a video file of the project"))
+            }
         }
-        .padding(.horizontal, 12).padding(.vertical, 5)
+        .padding(.horizontal, 12).padding(.vertical, onExport == nil ? 5 : 6)
         .background(Color(NSColor.windowBackgroundColor))
     }
 

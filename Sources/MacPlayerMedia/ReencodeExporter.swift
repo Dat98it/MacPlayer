@@ -115,11 +115,16 @@ public final class ReencodeExporter: @unchecked Sendable {
         let natural = try await vTrack.load(.naturalSize)
         let transform = try await vTrack.load(.preferredTransform)
         let nominal = (try? await vTrack.load(.nominalFrameRate)) ?? 30
-        let fps = nominal > 0 ? Double(nominal) : 30
+        // A composition sets its own pace (its frame duration). Its track's "nominal" rate is an average over the clips, which a photo clip
+        // (one picture a second) pulls down: a timeline of 30 fps videos and a photo came out at 15 fps.
+        var fps = nominal > 0 ? Double(nominal) : 30
+        if let vc = job.videoComposition, vc.frameDuration.isNumeric, vc.frameDuration.seconds > 0 { fps = 1 / vc.frameDuration.seconds }
 
         // Output size: composition render size if present, else the natural (stored) size. Even numbers only.
         var size = job.videoComposition?.renderSize ?? natural
-        let displayHeight = job.videoComposition == nil ? Self.displaySize(natural, transform).height : size.height
+        // The limit is for the shorter side of the picture as shown (a tall phone video at 720p is 720 × 1280).
+        let shown = job.videoComposition == nil ? Self.displaySize(natural, transform) : size
+        let displayHeight = min(shown.width, shown.height)
         if let limit = job.maxHeight, Int(displayHeight) > limit {
             let scale = Double(limit) / Double(displayHeight)
             size = CGSize(width: size.width * scale, height: size.height * scale)

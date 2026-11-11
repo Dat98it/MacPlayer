@@ -46,7 +46,9 @@ struct NoticeBar: View {
         if let n = session.notice {
             HStack {
                 Image(systemName: n.isError ? "exclamationmark.triangle.fill" : "info.circle.fill").foregroundColor(n.isError ? .orange : .accentColor)
-                Text(n.text).font(.callout).fixedSize(horizontal: false, vertical: true)
+                // Two lines at most (the whole text on hover): a long message asked for its height at the narrowest width and pushed the
+                // picture out of the window (0.11).
+                Text(n.text).font(.callout).lineLimit(2).truncationMode(.tail).help(n.text)
                 Spacer()
                 Button { session.notice = nil } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).accessibilityLabel(L("Dismiss"))
             }

@@ -115,7 +115,7 @@ struct AudioPane: View {
         .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08)))
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(selected ? Color.accentColor : Color.clear, lineWidth: 1.5))
         .contentShape(Rectangle())
-        .onTapGesture { session.selectedSoundID = c.id; Task { await session.player.seek(to: c.start) } }
+        .onTapGesture { session.selectedSoundID = c.id; Task { await session.player.seek(to: c.start) } }.clickable()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(LF("Sound %@, from %@ to %@", c.name, Timecode.format(c.start), Timecode.format(c.end)))
         .contextMenu {
@@ -301,7 +301,7 @@ struct SoundBar: View {
                                 session.updateSound(c.id, "Move sound", coalesce: "move") { $0.start = MediaTime(seconds: t, timescale: 600) }
                             }
                             .onEnded { _ in origin.value = nil; session.endCoalescing() })
-                        .onTapGesture { session.selectedSoundID = c.id }
+                        .onTapGesture { session.selectedSoundID = c.id }.clickable()
                         .help(c.name)
                         .accessibilityHidden(true)
                 }

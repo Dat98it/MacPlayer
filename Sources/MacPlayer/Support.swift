@@ -38,6 +38,7 @@ final class AppEnvironment {
         if sandbox == nil { LegacyMigration.run(newSupport: base) }
         Stabilizer.cacheFolder = base.appendingPathComponent("Stabilization", isDirectory: true)
         NoiseReducer.cacheFolder = base.appendingPathComponent("Denoised", isDirectory: true)
+        StillClip.cacheFolder = base.appendingPathComponent("Stills", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         prefs = AppPreferences(store: sandbox == nil ? DefaultsStore() : MemoryStore())
         // Development aid (sandbox only): start with a given layout, as if it had been chosen in an earlier run.

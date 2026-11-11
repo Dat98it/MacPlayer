@@ -32,13 +32,13 @@ struct PicturePane: View {
         return ToolCard(title: L("Crop"), icon: "crop", onReset: l.crop.isFull ? nil : { session.photoCropRatio = nil; session.edit("Reset crop") { $0.activeLook.crop = .full } }) {
             Toggle(L("Adjust on the picture"), isOn: $session.photoCropAdjusting)
             Text(session.photoCropAdjusting ? L("Drag the corners or edges of the frame on the picture, or drag inside it to move it. Go to another tool to see the result.")
-                                            : L("The picture shows the result of the crop."))
+                                            : L("Tick it (or choose a shape below) to drag the crop frame on the picture."))
                 .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 52), spacing: 6)], spacing: 6) {
                 ForEach(Self.photoShapes, id: \.0) { name, ratio in
                     let value: Double? = ratio == -1 ? session.photoShownAspect : ratio
                     let selected = value == nil ? locked == nil : (locked != nil && abs((locked ?? 0) - (value ?? 0)) < 1e-6)
-                    Button(name == "Free" ? L("Free") : (name == "Original" ? L("Original") : name)) { session.setPhotoCropShape(value) }
+                    Button(name == "Free" ? L("Free") : (name == "Original" ? L("Original") : name)) { session.setPhotoCropShape(value); session.photoCropAdjusting = true }
                         .buttonStyle(.bordered).controlSize(.small).tint(selected ? .accentColor : nil)
                         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
                 }
@@ -172,12 +172,16 @@ struct PicturePane: View {
                 }
                 GroupBox(L("Canvas")) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Picker(L("Shape"), selection: look("Canvas", { $0.canvas }, { $0.canvas = $1 })) {
+                        // A video project has one frame for the whole video: changed here, it changes for every clip (the export takes it from the first).
+                        Picker(L("Shape"), selection: session.isProject ? Binding(get: { session.project.frameShape }, set: { v in session.edit("Frame shape") { $0.setFrame(v, fill: $0.frameFill) } })
+                                                                         : look("Canvas", { $0.canvas }, { $0.canvas = $1 })) {
                             Text(session.isPhoto ? L("Same as photo") : L("Same as video")).tag(CanvasPreset.source)
                             Text("16:9").tag(CanvasPreset.landscape16x9); Text("9:16").tag(CanvasPreset.portrait9x16)
-                            Text("1:1").tag(CanvasPreset.square1x1); Text("4:3").tag(CanvasPreset.standard4x3)
+                            Text("1:1").tag(CanvasPreset.square1x1); Text("4:5").tag(CanvasPreset.portrait4x5); Text("4:3").tag(CanvasPreset.standard4x3)
                         }
-                        Picker(L("Picture"), selection: look("Fit", { $0.fit }, { $0.fit = $1 })) {
+                        Picker(L("Picture"), selection: session.isProject ? Binding(get: { session.project.frameFill == .fill ? FitMode.fill : FitMode.fit },
+                                                                                     set: { v in session.edit("Frame fill") { $0.setFrame($0.frameShape, fill: v == .fill ? .fill : ($0.frameFill == .blurredBars ? .blurredBars : .fit)) } })
+                                                                    : look("Fit", { $0.fit }, { $0.fit = $1 })) {
                             Text(L("Fit (black bars)")).tag(FitMode.fit); Text(L("Fill (crop edges)")).tag(FitMode.fill)
                         }.pickerStyle(.menu)
                         if let size = session.info?.primaryVideo {

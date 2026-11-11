@@ -73,7 +73,7 @@ public struct ExportOptions: Codable, Equatable, Sendable {
         if mode == .fast { return srcRate / 8 }
         let v = source.primaryVideo
         var w = Double(v?.width ?? 1920), h = Double(v?.height ?? 1080)
-        if let limit = resolution.maxHeight, h > Double(limit) { w *= Double(limit) / h; h = Double(limit) }
+        if let limit = resolution.maxHeight, min(w, h) > Double(limit) { let k = Double(limit) / min(w, h); w *= k; h *= k }     // the shorter side (0.14)
         let fps = v?.frameRate?.framesPerSecond ?? 30
         let video = quality.videoBitrate(width: w, height: h, fps: fps, hevc: codec == .hevc,
                                          source: v.map { QualityLevel.SourceVideo(bitrate: $0.bitrate ?? 0, pixels: Double($0.width * $0.height), isHEVC: $0.codec == "hvc1" || $0.codec == "hev1") })
@@ -101,7 +101,7 @@ public struct ExportOptions: Codable, Equatable, Sendable {
             out.append(.fastCutKeepsLeadIn)
             if container.fileExtension != source.fileExtension, !(source.fileExtension == "m4v" || container == .m4v) { out.append(.containerChange(from: source.fileExtension, to: container.fileExtension)) }
         } else {
-            if let limit = resolution.maxHeight, v.height < limit, resolution != .source { out.append(.noUpscale) }
+            if let limit = resolution.maxHeight, min(v.width, v.height) < limit, resolution != .source { out.append(.noUpscale) }
             if v.isHDR { out.append(.hdrKept) }
             if v.dolbyVision == true { out.append(.dolbyVisionMayBeLost) }
             if v.isVariableFrameRate { out.append(.variableFrameRate) }

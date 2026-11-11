@@ -60,6 +60,33 @@ import MacPlayerCore
         #expect(px(spin, 3, 3).b > 200, "the corners are already the new picture when the old one has shrunk and turned")
     }
 
+    @Test func aPreviewTakesANewTransitionKindWithoutBeingBuiltAgain() {
+        func buffer(_ image: CIImage) -> CVPixelBuffer {
+            var pb: CVPixelBuffer?
+            CVPixelBufferCreate(nil, 200, 100, kCVPixelFormatType_32BGRA, nil, &pb)
+            ctx.render(image, to: pb!)
+            return pb!
+        }
+        let red = buffer(solid(1, 0, 0)), blue = buffer(solid(0, 0, 1))
+        let key = UUID()
+        let plan = PiecePlan(look: VideoLook(), trackOrientation: .up, storedSize: PixelSize(width: 200, height: 100))
+        var incoming = plan; incoming.liveKey = key
+        let draw = TransitionDraw(trackID: 2, plan: incoming, kind: .dipBlack, start: 0, end: 1)
+        func centre() -> (r: Int, g: Int, b: Int) {
+            px(RecipeCompositor.render(source: red, plan: plan, layer: OverlayLayer(overlays: [], cues: [], style: SubtitleStyle()), time: 0.5,
+                                       outputSize: CGSize(width: 200, height: 100), second: (blue, draw)), 100, 50)
+        }
+        TransitionLive.clear()
+        let built = centre()
+        #expect(built.r < 30 && built.b < 30, "half way through a dip to black, as built: \(built)")
+        TransitionLive.set(.dissolve, for: key)
+        let live = centre()
+        #expect(live.r > 60 && live.b > 60, "the new kind is drawn at once: half red, half blue: \(live)")
+        TransitionLive.clear()
+        let cleared = centre()
+        #expect(cleared.r < 30 && cleared.b < 30, "cleared: back to what the preview was built with: \(cleared)")
+    }
+
     // MARK: Turning
 
     private func render(layer spec: LayerSpec, image: CIImage, over base: CIImage) -> CIImage {

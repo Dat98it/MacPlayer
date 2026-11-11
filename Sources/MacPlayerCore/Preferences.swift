@@ -59,6 +59,8 @@ public final class AppPreferences {
 
     /// The folder the last project was saved in: the "where to save" question starts there (it is always asked).
     public var lastProjectFolder: String? { get { string("lastProjectFolder") } set { store.set(newValue, forKey: "lastProjectFolder") } }
+    /// The folder the library's Import button last opened (0.9).
+    public var lastMediaFolder: String? { get { string("lastMediaFolder") } set { store.set(newValue, forKey: "lastMediaFolder") } }
     /// How the list of projects is filtered and sorted.
     public var projectFilter: ProjectFilter {
         get { string("projectFilter").flatMap(ProjectFilter.init) ?? .all }

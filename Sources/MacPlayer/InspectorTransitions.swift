@@ -64,7 +64,7 @@ struct TransitionsPane: View {
     private func tile(_ kind: TransitionKind?, current: ClipTransition?) -> some View {
         let selected = kind == current?.kind
         return Button {
-            session.edit(kind.map { LF("Transition %@", Self.name($0)) } ?? "Remove transition") { $0.activeLook.transitionIn = kind.map { ClipTransition(kind: $0, duration: current?.duration ?? 0.8) } }
+            session.chooseTransition(kind, label: kind.map { LF("Transition %@", Self.name($0)) } ?? "Remove transition")
         } label: {
             VStack(spacing: 3) {
                 Color.clear.aspectRatio(16.0 / 9.0, contentMode: .fit)
@@ -77,19 +77,32 @@ struct TransitionsPane: View {
                 Text(kind.map(Self.name) ?? L("None")).font(.system(size: 10, weight: selected ? .semibold : .regular)).lineLimit(1)
             }
         }
-        .buttonStyle(.plain).accessibilityLabel(kind.map(Self.name) ?? L("None")).accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .buttonStyle(.plain)
+        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { if SidebarProbe.enabled { SidebarProbe.tileFrames[kind.map(Self.name) ?? L("None")] = $0 } }
+        .accessibilityLabel(kind.map(Self.name) ?? L("None")).accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 
+    /// The real last frame of the clip before and first frame of this one, read quickly, with each transition drawn half way (off the
+    /// main thread). Kept, so coming back to this tool shows them at once.
     private func loadTiles() async {
         guard let i = index, i > 0 else { return }
         let clips = session.project.timeline, prev = clips[i - 1], cur = clips[i]
         guard let pu = session.sourceURLs[prev.sourceID], let cu = session.sourceURLs[cur.sourceID] else { return }
         let size = CGSize(width: 180, height: 120)
         let tA = max(prev.sourceStart, prev.sourceEnd - MediaTime(seconds: 0.2)), tB = min(cur.sourceEnd, cur.sourceStart + MediaTime(seconds: 0.2))
-        guard let a = try? await FrameGrabber.image(url: pu, at: tA, accuracy: .nearest, maxSize: size),
-              let b = try? await FrameGrabber.image(url: cu, at: tB, accuracy: .nearest, maxSize: size) else { return }
-        var out: [TransitionKind: NSImage] = [:]
-        for k in TransitionKind.allCases { if let cg = EffectPreview.transition(from: a, to: b, kind: k, progress: 0.5) { out[k] = NSImage(cgImage: cg, size: .zero) } }
-        tiles.value = out
+        let key = "transitions|\(pu.path)|\(Int(tA.seconds * 10))|\(cu.path)|\(Int(tB.seconds * 10))"
+        if let cached = ToolFrameCache.shared.tiles[key] {
+            tiles.value = Dictionary(uniqueKeysWithValues: TransitionKind.allCases.compactMap { k in cached[k.rawValue].map { (k, $0) } })
+            return
+        }
+        async let fa = try? FrameGrabber.image(url: pu, at: tA, accuracy: .nearest, maxSize: size)
+        async let fb = try? FrameGrabber.image(url: cu, at: tB, accuracy: .nearest, maxSize: size)
+        guard let a = await fa, let b = await fb, !Task.isCancelled else { return }
+        final class Pair: @unchecked Sendable { let a: CGImage, b: CGImage; init(_ a: CGImage, _ b: CGImage) { self.a = a; self.b = b } }
+        let pair = Pair(a, b)
+        let drawn = await EditorSession.drawOffMain(TransitionKind.allCases) { k in EffectPreview.transition(from: pair.a, to: pair.b, kind: k, progress: 0.5) }
+        if Task.isCancelled { return }
+        tiles.value = drawn
+        ToolFrameCache.shared.rememberTiles(Dictionary(uniqueKeysWithValues: drawn.map { ($0.key.rawValue, $0.value) }), for: key)
     }
 }

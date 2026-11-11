@@ -37,6 +37,8 @@ final class ContentViewController: NSViewController {
     var playlists: PlaylistModel?
     private var bag = Set<AnyCancellable>()
     private var timelineHeight: NSLayoutConstraint?
+    /// The video editor's panels (library, picture, properties, timeline), while a video project is open.
+    private(set) var workspace: EditorWorkspace?
 
     override func loadView() { let v = NSView(); v.wantsLayer = true; v.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor; view = v }
 
@@ -51,6 +53,7 @@ final class ContentViewController: NSViewController {
         view.subviews.forEach { $0.removeFromSuperview() }
         bag.removeAll()
         timeline = nil; host = nil; photoHost = nil; header = nil
+        if let w = workspace { w.split.view.removeFromSuperview(); w.split.removeFromParent(); workspace = nil }
         guard let s = session else {
             let root: AnyView
             switch route {
@@ -71,6 +74,7 @@ final class ContentViewController: NSViewController {
             return
         }
         if s.isPhoto { buildPhoto(s); return }
+        if s.isProject { buildWorkspace(s); return }
         let ph = PlayerHostView(player: s.player.player)
         ph.onDropFiles = { [weak self] in self?.onDropFiles($0) }
         host = ph
@@ -86,6 +90,7 @@ final class ContentViewController: NSViewController {
         // (Dropping the natural height too would let the title bar swallow the picture's height.)
         header.sizingOptions = [.minSize, .intrinsicContentSize]; notice.sizingOptions = [.minSize, .intrinsicContentSize]; transport.sizingOptions = [.minSize, .intrinsicContentSize]
         for v in [header, ph, notice, transport, tl] { v.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(v) }
+        keepPictureRoom(picture: ph, notice: notice)
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.topAnchor), header.leadingAnchor.constraint(equalTo: view.leadingAnchor), header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             ph.topAnchor.constraint(equalTo: header.bottomAnchor), ph.leadingAnchor.constraint(equalTo: view.leadingAnchor), ph.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -108,10 +113,79 @@ final class ContentViewController: NSViewController {
         }
     }
 
+    /// A video project: the library on the left, the picture in the middle, the properties on the right, the timeline across the bottom.
+    private func buildWorkspace(_ s: EditorSession) {
+        let ph = PlayerHostView(player: s.player.player)
+        ph.onDropFiles = { [weak s] urls in
+            // Files dropped on the picture go into the project, as if dropped at the end of the timeline.
+            guard let s else { return }
+            Task { await s.place(urls) }
+        }
+        host = ph
+        ph.manipulator.attach(s)
+        ph.elements.attach(s)
+        ph.onDropPayload = { [weak s] item, at in s?.applyDropped(item, position: at) }
+        ph.onDropPictures = { [weak s] urls, at in
+            guard let s else { return }
+            // Over the video at the playhead, centred where dropped; with no video yet, as clips on the main track.
+            Task { if s.project.timeline.isEmpty { await s.place(urls) } else { for u in urls { await s.addOverlayPicture(u, center: at) } } }
+        }
+        ph.fallbackAspect = { [weak s] in s?.outputAspect ?? 16.0 / 9 }
+        let header = makeHeader(s)
+        let notice = NSHostingView(rootView: NoticeBar(session: s))
+        let transport = NSHostingView(rootView: TransportBar(session: s, player: s.player))
+        header.sizingOptions = [.minSize, .intrinsicContentSize]; notice.sizingOptions = [.minSize, .intrinsicContentSize]; transport.sizingOptions = [.minSize, .intrinsicContentSize]
+        let w = EditorWorkspace(session: s, centreViews: [ph, notice, transport])
+        keepPictureRoom(picture: ph, notice: notice)
+        workspace = w
+        timeline = w.timeline
+        addChild(w.split)
+        let body = w.split.view
+        guard let bar = w.toolbar, let tlView = w.timeline else { return }
+        bar.sizingOptions = [.minSize, .intrinsicContentSize]
+        let line = NSBox(); line.boxType = .separator
+        for v in [header, body, line, bar, tlView] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(v) }
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: view.topAnchor), header.leadingAnchor.constraint(equalTo: view.leadingAnchor), header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            body.topAnchor.constraint(equalTo: header.bottomAnchor), body.leadingAnchor.constraint(equalTo: view.leadingAnchor), body.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            line.topAnchor.constraint(equalTo: body.bottomAnchor), line.leadingAnchor.constraint(equalTo: view.leadingAnchor), line.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bar.topAnchor.constraint(equalTo: line.bottomAnchor), bar.leadingAnchor.constraint(equalTo: view.leadingAnchor), bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tlView.topAnchor.constraint(equalTo: bar.bottomAnchor), tlView.leadingAnchor.constraint(equalTo: view.leadingAnchor), tlView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tlView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            tlView.heightAnchor.constraint(equalToConstant: TimelineView.projectHeight),
+            body.heightAnchor.constraint(greaterThanOrEqualToConstant: 240),
+        ])
+        s.player.$failure.receive(on: DispatchQueue.main).sink { [weak ph] f in ph?.show(message: f) }.store(in: &bag)
+        let empty = NSHostingView(rootView: EmptyVideoProjectView(session: s))
+        empty.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(empty)
+        NSLayoutConstraint.activate([empty.centerXAnchor.constraint(equalTo: ph.centerXAnchor), empty.centerYAnchor.constraint(equalTo: ph.centerYAnchor)])
+    }
+
+    /// The export window, while it is open.
+    private(set) var exportSheet: NSViewController?
+
+    /// Opens the export window (the Export button at the top right, File ▸ Export): the frame for each social network, one quality
+    /// choice, where to save. It is the only place to export from (0.14).
+    func showExport() {
+        guard let s = session, exportSheet == nil else { return }
+        let host = NSHostingController(rootView: ExportSheet(session: s, close: { [weak self] in self?.closeExport() }))
+        host.preferredContentSize = NSSize(width: 580, height: s.isPhoto ? 600 : 680)
+        exportSheet = host
+        presentAsSheet(host)
+    }
+
+    func closeExport() {
+        guard let sheet = exportSheet else { return }
+        exportSheet = nil
+        dismiss(sheet)
+    }
+
     private func makeHeader(_ s: EditorSession) -> NSHostingView<AnyView> {
         let v: NSHostingView<AnyView>
         if s.isEditor {
-            v = NSHostingView(rootView: AnyView(EditorHeader(session: s, onBack: { [weak self] in self?.onClose() })))
+            v = NSHostingView(rootView: AnyView(EditorHeader(session: s, onBack: { [weak self] in self?.onClose() },
+                                                             onExport: { [weak self] in self?.showExport() })))
         } else {
             v = NSHostingView(rootView: AnyView(VideoHeader(session: s, onClose: { [weak self] in self?.onClose() }, onRename: { [weak self] in self?.onRenameFile() },
                                                             onTrash: { [weak self] in self?.onTrashFile() }, onEdit: { [weak self] in self?.onEditFile() })))
@@ -120,17 +194,43 @@ final class ContentViewController: NSViewController {
         return v
     }
 
-    /// A photo has no transport and no timeline: the picture, and under it the bar with next/previous, slideshow and zoom.
+    /// A photo has no transport and no timeline: the picture, and under it the bar with next/previous, slideshow and zoom. A photo project
+    /// puts the library on its left and the properties on its right, like the video editor.
     private func buildPhoto(_ s: EditorSession) {
         let ph = PhotoHostView(session: s)
         ph.onDropFiles = { [weak self] in self?.onDropFiles($0) }
+        ph.onDropPayload = { [weak s] item, at in s?.applyDropped(item, position: at) }
+        ph.onDropPictures = { [weak s] urls, at in
+            guard let s else { return }
+            // The first picture of an empty photo project becomes its photo; the others go on as logos where they are dropped.
+            Task { if s.project.sources.isEmpty { await s.place(urls) } else { for u in urls { s.addLogo(u, center: at) } } }
+        }
         photoHost = ph
         let header = makeHeader(s)
         let notice = NSHostingView(rootView: NoticeBar(session: s))
         let model = playlists ?? (NSApp.delegate as! AppDelegate).playlists
         let bar = NSHostingView(rootView: PhotoBar(session: s, playlists: model, actualZoom: { [weak ph] in ph?.actualPixelsZoom() ?? 1 }))
         header.sizingOptions = [.minSize, .intrinsicContentSize]; notice.sizingOptions = [.minSize, .intrinsicContentSize]; bar.sizingOptions = [.minSize, .intrinsicContentSize]
+        if s.isEditor {
+            let w = EditorWorkspace(session: s, centreViews: [ph, notice, bar])
+            keepPictureRoom(picture: ph, notice: notice)
+            workspace = w
+            addChild(w.split)
+            let body = w.split.view
+            for v in [header, body] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(v) }
+            NSLayoutConstraint.activate([
+                header.topAnchor.constraint(equalTo: view.topAnchor), header.leadingAnchor.constraint(equalTo: view.leadingAnchor), header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                body.topAnchor.constraint(equalTo: header.bottomAnchor), body.leadingAnchor.constraint(equalTo: view.leadingAnchor), body.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                body.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            ])
+            let empty = NSHostingView(rootView: EmptyPhotoProjectView(session: s))
+            empty.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(empty)
+            NSLayoutConstraint.activate([empty.centerXAnchor.constraint(equalTo: ph.centerXAnchor), empty.centerYAnchor.constraint(equalTo: ph.centerYAnchor)])
+            return
+        }
         for v in [header, ph, notice, bar] { v.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(v) }
+        keepPictureRoom(picture: ph, notice: notice)
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.topAnchor), header.leadingAnchor.constraint(equalTo: view.leadingAnchor), header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             ph.topAnchor.constraint(equalTo: header.bottomAnchor), ph.leadingAnchor.constraint(equalTo: view.leadingAnchor), ph.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -144,6 +244,14 @@ final class ContentViewController: NSViewController {
             view.addSubview(empty)
             NSLayoutConstraint.activate([empty.centerXAnchor.constraint(equalTo: ph.centerXAnchor), empty.centerYAnchor.constraint(equalTo: ph.centerYAnchor)])
         }
+    }
+
+    /// The message bar never takes the picture's room: it is kept short, and the picture keeps a height of its own first.
+    private func keepPictureRoom(picture: NSView, notice: NSView) {
+        let cap = notice.heightAnchor.constraint(lessThanOrEqualToConstant: 64); cap.priority = .required
+        let room = picture.heightAnchor.constraint(greaterThanOrEqualToConstant: 160); room.priority = NSLayoutConstraint.Priority(rawValue: 760)
+        notice.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        NSLayoutConstraint.activate([cap, room])
     }
 
     private func pin(_ v: NSView, to parent: NSView) {
@@ -275,7 +383,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
     private func applyPanels() {
         switch route {
         case .playlist: setPanels(sidebarHidden: prefs.playlistPanelHidden, toolsHidden: true)
-        case .editor: setPanels(sidebarHidden: true, toolsHidden: session == nil ? true : prefs.toolsPanelHidden)
+        // An editor (video or photo project) has its own panels (library, properties) inside the window's middle.
+        case .editor: setPanels(sidebarHidden: true, toolsHidden: true)
         case .home, .projects: setPanels(sidebarHidden: true, toolsHidden: true)
         }
     }
@@ -309,7 +418,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
         fromPlaylist = fp
         route = s.isEditor ? .editor : .playlist
         content.show(route, session: s)
-        inspector.rootView = s.isEditor ? AnyView(InspectorView(session: s)) : AnyView(EmptyView())
+        inspector.rootView = AnyView(EmptyView())      // editors have their own panels (EditorWorkspace)
         applyPanels()
         updateTitle()
         s.player.onEnded = { [weak self] in
@@ -443,7 +552,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
 
     /// What the window and its picture look like, for the full-screen check and the tests.
     var contentController: ContentViewController { content }
-    var panelsCollapsed: (sidebar: Bool, inspector: Bool) { (sidebarItem.isCollapsed, inspectorItem.isCollapsed) }
+    var panelsCollapsed: (sidebar: Bool, inspector: Bool) { (sidebarItem.isCollapsed, content.workspace?.propertiesHidden ?? inspectorItem.isCollapsed) }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard let s = session, s.isEditor else { return true }
@@ -533,6 +642,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
 
     func toggleInspector() {
         guard route == .editor, session != nil else { return }
+        if let w = content.workspace { w.toggleProperties(); return }
         let hide = !inspectorItem.isCollapsed
         prefs.toolsPanelHidden = hide
         inspectorItem.animator().isCollapsed = hide
@@ -550,6 +660,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
 
     /// A photo: when watching, the arrows go to the next and previous picture of the playlist and Space starts or stops the slideshow;
     /// the rest is zoom.
+    /// Keys for what is selected on the picture (text, shapes, stickers, layers, logos): ⌫ deletes, the arrows move it by one point
+    /// (⇧: ten), Esc selects nothing. With nothing selected on the picture the keys keep their usual meaning (the arrows skip in time).
+    private func handleCanvasKey(_ e: NSEvent, _ s: EditorSession) -> Bool {
+        guard s.isEditor, !s.canvasSelection.isEmpty else {
+            if s.isPhoto, s.isEditor, e.keyCode == 51 || e.keyCode == 117, s.selection != .none { s.deleteSelection(); return true }
+            return false
+        }
+        let pic = s.isPhoto ? (content.photoHost?.pictureRect() ?? .zero) : (content.host?.displayedPicture() ?? .zero)
+        let step = e.modifierFlags.contains(.shift) ? 10.0 : 1.0
+        let dx = step / Double(max(1, pic.width)), dy = step / Double(max(1, pic.height))
+        switch e.keyCode {
+        case 51, 117: s.deleteSelection(); return true                     // ⌫ ⌦
+        case 53: s.select(.none); return true                               // Esc
+        case 123: s.nudgeCanvas(dx: -dx, dy: 0); return true                // ←
+        case 124: s.nudgeCanvas(dx: dx, dy: 0); return true                 // →
+        case 126: s.nudgeCanvas(dx: 0, dy: -dy); return true                // ↑
+        case 125: s.nudgeCanvas(dx: 0, dy: dy); return true                 // ↓
+        default: return false
+        }
+    }
+
+    /// For the self-test: a key as the window would hand it to the picture.
+    func testKey(_ e: NSEvent) -> Bool { handleKey(e) }
+
     private func handlePhotoKey(_ e: NSEvent, _ s: EditorSession, _ ch: String) -> Bool {
         if s.role == .viewer {
             switch e.keyCode {
@@ -574,6 +708,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
         let prefs = AppEnvironment.shared.prefs
         let shift = e.modifierFlags.contains(.shift)
         guard let ch = e.charactersIgnoringModifiers else { return false }
+        if handleCanvasKey(e, s) { return true }
         if s.isPhoto { return handlePhotoKey(e, s, ch) }
         switch e.keyCode {
         case 123: s.player.skip(seconds: -(shift ? prefs.bigSkipSeconds : prefs.skipSeconds)); return true // ←
@@ -581,10 +716,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
         case 115: Task { await s.player.seek(to: .zero) }; return true                                      // Home
         case 119: Task { await s.player.seek(to: s.duration) }; return true                                 // End
         case 51, 117:                                                                                         // Delete
-            guard s.isProject else { return false }
-            if let o = s.selectedOverlayID { s.deleteOverlay(o); return true }
-            if !s.selectedClipIDs.isEmpty { s.deleteTimelineClips(s.selectedClipIDs); return true }
-            return false
+            guard s.isProject, s.selection != .none else { return false }
+            s.deleteSelection(); return true
+        case 53:                                                                                              // Esc: nothing selected
+            guard s.isProject, s.selection != .none else { return false }
+            s.select(.none); return true
         default: break
         }
         switch ch.lowercased() {

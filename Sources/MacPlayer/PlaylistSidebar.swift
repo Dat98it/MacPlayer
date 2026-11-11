@@ -121,7 +121,7 @@ struct PlaylistSidebar: View {
                 ForEach(urls, id: \.self) { u in
                     Label(u.lastPathComponent, systemImage: ProjectFile.isProject(u) ? "doc.text" : "film").lineLimit(1)
                         .help(u.path)
-                        .onTapGesture(count: 2) { openURL(u) }
+                        .onTapGesture(count: 2) { openURL(u) }.clickable()
                         .accessibilityAddTraits(.isButton)
                 }
             }
@@ -460,7 +460,7 @@ struct PlaylistSidebar: View {
         return rowContent(item, p, indent: indent, showTick: picked)
             .padding(2)
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor, lineWidth: picked ? 2 : 0))
-            .onTapGesture(count: 2) { model.play(item.id, in: p.id) }
+            .onTapGesture(count: 2) { model.play(item.id, in: p.id) }.clickable()
             .tag(item.id)
     }
 
@@ -661,7 +661,7 @@ struct PlaylistSidebar: View {
             // so each click chooses, and the second click of a double click plays the file.
             .onTapGesture {
                 if (NSApp.currentEvent?.clickCount ?? 1) >= 2 { model.play(item.id, in: p.id) } else { choose(item, order: order) }
-            }
+            }.clickable()
             .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named("macplayer.sidebar")) }) { if SidebarProbe.enabled { SidebarProbe.rowFrames[item.id] = $0 } }
             .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
@@ -700,7 +700,7 @@ struct PlaylistSidebar: View {
         .padding(.leading, CGFloat(r.depth) * 14 + 10).padding(.trailing, 10)
         .padding(.vertical, 4)
         .contentShape(Rectangle())
-        .onTapGesture { if !searching { model.toggleFolder(r.path, in: p.id) } }
+        .onTapGesture { if !searching { model.toggleFolder(r.path, in: p.id) } }.clickable()
         .help(r.path)
         .contextMenu {
             Button(r.isExpanded ? L("Close Folder") : L("Open Folder")) { model.toggleFolder(r.path, in: p.id) }.disabled(searching)
@@ -898,6 +898,8 @@ enum SidebarProbe {
     static var enabled = false
     static var rowFrames: [UUID: CGRect] = [:]
     static var chosen: Set<UUID> = []
+    /// Where each tool tile (filter, transition) is in its window, by its name, for the self-test's clicks.
+    static var tileFrames: [String: CGRect] = [:]
 }
 
 /// Which of ⌘ and ⇧ were held when the mouse was last pressed. A tap is reported a moment after the click, when the keys may be gone
@@ -929,9 +931,9 @@ private struct CellClicks: ViewModifier {
     let choose: () -> Void
     func body(content: Content) -> some View {
         if inTree {
-            content.onTapGesture { if (NSApp.currentEvent?.clickCount ?? 1) >= 2 { play() } else { choose() } }
+            content.onTapGesture { if (NSApp.currentEvent?.clickCount ?? 1) >= 2 { play() } else { choose() } }.clickable()
         } else {
-            content.onTapGesture(count: 2) { play() }.onTapGesture { choose() }
+            content.onTapGesture(count: 2) { play() }.onTapGesture { choose() }.clickable()
         }
     }
 }

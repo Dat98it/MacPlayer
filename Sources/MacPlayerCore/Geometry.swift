@@ -18,16 +18,20 @@ public enum RenderGeometry {
 
     /// Output frame size: the canvas (if one is chosen) built from the edited size's shorter side, or the edited
     /// size itself; scaled down to `maxHeight` when given (never up); always even, as video encoders require.
-    public static func outputSize(source: PixelSize, look: VideoLook, maxHeight: Int? = nil) -> PixelSize {
+    ///
+    /// `limitsShortSide`: the limit is for the shorter side (an export: "1080p" for a tall 9:16 video is 1080 × 1920, as every phone and social
+    /// network means it; 0.14). Without it the height is limited (the preview, which stays light).
+    public static func outputSize(source: PixelSize, look: VideoLook, maxHeight: Int? = nil, limitsShortSide: Bool = false) -> PixelSize {
         let edited = editedSize(source: source, look: look)
         var w = Double(edited.width), h = Double(edited.height)
         if let aspect = look.canvas.aspect {
             let short = Double(min(edited.width, edited.height))
             if aspect >= 1 { w = short * aspect; h = short } else { w = short; h = short / aspect }
         }
-        if let limit = maxHeight, h > Double(limit) {
-            let k = Double(limit) / h
-            w *= k; h = Double(limit)
+        let measured = limitsShortSide ? min(w, h) : h
+        if let limit = maxHeight, measured > Double(limit) {
+            let k = Double(limit) / measured
+            w *= k; h *= k
         }
         return PixelSize(width: even(w), height: even(h))
     }
