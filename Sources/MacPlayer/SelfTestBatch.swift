@@ -61,16 +61,16 @@ extension SelfTest {
         do { try app.performBatchRename(paths: [path("Trip/Day 1/Day 01.mp4")], rule: taken); check(false, "a taken name is refused") }
         catch { check((error as? RenameError) == .exists && fm.fileExists(atPath: path("Trip/Day 1/Day 01.mp4")) && fm.fileExists(atPath: path("Trip/Day 1/Day 02.mp4")), "a name another file has is refused and nothing is overwritten") }
 
-        // A file that is open with unsaved edits is left out; the others still go.
+        // A file that an export is reading is left out; the others still go. (Watching a file never blocks it: there is nothing to save.)
         let wc = MainWindowController(playlists: model); app.adopt(wc)
         if let s = try? await EditorSession.open(url: URL(fileURLWithPath: path("Misc/d.mp4"))) {
             wc.setSession(s, fromPlaylist: false)
-            s.addClipFromInOut()
+            check(app.reasonBusy(path("Misc/d.mp4")) == nil, "a video that is only being watched is free to rename")
             var pre = BatchRenameRule(); pre.mode = .prefixSuffix; pre.prefix = "x-"
-            _ = try? app.performBatchRename(paths: [path("Misc/d.mp4"), path("e.mp4")], rule: pre)
-            check(fm.fileExists(atPath: path("Misc/d.mp4")) && fm.fileExists(atPath: path("x-e.mp4")), "a video that is open with unsaved edits is left out, the other file is renamed")
+            _ = try? app.performBatchRename(paths: [path("e.mp4")], rule: pre)
+            check(fm.fileExists(atPath: path("x-e.mp4")), "the other file is renamed")
             wc.closeVideo(confirm: { _ in true })
-        } else { check(false, "open a video to keep busy") }
+        } else { check(false, "open a video") }
         wc.window?.orderOut(nil)
 
         // Moving several files to the Trash; one the Trash refuses does not stop the others.

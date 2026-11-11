@@ -19,9 +19,10 @@ struct AudioPane: View {
                 soundsCard
                 voiceCard
             }
-            if !session.isProject, session.info?.hasAudio == true {
+            if let c = session.timingClip, session.infos[c.sourceID]?.hasAudio == true {
                 ToolCard(title: L("Save the sound alone"), icon: "square.and.arrow.down") {
                     Button(L("Export Audio Only (.m4a)…")) { exportAudio() }
+                    Text(L("The sound of the selected clip, as a new file.")).font(.caption).foregroundColor(.secondary)
                 }
             }
         }
@@ -206,15 +207,16 @@ struct AudioPane: View {
     // MARK: Export audio alone
 
     private func exportAudio() {
-        guard let src = session.sourceURL else { return }
-        let panel = NSSavePanel(); panel.allowedContentTypes = [.mpeg4Audio]; panel.nameFieldStringValue = session.project.name + ".m4a"
+        guard let clip = session.timingClip, let src = session.sourceURLs[clip.sourceID] else { return }
+        let panel = NSSavePanel(); panel.allowedContentTypes = [.mpeg4Audio]; panel.nameFieldStringValue = (clip.name.isEmpty ? session.project.name : clip.name) + ".m4a"
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let span = TimeSpan(start: session.inPoint ?? .zero, end: session.outPoint ?? session.duration)
-        let audio = session.project.activeAudio, env = session.env
+        if let why = OriginalGuard.problem(writing: url.path) { session.flash(why, error: true); return }
+        let span = clip.sourceSpan
+        let audio = clip.audio, env = session.env
         session.flash(L("Exporting audio…"))
         Task {
             do {
-                _ = try await env.saver.saveCopy(sourcePath: src.path, destination: url.path, overwrite: true, estimatedBytes: Int64(span.duration.seconds * 24_000),
+                _ = try await env.saver.saveCopy(sourcePath: src.path, destination: url.path, overwrite: false, estimatedBytes: Int64(span.duration.seconds * 24_000),
                     produce: { temp in try await AudioExporter.export(source: src, span: span, audio: audio, to: URL(fileURLWithPath: temp)) },
                     verify: { temp in
                         let info = try await MediaProbe.probe(url: URL(fileURLWithPath: temp))

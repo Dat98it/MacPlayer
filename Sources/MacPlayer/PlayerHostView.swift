@@ -34,8 +34,12 @@ final class PlayerHostView: NSView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    /// How many times the picture area was laid out (the self-test checks that playing does not keep doing it).
+    static var layouts = 0
+
     override func layout() {
         super.layout()
+        Self.layouts += 1
         let w = bounds.width * zoom, h = bounds.height * zoom
         playerView.frame = CGRect(x: (bounds.width - w) / 2, y: (bounds.height - h) / 2, width: w, height: h)
         message.frame = bounds.insetBy(dx: 40, dy: bounds.height / 2 - 40)

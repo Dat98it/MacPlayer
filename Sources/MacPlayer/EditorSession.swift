@@ -10,35 +10,26 @@ struct Notice: Equatable, Identifiable {
     var isError: Bool
 }
 
-enum ExportScope: Equatable { case whole, inOut, allClips, selectedClips, clipsJoined }
-enum SaveKind: Equatable { case newCopy, replaceOriginal }
-
 struct ExportDraft {
-    var scope: ExportScope = .whole
-    var saveKind: SaveKind = .newCopy
     var options = ExportOptions(mode: .exact)
     var name = ""
     var folder: String?
 }
 
 struct ExportRequest {
-    var scope: ExportScope
-    var saveKind: SaveKind
     var options: ExportOptions
     var folder: String
-    /// File name without extension for one-file exports. nil = source name + the copy suffix.
+    /// File name without extension. nil = the project's name.
     var baseName: String?
     var overwrite = false
 }
 
 enum PlanError: Error, CustomStringConvertible {
-    case noSource, nothingToExport, replaceNotPossible(String), fastNotPossible, projectNeedsExact, missingMedia([String]), issues([BatchIssue])
+    case noSource, nothingToExport, projectNeedsExact, missingMedia([String]), issues([BatchIssue])
     var description: String {
         switch self {
         case .noSource: return L("No video is open.")
-        case .nothingToExport: return L("There is nothing to export. Add clips with I and O first.")
-        case .replaceNotPossible(let why): return why
-        case .fastNotPossible: return L("Fast cut cannot be used with picture, sound, text or subtitle edits. Choose the exact mode.")
+        case .nothingToExport: return L("There is nothing to export. Add a video to the timeline first.")
         case .projectNeedsExact: return L("Joining clips from a timeline needs the exact mode, because the pieces are decoded and written again.")
         case .missingMedia(let names): return LF("These videos are missing: %@. Relink them first (File ▸ Relink Video…).", names.joined(separator: ", "))
         case .issues(let i):
@@ -55,23 +46,39 @@ enum PlanError: Error, CustomStringConvertible {
     }
 }
 
-/// One open video (or project): its edit state, the player, undo history, autosave and every action on them.
+/// Where the edits of a project stand on disk. A project in the editor is written into its file on its own (autosave).
+enum SaveState: Equatable {
+    case saved(Date?)
+    case pending
+    case saving
+    /// The file could not be written; the edits are kept in the recovery copy and saving is tried again.
+    case failed(String)
+    /// The file was changed by someone else since MacPlayer last wrote it: it is left alone until the person decides.
+    case externallyChanged
+}
+
+/// One open thing in a window. As a **viewer** (the playlist side): a video or photo that is only watched, never edited or saved.
+/// As an **editor**: a project file (video or photo) with its undo history, every editing action, and autosave into the file.
 @MainActor
 final class EditorSession: NSObject, ObservableObject {
+    enum Role { case viewer, editor }
+
     let env = AppEnvironment.shared!
     let player = PlayerController()
+    let role: Role
 
     @Published var history: History<Project>
     @Published var info: MediaInfo?
     @Published var sourceURL: URL?
-    @Published var inPoint: MediaTime?
-    @Published var outPoint: MediaTime?
     @Published var selectedClipIDs: Set<UUID> = []
     @Published var notice: Notice?
+    /// The edits are not in the project file yet (they will be, within seconds).
     @Published var isDirty = false
+    @Published var saveState = SaveState.saved(nil)
     @Published private(set) var projectPath: String?
+    /// Set when the project must not be written (it breaks the rules, e.g. a hand-edited file): it opens to look at only.
+    @Published var readOnlyReason: String?
     @Published var peaks: [Float] = []
-    @Published var sourceChangedExternally = false
     /// Every source of the project (project mode has several): where it is now, and what is known about it.
     @Published var sourceURLs: [UUID: URL] = [:]
     @Published var infos: [UUID: MediaInfo] = [:]
@@ -112,18 +119,29 @@ final class EditorSession: NSObject, ObservableObject {
     @Published var activeTool: InspectorTab = ProcessInfo.processInfo.environment["MACPLAYER_START_TAB"].flatMap(InspectorTab.init(rawValue:)) ?? .clips
     /// What the Export tab is set to; kept here so it survives switching tabs.
     @Published var draft = ExportDraft()
-    /// Jobs that replace this session's original; when one succeeds the project starts again from the new file.
-    var pendingReplaceJobs = Set<UUID>()
+    /// Logos of a photo project, read once per file.
+    var photoLogoCache: [String: CIImage] = [:]
 
     var project: Project { history.present }
     var frameRate: FrameRate { info?.frameRateForStepping ?? FrameRate(numerator: 30, denominator: 1) }
-    var isProject: Bool { project.mode == .project }
+    var isEditor: Bool { role == .editor }
+    /// The editor of a video project (timeline, layers, sounds…).
+    var isProject: Bool { role == .editor && project.kind == .video }
+    var canEdit: Bool { role == .editor && readOnlyReason == nil }
     var duration: MediaTime { isProject ? project.timelineDuration : (info?.duration ?? player.duration) }
     /// Sources whose file cannot be found. Their clips are skipped in the preview and block the export.
     var missingSourceIDs: Set<UUID> { Set(project.sources.map(\.id)).subtracting(sourceURLs.keys) }
 
     private var autosave = AutosaveSchedule()
     private var autosaveTimer: Timer?
+    private lazy var writer = ProjectFileWriter(store: env.projectStore)
+    /// When the next try after a failed save is due.
+    private var retryAt: Date?
+    private var retryDelay: TimeInterval = 5
+    /// Set while the project file is being renamed or moved to the Trash: nothing is written meanwhile.
+    var writingPaused = false
+    /// Counts changes, so a save that finishes knows whether newer edits are still waiting.
+    private var editGeneration = 0
     private var previewTask: Task<Void, Never>?
     private var waveformTask: Task<Void, Never>?
     private var positionTimer: Timer?
@@ -131,90 +149,113 @@ final class EditorSession: NSObject, ObservableObject {
 
     // MARK: Opening
 
+    /// A video or photo opened to watch (the playlist side). Nothing about it is ever saved.
     static func open(url: URL) async throws -> EditorSession {
         if ImageFiles.isCandidate(url.path) { return try await openPhoto(url: url) }
         let info = try await MediaProbe.probe(url: url)
         guard info.isPlayable || info.isExportable else { throw MediaProbeError.unreadable(L("This format is not supported on this Mac.")) }
         let fs = AppEnvironment.shared.fs
         let src = SourceRef(path: url.path, bookmark: Bookmarks.make(url), fingerprint: try? fs.fingerprint(url.path), info: info)
-        let project = Project(name: url.deletingPathExtension().lastPathComponent, mode: .quick, sources: [src])
-        let s = EditorSession(project: project, projectPath: nil)
+        let project = Project(name: url.deletingPathExtension().lastPathComponent, kind: .video, sources: [src])
+        let s = EditorSession(project: project, projectPath: nil, role: .viewer)
         await s.attach(url: url, info: info, restorePosition: true)
         return s
     }
 
-    static func openProject(path: String) async throws -> EditorSession {
+    /// A project file opened in the editor. Old files are upgraded on reading; they are written in the new format at the first save,
+    /// after a copy of the old file was kept in the recovery folder.
+    static func openProject(path: String, prepared: Project? = nil, fileSchema: Int = Project.currentSchema) async throws -> EditorSession {
         let env = AppEnvironment.shared!
-        let project = try env.projectStore.load(path: path)
-        let s = EditorSession(project: project, projectPath: path)
-        guard let src = project.sources.first else { throw ProjectError.corrupted(L("The project has no video.")) }
-        if project.mode == .project {
-            await s.resolveSources()
-            await s.loadPlayer(at: project.playhead)
-            s.player.pause()
-            s.selectedClipIDs = project.activeClipID.map { [$0] } ?? []
-            return s
-        }
-        var url = URL(fileURLWithPath: src.path)
-        if !env.fs.exists(url.path), let moved = Bookmarks.resolve(src.bookmark) { url = moved }
-        if !env.fs.exists(url.path) {
-            s.notice = Notice(text: LF(ImageFiles.isCandidate(url.path) ? "The photo “%@” was not found. Use File ▸ Relink Video… to point to it." : "The video “%@” was not found. Use File ▸ Relink Video… to point to it.", url.lastPathComponent), isError: true)
-            s.isDirty = false
-            return s
-        }
-        if ImageFiles.isCandidate(url.path) {
-            try await s.attachPhoto(url: url, info: try PhotoLoader.info(url: url))
-            return s
-        }
-        let info = try await MediaProbe.probe(url: url)
-        await s.attach(url: url, info: info, restorePosition: false)
-        s.player.pause()
-        await s.player.seek(to: project.playhead)
+        var schema = fileSchema
+        var project: Project
+        if let prepared { project = prepared } else { (project, schema) = try env.projectStore.loadDetailed(path: path) }
+        let s = EditorSession(project: project, projectPath: path, role: .editor)
+        s.writer.begin(path: path, expected: try? env.fs.fingerprint(path), fileSchema: schema, projectID: project.id)
+        let broken = ProjectRules.violations(project)
+        if !broken.isEmpty { s.readOnlyReason = L("This project file does not follow the rules of a photo project (one photo). It is opened to look at only and is not changed.") }
+        await s.loadSources(at: project.playhead)
+        if schema < Project.currentSchema || project.pendingQuickUpgrade == true { s.noteUnsaved() }
         return s
     }
 
-    /// A project rebuilt from its crash copy: the edits are back, and it counts as unsaved until the user saves.
-    static func restore(project: Project, savedPath: String?) async -> EditorSession {
+    /// Makes the file of a new project at `path` (never over an existing file), with the video or photo already in it when `media`
+    /// is given, and opens it in the editor. The media file is only read.
+    static func makeProjectFile(kind: ProjectKind, media: URL?, at path: String) async throws -> EditorSession {
         let env = AppEnvironment.shared!
-        let s = EditorSession(project: project, projectPath: savedPath)
-        guard let src = project.sources.first else { return s }
-        if project.mode == .project {
-            await s.resolveSources(); await s.loadPlayer(at: project.playhead); s.player.pause(); s.isDirty = true
-            return s
+        var p = Project(name: PathUtil.stem(of: path), kind: kind)
+        if let url = media {
+            if kind == .photo {
+                let info = try PhotoLoader.info(url: url)
+                p.sources = [SourceRef(path: url.path, bookmark: Bookmarks.make(url), fingerprint: try? env.fs.fingerprint(url.path), info: info)]
+            } else {
+                let info = try await MediaProbe.probe(url: url)
+                guard info.hasVideo else { throw MediaProbeError.unreadable(L("This file has no picture.")) }
+                let ref = SourceRef(path: url.path, bookmark: Bookmarks.make(url), fingerprint: try? env.fs.fingerprint(url.path), info: info)
+                p.sources = [ref]
+                let clip = TimelineClip(sourceID: ref.id, sourceStart: .zero, sourceEnd: info.duration, name: url.deletingPathExtension().lastPathComponent)
+                p.timeline = [clip]; p.activeClipID = clip.id
+            }
         }
-        var url = URL(fileURLWithPath: src.path)
-        if !env.fs.exists(url.path), let moved = Bookmarks.resolve(src.bookmark) { url = moved }
-        if env.fs.exists(url.path), ImageFiles.isCandidate(url.path), let info = try? PhotoLoader.info(url: url) {
-            try? await s.attachPhoto(url: url, info: info)
-        } else if env.fs.exists(url.path), let info = try? await MediaProbe.probe(url: url) {
-            await s.attach(url: url, info: info, restorePosition: false)
-            s.player.pause()
-            await s.player.seek(to: project.playhead)
-        } else {
-            s.notice = Notice(text: LF(ImageFiles.isCandidate(url.path) ? "The photo “%@” was not found. Use File ▸ Relink Video… to point to it." : "The video “%@” was not found. Use File ▸ Relink Video… to point to it.", url.lastPathComponent), isError: true)
-        }
-        s.isDirty = true
+        try env.projectStore.create(p, at: path)
+        env.projects.register(path: path, opened: true)
+        return try await openProject(path: path)
+    }
+
+    /// A project rebuilt from its crash copy: the edits are back, and they are written into the project file at once.
+    static func restore(project: Project, savedPath: String) async -> EditorSession {
+        let env = AppEnvironment.shared!
+        let s = EditorSession(project: project, projectPath: savedPath, role: .editor)
+        // The file on disk is older than the crash copy, so it is overwritten by the copy (only the project file, never media).
+        s.writer.begin(path: savedPath, expected: nil, fileSchema: Project.currentSchema, projectID: project.id, force: true)
+        _ = env
+        await s.loadSources(at: project.playhead)
+        s.noteUnsaved()
         return s
     }
 
-    /// Points the project at a different file for its video (moved, renamed or replaced). Clips keep their times.
+    /// Finds the media of an editor's project and gets the preview ready.
+    func loadSources(at playhead: MediaTime) async {
+        if project.kind == .video {
+            await resolveSources()
+            if project.pendingQuickUpgrade == true, let first = project.sources.first, let d = infos[first.id]?.duration {
+                mutateQuietly { ProjectUpgrade.finishQuickVideo(&$0, duration: d) }
+                noteUnsaved()
+            }
+            await loadPlayer(at: playhead)
+            player.pause()
+            selectedClipIDs = project.activeClipID.map { [$0] } ?? []
+            return
+        }
+        // A photo project: none or one photo.
+        guard let src = project.sources.first else { return }
+        var url = URL(fileURLWithPath: src.path)
+        if !env.fs.exists(url.path), let moved = Bookmarks.resolve(src.bookmark) { url = moved }
+        guard env.fs.exists(url.path), let info = try? PhotoLoader.info(url: url) else {
+            notice = Notice(text: LF("The photo “%@” was not found. Use File ▸ Relink… to point to it.", url.lastPathComponent), isError: true)
+            return
+        }
+        try? await attachPhoto(url: url, info: info)
+    }
+
+    /// Points a photo project at the file of its photo again (it was moved or renamed outside MacPlayer).
     func relink(to url: URL) async {
+        guard project.kind == .photo, ImageFiles.isCandidate(url.path) else { flash(L("Choose a photo."), error: true); return }
         do {
-            let isPicture = ImageFiles.isCandidate(url.path)
-            let new = isPicture ? try PhotoLoader.info(url: url) : try await MediaProbe.probe(url: url)
-            edit("Relink video", refreshPreview: false) { p in
+            let new = try PhotoLoader.info(url: url)
+            edit("Relink photo", refreshPreview: false) { p in
                 guard !p.sources.isEmpty else { return }
                 p.sources[0].path = url.path; p.sources[0].bookmark = Bookmarks.make(url)
                 p.sources[0].fingerprint = try? env.fs.fingerprint(url.path); p.sources[0].info = new
             }
-            if isPicture { try await attachPhoto(url: url, info: new) } else { await attach(url: url, info: new, restorePosition: false) }
-            sourceChangedExternally = false
-            flash(isPicture ? L("Photo relinked.") : L("Video relinked. Check that the timing of your clips is still right."))
+            try await attachPhoto(url: url, info: new)
+            notice = nil
+            flash(L("Photo relinked."))
         } catch { flash((error as? CustomStringConvertible)?.description ?? error.localizedDescription, error: true) }
     }
 
-    init(project: Project, projectPath: String?) {
+    init(project: Project, projectPath: String?, role: Role) {
         history = History(project)
+        self.role = role
         self.projectPath = projectPath
         super.init()
         player.preservePitch = env.prefs.preserveVoicePitch
@@ -246,33 +287,22 @@ final class EditorSession: NSObject, ObservableObject {
 
     // MARK: Preview
 
-    /// The preview is the edited composition, built by the same code as the export, so what is seen is what is written.
-    private func previewNeeded(_ p: Project) -> Bool {
-        p.look.changesPicture || !p.overlays.isEmpty || !p.subtitles.cues.isEmpty || !p.soundClips.isEmpty || p.audio.denoise != nil || p.audio.fx != nil
-    }
-
-    /// The preview plays the video's own volume through the player; only noise reduction has to be in the sound itself.
-    private func audioOnlyDenoise(_ a: AudioSettings) -> AudioSettings { var n = AudioSettings(); n.denoise = a.denoise; n.fx = a.fx; return n }
-
     /// The preview is drawn no taller than this. A 4K video drawn at full size with a filter on it played at about 0.6x speed; the export is not limited.
     static let previewMaxHeight = 1080
 
+    /// How many times the preview was built (the self-test checks that playing does not keep rebuilding it).
+    private(set) var previewLoads = 0
+
     func loadPlayer(at start: MediaTime?) async {
         if isPhoto { renderPhoto(); return }
+        previewLoads += 1
         let generation = player.seekGeneration
         EffectsLive.clear(); ColorLive.clear(); colorCompare = false
         if isProject { await loadProjectPreview(at: start, since: generation); return }
-        guard let url = sourceURL, let info else { return }
-        var built: BuiltRender?
-        if previewNeeded(project), info.hasVideo {
-            var look = project.look; look.speed = 1 // speed is applied by the export, not the preview
-            built = try? await CompositionBuilder.build(
-                pieces: [RenderPiece(sourceURL: url, span: TimeSpan(start: .zero, end: info.duration), look: look, audio: audioOnlyDenoise(project.audio), liveKey: project.id)],
-                overlays: project.overlays, cues: project.subtitles.cues, subtitleStyle: project.subtitles.style,
-                maxHeight: Self.previewMaxHeight, includeAudio: true, soundClips: resolvedSounds(), frameAccurate: false)
-        }
-        previewHasCompositor = built?.videoComposition != nil
-        await player.load(url: url, preview: built, at: start, since: generation)
+        // Watching: the file plays as it is.
+        guard let url = sourceURL else { return }
+        previewHasCompositor = false
+        await player.load(url: url, preview: nil, at: start, since: generation)
     }
 
     /// Rebuilds the preview shortly after an edit, keeping the playhead and play state.
@@ -302,6 +332,7 @@ final class EditorSession: NSObject, ObservableObject {
 
     /// All changes go through here: one undo step each, autosave scheduled, preview refreshed when it shows the change.
     func edit(_ label: String, coalesce: String? = nil, refreshPreview: Bool = true, _ change: (inout Project) -> Void) {
+        guard canEdit else { return }
         var p = project
         change(&p)
         guard p != project else { return }
@@ -312,15 +343,23 @@ final class EditorSession: NSObject, ObservableObject {
 
     func endCoalescing() { var h = history; h.endCoalescing(); history = h }
 
-    func undo() { LayerLive.clear(); var h = history; if let l = h.undo() { history = h; markChanged(); schedulePreviewRefresh(); flash(LF("Undid “%@”", L(l))) } }
-    func redo() { LayerLive.clear(); var h = history; if let l = h.redo() { history = h; markChanged(); schedulePreviewRefresh(); flash(LF("Redid “%@”", L(l))) } }
+    func undo() { guard canEdit else { return }; LayerLive.clear(); var h = history; if let l = h.undo() { history = h; markChanged(); schedulePreviewRefresh(); flash(LF("Undid “%@”", L(l))) } }
+    func redo() { guard canEdit else { return }; LayerLive.clear(); var h = history; if let l = h.redo() { history = h; markChanged(); schedulePreviewRefresh(); flash(LF("Redid “%@”", L(l))) } }
     var undoTitle: String { history.undoLabel.map { LF("Undo %@", L($0)) } ?? L("Undo") }
     var redoTitle: String { history.redoLabel.map { LF("Redo %@", L($0)) } ?? L("Redo") }
 
     private func markChanged() {
-        isDirty = true
-        if env.prefs.autosaveEnabled { autosave.noteChange(at: Date()) }
+        noteUnsaved()
         objectWillChange.send()
+    }
+
+    /// Something in the project is not in its file yet: autosave writes it within seconds.
+    func noteUnsaved() {
+        guard role == .editor, readOnlyReason == nil else { return }
+        editGeneration += 1
+        isDirty = true
+        if case .externallyChanged = saveState {} else { saveState = .pending }
+        autosave.noteChange(at: Date())
     }
 
     /// A short message under the picture. Plain messages fade after a few seconds; errors stay until dismissed.
@@ -334,33 +373,11 @@ final class EditorSession: NSObject, ObservableObject {
         }
     }
 
-    // MARK: In / Out, clips, markers
-
-    /// The time of the frame under the playhead (the real presentation time of that frame).
-    func currentFrameTime() async -> MediaTime {
-        guard !isProject, let url = sourceURL else { return player.currentTime }
-        let t = player.currentTime
-        if let f = try? await FrameLocator.frame(url: url, at: t + MediaTime(value: 1, timescale: 6000)) { return f.time }
-        return t
-    }
-
-    func markIn() { Task { let t = await currentFrameTime(); inPoint = t; if let o = outPoint, o <= t { outPoint = nil } } }
-    func markOut() { Task { let t = await currentFrameTime(); outPoint = t; if let i = inPoint, i >= t { inPoint = nil } } }
-    func clearInOut() { inPoint = nil; outPoint = nil }
-
-    /// Turns In/Out into a named clip and clears them, ready for the next one.
-    func addClipFromInOut(name: String? = nil) {
-        let a = inPoint ?? .zero, b = outPoint ?? duration
-        var new: ClipSelection?
-        edit("Add clip", refreshPreview: false) { p in new = p.selections.add(start: a, end: b, name: name, duration: info?.duration) }
-        if let c = new { selectedClipIDs = [c.id]; inPoint = nil; outPoint = nil; activeTool = .clips } else { flash(L("Set In and Out first (I and O)."), error: true) }
-    }
+    // MARK: Markers
 
     func addMarker() {
-        Task {
-            let t = await currentFrameTime()
-            edit("Add marker", refreshPreview: false) { $0.markers.append(Marker(time: t, name: LF("Marker %d", $0.markers.count + 1))) }
-        }
+        let t = player.currentTime
+        edit("Add marker", refreshPreview: false) { $0.markers.append(Marker(time: t, name: LF("Marker %d", $0.markers.count + 1))) }
     }
 
     func jumpToMarker(forward: Bool) {
@@ -370,56 +387,25 @@ final class EditorSession: NSObject, ObservableObject {
         if let t = target { Task { await player.seek(to: t) } }
     }
 
-    func removeClips(_ ids: Set<UUID>) {
-        if isProject { deleteTimelineClips(ids); return }
-        edit("Delete clip", refreshPreview: false) { $0.selections.remove(ids) }; selectedClipIDs.subtract(ids)
-    }
-
-    func previewClips() {
-        let spans = project.selections.effective().filter { selectedClipIDs.isEmpty || selectedClipIDs.contains($0.id) }.map(\.span)
-        if spans.isEmpty { flash(L("There are no clips to preview."), error: true) } else { player.playSequence(spans) }
-    }
-
-    func seekToClip(_ id: UUID) {
-        if let c = project.selections.items.first(where: { $0.id == id }) { Task { await player.seek(to: c.start) } }
-    }
-
     // MARK: Source state
 
-    /// Called when the window comes to the front: has another app changed or removed the video?
+    /// Called when the window comes to the front: is every file of the project still where it was?
     func refreshSourceState() {
         for src in project.sources {
-            guard let stored = src.fingerprint, let url = sourceURLs[src.id] else { continue }
-            guard let now = try? env.fs.fingerprint(url.path) else {
-                sourceChangedExternally = true
+            guard let url = sourceURLs[src.id] else { continue }
+            if !env.fs.exists(url.path) {
                 flash(LF("“%@” is no longer at its location.", url.lastPathComponent), error: true); return
             }
-            if now != stored, !sourceChangedExternally {
-                sourceChangedExternally = true
-                flash(L("Another app changed this video after it was opened. Saving a copy is safe; replacing the original is blocked."), error: true)
-            }
         }
-    }
-
-    // MARK: Project files
-
-    func saveProject(to path: String) {
-        var p = project
-        p.playhead = player.currentTime
-        do {
-            try env.projectStore.save(p, to: path)
-            projectPath = path
-            isDirty = false
-            autosave.didSave()
-            flash(isPhoto ? L("Project saved. The photo file was not changed.") : L("Project saved. The video file was not changed."))
-        } catch { flash(LF("The project could not be saved: %@", error.localizedDescription), error: true) }
     }
 
     // MARK: Autosave, position memory
 
     private func startTimers() {
-        autosaveTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.autosaveTick() }
+        if role == .editor {
+            autosaveTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.autosaveTick() }
+            }
         }
         positionTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.rememberPosition() }
@@ -427,155 +413,133 @@ final class EditorSession: NSObject, ObservableObject {
     }
 
     private func autosaveTick() {
-        guard env.prefs.autosaveEnabled, autosave.isDue(at: Date()) else { return }
+        guard role == .editor, !writingPaused, readOnlyReason == nil else { return }
+        if case .externallyChanged = saveState { return }
+        let now = Date()
+        if let r = retryAt { guard now >= r else { return }; retryAt = nil; save(); return }
+        guard autosave.isDue(at: now) else { return }
+        save()
+    }
+
+    /// The project as it should be written now.
+    private var projectForSaving: Project { var p = project; p.playhead = player.currentTime; return p }
+
+    /// Writes the project into its file in the background (a recovery copy first). Later edits are written by later saves; an older
+    /// write never lands after a newer one.
+    func save(force: Bool = false) {
+        guard role == .editor, readOnlyReason == nil, !writingPaused, let path = projectPath else { return }
         autosave.didSave()
-        var p = project
-        p.playhead = player.currentTime
-        let store = env.projectStore, saved = projectPath
-        // Off the main thread, on a copy: editing is never blocked by a save.
-        Task.detached(priority: .utility) { try? store.autosave(p, savedPath: saved); try? store.takeSnapshot(p) }
+        saveState = .saving
+        let p = projectForSaving, gen = editGeneration
+        writer.write(p, force: force) { [weak self] result in
+            MainActor.assumeIsolated { self?.finishedWrite(result, project: p, path: path, generation: gen) }
+        }
+    }
+
+    /// Writes now and waits (closing the window, quitting, before the file is renamed or moved). True when the file is up to date.
+    @discardableResult
+    func saveNow(force: Bool = false) -> Bool {
+        guard role == .editor, let path = projectPath else { return true }
+        guard readOnlyReason == nil else { return true }
+        if case .externallyChanged = saveState, !force { return false }
+        autosave.didSave()
+        let p = projectForSaving
+        let result = writer.writeNow(p, force: force)
+        finishedWrite(result, project: p, path: path, generation: editGeneration)
+        if case .success = result { return true }
+        return false
+    }
+
+    private func finishedWrite(_ result: Result<FileFingerprint, Error>, project p: Project, path: String, generation: Int) {
+        switch result {
+        case .success(let fp):
+            retryDelay = 5; retryAt = nil
+            if generation != editGeneration {
+                saveState = .pending
+            } else {
+                isDirty = false
+                saveState = .saved(Date())
+            }
+            env.projects.noteSaved(p, path: path, fingerprint: fp)
+            // The card in the list gets its picture as soon as there is something to show.
+            if !FileManager.default.fileExists(atPath: env.projects.thumbnailURL(p.id).path) { storeThumbnail() }
+        case .failure(let error):
+            if case ProjectSaveError.changedOnDisk = error {
+                saveState = .externallyChanged
+                flash(L("The project file was changed outside MacPlayer. Your edits are kept; choose what to do in the bar above the picture."), error: true)
+                return
+            }
+            saveState = .failed(Self.saveErrorText(error, path: path))
+            retryAt = Date().addingTimeInterval(retryDelay)
+            retryDelay = min(60, retryDelay * 2)
+        }
+    }
+
+    static func saveErrorText(_ error: Error, path: String) -> String {
+        if !Drives.isConnected(path) { return L("The disk with the project is not connected.") }
+        switch error {
+        case ProjectSaveError.folderMissing: return L("The project's folder is not there any more.")
+        case ProjectSaveError.folderNotWritable: return L("The project's folder cannot be written to.")
+        case ProjectSaveError.readBackFailed: return L("The saved file could not be read back.")
+        default: return (error as? CustomStringConvertible)?.description ?? error.localizedDescription
+        }
+    }
+
+    /// The file on disk was changed by someone else. `keepMine` writes these edits over it (only the project file); otherwise the
+    /// project is read again from the disk and these edits are dropped.
+    func resolveExternalChange(keepMine: Bool) async {
+        guard let path = projectPath else { return }
+        if keepMine { saveState = .pending; _ = saveNow(force: true); return }
+        do {
+            let (p, schema) = try env.projectStore.loadDetailed(path: path)
+            history = History(p)
+            writer.begin(path: path, expected: try? env.fs.fingerprint(path), fileSchema: schema, projectID: p.id)
+            isDirty = false; saveState = .saved(Date()); notice = nil
+            await loadSources(at: p.playhead)
+        } catch { flash(LF("The project could not be read again: %@", (error as? CustomStringConvertible)?.description ?? error.localizedDescription), error: true) }
+    }
+
+    /// A small picture of the project for its card in the list of projects (kept in MacPlayer's own folder).
+    func storeThumbnail() {
+        guard role == .editor else { return }
+        let id = project.id, projects = env.projects
+        if isPhoto { if let img = photoImage { projects.storeThumbnail(img, projectID: id) }; return }
+        guard let clip = project.timeline.first, let url = sourceURLs[clip.sourceID] else { return }
+        let t = clip.sourceStart + MediaTime(seconds: min(1, clip.sourceSpan.duration.seconds / 2), timescale: 600)
+        Task {
+            if let img = try? await FrameGrabber.image(url: url, at: t, accuracy: .nearest, maxSize: CGSize(width: 480, height: 480)) {
+                projects.storeThumbnail(img, projectID: id)
+            }
+        }
+    }
+
+    /// The project file now lives at `path` (renamed or moved by MacPlayer).
+    func projectFileMoved(to path: String) {
+        projectPath = path
+        writer.moved(to: path, expected: try? env.fs.fingerprint(path))
     }
 
     func rememberPosition() {
-        guard env.prefs.rememberPositions, !isProject, !isPhoto, let url = sourceURL, let info else { return }
+        guard role == .viewer, env.prefs.rememberPositions, !isPhoto, let url = sourceURL, let info else { return }
         env.positions.remember(PositionStore.key(path: url.path, size: info.fileSize), seconds: player.currentTime.seconds, duration: info.duration.seconds)
         env.positions.flush()
     }
 
-    /// Window closing: stop timers, remember where the viewer stopped. A clean close removes the crash copy.
-    func close(discardRecovery: Bool) {
+    /// Window closing: stop timers, remember where the viewer stopped. An editor's last edits are written first by the caller
+    /// (`saveNow`); the crash copy is removed only when the file is up to date.
+    func close() {
         autosaveTimer?.invalidate(); positionTimer?.invalidate()
         previewTask?.cancel(); waveformTask?.cancel()
         rememberPosition()
         player.pause()
-        if discardRecovery { env.projectStore.clearAutosave(projectID: project.id) }
+        if role == .editor, !isDirty { env.projectStore.clearAutosave(projectID: project.id) }
     }
 
     // MARK: Exporting
 
-    var estimatedDuration: MediaTime { info?.duration ?? .zero }
-
-    func spans(for scope: ExportScope) -> [ClipSelection] {
-        if isProject { return [ClipSelection(name: project.name, start: .zero, end: project.timelineDuration)] }
-        let whole = TimeSpan(start: .zero, end: duration)
-        switch scope {
-        case .whole: return [ClipSelection(name: project.name, start: whole.start, end: whole.end)]
-        case .inOut: return [ClipSelection(name: project.name, start: inPoint ?? .zero, end: outPoint ?? duration)]
-        case .allClips, .clipsJoined: return project.selections.effective()
-        case .selectedClips: return project.selections.effective().filter { selectedClipIDs.contains($0.id) }
-        }
-    }
-
-    func canUseFastCut() -> Bool { project.allowsFastCut }
-
-    func backupFolder() -> String? {
-        guard env.prefs.backupBeforeReplace, let s = sourceURL else { return nil }
-        return PathUtil.join(PathUtil.directory(of: s.path), "MacPlayer Backups")
-    }
-
     func planExport(_ r: ExportRequest) throws -> (jobs: [ExportJob], batch: BatchPlan) {
-        if isProject { return try planProjectExport(r) }
-        guard let url = sourceURL, let info else { throw PlanError.noSource }
-        let clips = spans(for: r.scope)
-        guard !clips.isEmpty, clips.allSatisfy({ !$0.span.isEmpty }) else { throw PlanError.nothingToExport }
-        let missingSounds = project.soundClips.filter { isMissing($0) }.map(\.name)
-        if !missingSounds.isEmpty { throw PlanError.missingMedia(missingSounds) }
-        var options = r.options
-        let p = project
-        if options.mode == .fast, !p.allowsFastCut { throw PlanError.fastNotPossible }
-        if info.primaryVideo == nil { options.mode = .exact }
-
-        let ext = options.container.fileExtension
-        let separate = r.scope == .allClips || r.scope == .selectedClips
-        var target: (String) -> SaveTarget = { .newCopy(path: $0, overwrite: r.overwrite) }
-        var folder = r.folder
-
-        if r.saveKind == .replaceOriginal {
-            guard p.canReplaceOriginal else { throw PlanError.replaceNotPossible(L("A project with several videos must be saved as a new file.")) }
-            guard r.scope == .whole || r.scope == .inOut else { throw PlanError.replaceNotPossible(L("Replacing the original works on one video at a time. Save the clips as copies instead.")) }
-            guard !sourceChangedExternally else { throw PlanError.replaceNotPossible(L("The original was changed by another app. Replacing it is blocked; save a copy instead.")) }
-            guard let fp = p.sources.first?.fingerprint else { throw PlanError.replaceNotPossible(L("The original cannot be checked, so it will not be replaced.")) }
-            guard ext == info.fileExtension || (ext == "mp4" && info.fileExtension == "mp4") else {
-                throw PlanError.replaceNotPossible(LF("Replacing the original would change “.%@” to “.%@”. Save a copy instead.", info.fileExtension, ext))
-            }
-            folder = PathUtil.directory(of: url.path)
-            let backup = backupFolder()
-            target = { _ in .replaceOriginal(path: url.path, expected: fp, backupFolder: backup) }
-        }
-
-        let template: NamingTemplate
-        var selections = clips
-        if separate {
-            template = p.namingTemplate
-        } else {
-            let base = r.baseName ?? (url.deletingPathExtension().lastPathComponent + env.prefs.copySuffix)
-            template = NamingTemplate(pattern: "{name}")
-            selections = [ClipSelection(name: base, start: clips[0].start, end: clips.last!.end)]
-        }
-        var batch = BatchPlan.make(selections: selections, sourcePath: url.path, folder: folder, fileExtension: ext, template: template, fs: env.fs,
-                                   estimatedBytesPerSecond: options.estimatedBytesPerSecond(source: info))
-        if r.saveKind == .replaceOriginal {
-            // The replace target is the source itself; the plan's name/conflict logic does not apply.
-            batch.issues.removeAll { if case .destinationIsSource = $0.kind { return true }; return false }
-        }
-        guard batch.canRun else { throw PlanError.issues(batch.issues) }
-
-        let artworkOK = options.container != .mov
-        var jobs: [ExportJob] = []
-        func recipe(for spans: [TimeSpan]) -> RenderRecipe {
-            spans.count == 1
-                ? RecipeBuilder.recipe(look: p.look, audio: p.audio, overlays: p.overlays, subtitles: p.subtitles, burnIn: p.subtitles.burnIn, span: spans[0], soundClips: resolvedSounds())
-                : RecipeBuilder.joinedRecipe(look: p.look, audio: p.audio, overlays: p.overlays, subtitles: p.subtitles, burnIn: p.subtitles.burnIn, spans: spans, soundClips: resolvedSounds())
-        }
-        func sidecar(for spans: [TimeSpan]) -> [SubtitleCue] {
-            guard !p.subtitles.burnIn else { return [] }
-            if spans.count == 1 { return p.subtitles.cues(in: spans[0]) }
-            var out: [SubtitleCue] = []; var offset = MediaTime.zero
-            for s in spans { for var c in p.subtitles.cues(in: s) { c.start = c.start + offset; c.end = c.end + offset; out.append(c) }; offset = offset + s.duration }
-            return out
-        }
-        func make(label: String, spans: [TimeSpan], path: String, stillTime: MediaTime?, embedTime: MediaTime?) -> ExportJob {
-            var rec = recipe(for: spans)
-            if p.subtitles.syncOffset != 0 { for i in rec.burnedInCues.indices { rec.burnedInCues[i].start = rec.burnedInCues[i].start + MediaTime(seconds: p.subtitles.syncOffset); rec.burnedInCues[i].end = rec.burnedInCues[i].end + MediaTime(seconds: p.subtitles.syncOffset) } }
-            var side = sidecar(for: spans)
-            if p.subtitles.syncOffset != 0 { for i in side.indices { side[i].start = side[i].start + MediaTime(seconds: p.subtitles.syncOffset); side[i].end = side[i].end + MediaTime(seconds: p.subtitles.syncOffset) } }
-            // A zoom and move animation counts from the start of the video; an exported part starts later, so the animation is shifted to match.
-            let pieces = spans.map { s -> JobPiece in
-                guard !p.look.motion.isEmpty else { return JobPiece(sourcePath: url.path, span: s) }
-                var l = p.look; l.motion = Motion.shifted(l.motion, by: -s.start.seconds)
-                return JobPiece(sourcePath: url.path, span: s, look: l)
-            }
-            return ExportJob(label: label, pieces: pieces, recipe: rec, options: options, target: target(path),
-                             thumbnailTime: stillTime, embedArtworkTime: artworkOK ? embedTime : nil, sidecarSubtitles: side)
-        }
-
-        if separate {
-            for (c, out) in zip(clips, batch.outputs) {
-                jobs.append(make(label: c.name, spans: [c.span], path: out.path, stillTime: c.thumbnailTime, embedTime: c.thumbnailTime))
-            }
-        } else {
-            jobs.append(make(label: batch.outputs[0].name, spans: r.scope == .clipsJoined ? clips.map(\.span) : [clips[0].span], path: batch.outputs[0].path,
-                             stillTime: p.thumbnails.exportTime, embedTime: p.thumbnails.embedTime))
-        }
-        return (jobs, batch)
-    }
-
-    /// After a successful replace: the file on disk is new, so the project starts again from it. Undo does not
-    /// pretend to bring the old file back (design section 6); the backup is the way back.
-    func afterReplace(backupPath: String?) async {
-        guard let url = sourceURL else { return }
-        guard let newInfo = try? await MediaProbe.probe(url: url) else { return }
-        let fp = try? env.fs.fingerprint(url.path)
-        var p = Project(name: project.name, mode: .quick, sources: [SourceRef(path: url.path, bookmark: Bookmarks.make(url), fingerprint: fp, info: newInfo, changedAfterReplace: true)])
-        p.id = project.id
-        history = History(p)
-        info = newInfo
-        inPoint = nil; outPoint = nil; selectedClipIDs = []
-        sourceChangedExternally = false
-        isDirty = false
-        await loadPlayer(at: nil)
-        loadWaveform()
-        flash(backupPath.map { LF("Original replaced. Undo does not restore the old file; the backup is at %@", $0) } ?? L("Original replaced. No backup was kept."))
+        guard isProject else { throw PlanError.noSource }
+        return try planProjectExport(r)
     }
 
     // MARK: Thumbnails
@@ -587,9 +551,9 @@ final class EditorSession: NSObject, ObservableObject {
     }
 }
 
-enum InspectorTab: String, CaseIterable { case clips, picture, color, mask, effects, timing, transitions, layers, audio, text, subtitles, thumbnail, export
-    /// The tools that make sense for what is open: a photo has no timeline, sound or subtitles.
-    static func tabs(forPhoto photo: Bool) -> [InspectorTab] { photo ? [.picture, .color, .mask, .effects, .text, .export] : allCases }
+enum InspectorTab: String, CaseIterable { case clips, picture, color, mask, effects, timing, transitions, layers, audio, text, subtitles, export
+    /// The tools of each kind of project: a photo has no timeline, sound or subtitles (its layers are logos).
+    static func tabs(for kind: ProjectKind) -> [InspectorTab] { kind == .photo ? [.picture, .color, .mask, .effects, .layers, .text, .export] : allCases }
     var title: String {
         switch self {
         case .clips: return L("Clips")
@@ -603,7 +567,6 @@ enum InspectorTab: String, CaseIterable { case clips, picture, color, mask, effe
         case .audio: return L("Audio")
         case .text: return L("Text")
         case .subtitles: return L("Subtitles")
-        case .thumbnail: return L("Thumbnail")
         case .export: return L("Export")
         }
     }

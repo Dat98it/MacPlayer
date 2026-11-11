@@ -58,14 +58,8 @@ struct PhotoExportPane: View {
                 Text(L("Removes the GPS position and the camera details. The date and the rest stay.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             ToolCard(title: L("Save"), icon: "square.and.arrow.down") {
-                Picker("", selection: Binding(get: { d.replaceOriginal }, set: { v in set { $0.replaceOriginal = v } })) {
-                    Text(L("Save as a new photo (original untouched)")).tag(false)
-                    Text(L("Replace the original…")).tag(true)
-                }.pickerStyle(.radioGroup).labelsHidden()
-                if d.replaceOriginal {
-                    Label(session.photoReplaceProblem ?? (session.env.prefs.backupBeforeReplace ? L("The original is replaced after the new picture is checked. A backup copy is kept first (change this in Settings).") : L("The original is replaced and NO backup will be kept (Settings).")),
-                          systemImage: "exclamationmark.triangle").font(.caption).foregroundColor(.orange).fixedSize(horizontal: false, vertical: true)
-                } else {
+                Text(L("Saves a new photo. The original photo is never changed.")).font(.caption).foregroundColor(.secondary)
+                Group {
                     TextField(L("File name"), text: Binding(get: { d.name }, set: { v in set { $0.name = v } }),
                               prompt: Text((session.sourceURL?.deletingPathExtension().lastPathComponent ?? "") + session.env.prefs.copySuffix)).textFieldStyle(.roundedBorder)
                     HStack {
@@ -76,11 +70,11 @@ struct PhotoExportPane: View {
                     Text(L("An existing file is never overwritten: a number is added to the name instead.")).font(.caption).foregroundColor(.secondary)
                 }
                 HStack {
-                    Button { session.savePhoto() } label: { Label(d.replaceOriginal ? L("Replace Original") : L("Save Photo"), systemImage: "checkmark.circle.fill") }
+                    Button { session.savePhoto() } label: { Label(L("Save Photo"), systemImage: "checkmark.circle.fill") }
                         .buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
-                        .disabled(d.saving || (d.replaceOriginal && session.photoReplaceProblem != nil))
+                        .disabled(d.saving || session.sourceURL == nil)
                     if d.saving { ProgressView().controlSize(.small) }
-                    if let url = d.lastSaved, !d.replaceOriginal {
+                    if let url = d.lastSaved {
                         Button(L("Show in Finder")) { NSWorkspace.shared.activateFileViewerSelecting([url]) }.font(.caption)
                     }
                 }

@@ -20,8 +20,9 @@ Command Line Tools)**, Swift 6 toolchain with `swiftLanguageVersions: [.v5]`, ma
 
 1. **Talk to the maintainer in Vietnamese.** State a short plan before editing code. Report outcomes honestly: failing tests, skipped steps and
    things you could not verify must be said plainly. Never claim "tested" for what was only compiled.
-2. **Never modify or delete the user's originals.** Trash only (Finder, recoverable), with confirmation. Replace-original and rename/trash tests run
-   only on copies you made. The user's real photo folder (`/Volumes/SS 990 pro/Folder/Ảnh`) is **read-only**.
+2. **Never modify or delete the user's originals.** The app itself never writes over a video or photo (0.8.0 removed "replace original" for good);
+   only the Playlists side renames / moves to the Trash, when the person asks. Trash only (Finder, recoverable), with confirmation. Rename/trash
+   tests run only on copies you made. The user's real photo folder (`/Volumes/SS 990 pro/Folder/Ảnh`) is **read-only**.
 3. **Never read, print, copy, index or commit secrets** (keys, tokens, credentials). Never fake signing, notarization, payment or any external info.
 4. **No git commit/push and no git config changes unless asked.** When asked: `git add -A`, commit with per-command identity
    (`git -c user.name="Dat98it" -c user.email="dat98.it@gmail.com" commit ...`), **no** `Co-Authored-By` trailer, no `--force`.
@@ -62,19 +63,22 @@ BIN=$(swift build --show-bin-path)/MacPlayer
 mkdir -p /tmp/sb && MACPLAYER_START_TAB=color MACPLAYER_DEV_COLOR=curves,wheels "$BIN" --sandbox /tmp/sb --snapshot /tmp/out.png /path/to/photo-or-video
 ```
 
-Other launch flags: `--selftest <dir with demo.mp4>` (real-app flows A–K, prints PASS/FAIL; needs `--sandbox <dir>`), `--real-media`, `--library`, `--real-photos`,
-`--project-demo`, `--report-session`, `--fullscreen-check`, `--crash-export`, `--recover-check`. Dev-only environment variables (read only in sandbox/dev paths):
+Other launch flags: `--selftest <dir with demo.mp4>` (real-app flows A–N, prints PASS/FAIL; needs `--sandbox <dir>`), `--real-media`, `--library`, `--real-photos`,
+`--project-demo`, `--report-session`, `--fullscreen-check`, `--crash-export <src> <dir> copy|batch`, `--crash-autosave <src> <dir> x`, `--recover-check`.
+`--snapshot` of a screen: `MACPLAYER_START_ROUTE=home|playlist|projects` (sandbox only); a project file on the command line opens the editor. Dev-only environment variables (read only in sandbox/dev paths):
 
 | Variable | Effect |
 |---|---|
-| `MACPLAYER_START_TAB=<tab>` | open an inspector tab: `clips picture color mask effects timing transitions layers audio text subtitles thumbnail export` |
+| `MACPLAYER_START_TAB=<tab>` | open an inspector tab: `clips picture color mask effects timing transitions layers audio text subtitles export` |
 | `MACPLAYER_DEV_COLOR=basic,curves,wheels,hsl,lut,blue` | put a sample grade on the picture and open those cards |
 | `MACPLAYER_DEV_MASK=1` | sample heart mask on a blue backdrop |
 | `MACPLAYER_DEV_TREE=<folder>` | playlist "Demo" from a folder, shown as tree (`MACPLAYER_DEV_SIDEBAR=list\|grid\|select\|play\|time\|rename`) |
+| `MACPLAYER_DEV_ADD=a.mp4\|b.mp4`, `MACPLAYER_DEV_AUTOPLAY=1` | with a project file on the command line: add these videos, then start playing (sandbox only; to watch playback in a real window and capture it with `screencapture -l`) |
+| `MACPLAYER_ONLY_THREE=<n>`, `MACPLAYER_THREE_PORTRAIT=1` | `--selftest`: run only flow G0 (new project of three videos, played in a window) n times; portrait = the maintainer's 1080×1918/1920 phone videos |
 | `MACPLAYER_LAYOUT=list\|grid\|tree`, `MACPLAYER_TREE_FILES=list\|grid`, `MACPLAYER_PREVIEW_SCALE=0.75…3` | start with that sidebar setup (sandbox only) |
 | `MACPLAYER_DEV_CROP`, `MACPLAYER_OPEN_POPOVER`, `MACPLAYER_TREE_SPEED_ONLY`, `MACPLAYER_LIBRARY_ONLY`, `MACPLAYER_KEEP_OUTPUT`, `MACPLAYER_DEBUG_*`, `MACPLAYER_AX_DEBUG`, `MACPLAYER_WAIT_ACTIVE` | self-test / debugging aids |
 
-`macplayer-probe` (a CLI in `Sources/macplayer-probe`) measures and verifies media without modifying inputs (`matrix`, `bench`, `realcheck`, `cut`, `rpu`…).
+`macplayer-probe gen <out> [codec] [s] [fps] [gop] [WxH]` makes synthetic test videos. `macplayer-probe` (a CLI in `Sources/macplayer-probe`) measures and verifies media without modifying inputs (`matrix`, `bench`, `realcheck`, `cut`, `rpu`…).
 
 ## 4. Architecture
 
@@ -90,16 +94,19 @@ macplayer-probe (CLI)            ──►  both
   safe-save planning, export planning/queue, subtitles, batch rename, colour math, masks, easing, sound FX model, preferences.
 - **`Sources/MacPlayerMedia`** — AVFoundation/Core Image/Vision. **One renderer** (`CompositionBuilder` + `RecipeCompositor`) draws both the preview and the
   export, so what is seen is what is written. Also probing, thumbnails, exporters, noise reduction, sound FX, transitions, masks, stabiliser, speech.
-- **`Sources/MacPlayer`** — a thin app layer. `AppDelegate`, `MainWindow`, `EditorSession` (+ extensions) = one open video/photo/project with undo history,
-  autosave and every action; `Inspector*.swift` = the right-hand tool panels; `PlaylistSidebar` + `PlaylistModel` = left panel; `TimelineView`; `SelfTest*.swift` (in-app self-test).
-- **Tests:** `Tests/MacPlayerCoreTests` (≈360 tests, fast, pure) and `Tests/MacPlayerMediaTests` (≈214, real AVFoundation/Core Image on synthetic media made
+- **`Sources/MacPlayer`** — a thin app layer. `AppDelegate` (opening/routing every file, menus, new project), `MainWindow` (each window has a
+  `WindowRoute`: home / playlist / projects / editor), `EditorSession` (+ extensions) = one open thing: a **viewer** (role `.viewer`, watching a file
+  from the playlist side, never edited or saved) or an **editor** (role `.editor`, a project file with undo history, autosave into the file via
+  `ProjectFileWriter`, and every action); `NavigationViews` (Home, project list, editor header, empty states), `ProjectsController` (registry +
+  card pictures), `ProjectActions` (rename/trash a project); `Inspector*.swift` = the right-hand tool panels; `PlaylistSidebar` + `PlaylistModel` = left panel; `TimelineView`; `SelfTest*.swift` (in-app self-test).
+- **Tests:** `Tests/MacPlayerCoreTests` (≈378 tests, fast, pure) and `Tests/MacPlayerMediaTests` (≈216, real AVFoundation/Core Image on synthetic media made
   by `SyntheticMedia`/`Fixtures`; pixel-level checks).
 
 ### Key files by area
 
 | Area | Files |
 |---|---|
-| Project model, undo | `Core/Project.swift` (`Project`, `VideoLook`, `ColorAdjust`, `TimelineClip`, `AudioSettings`, `TextOverlay`), `ProjectStore.swift` (JSON, `schemaVersion`, migrations), `History.swift` |
+| Project model, undo | `Core/Project.swift` (`Project` with `kind` video/photo, `VideoLook`, `ColorAdjust`, `TimelineClip`, `AudioSettings`, `TextOverlay`), `ProjectRules.swift` (what may go into each kind; `ProjectUpgrade` for 0.7 files), `ProjectStore.swift` (JSON, `schemaVersion` 3, migrations, safe project-file writes, recovery), `ProjectRegistry.swift` (list of projects), `History.swift` |
 | Playback | `App/PlayerController.swift`, `Core/PlaylistCursor.swift`, `App/TransportBar.swift` |
 | Playlist UI | `App/PlaylistSidebar.swift` (list / grid / **tree** layouts, selection, batch tools), `PlaylistModel.swift`, `Core/FolderTree.swift`, `PlaylistLayout.swift` (`PlaylistLayout`, `TreeFiles`, `PreviewSize`, `ItemSelection`), `Core/BatchRename.swift`, `App/BatchRenameSheet.swift`, `FileActions.swift` |
 | Render pipeline | `Media/CompositionBuilder.swift` (assembles AVComposition/AudioMix/VideoComposition), `Media/RecipeCompositor.swift` (`mainPicture`, `render`), `LookEffectsRenderer.swift`, `ColorGradeRenderer.swift`, `MaskRenderer.swift` (+`SubjectMasker`), `TransitionRenderer.swift`, `OverlayRenderer.swift`, `PhotoRenderer.swift` |
@@ -123,6 +130,13 @@ Then: **0.2.1** tree files as grid; **0.3.0** adjustable preview size + green "o
 **0.5.0 Cut-out** (subject removal via Vision, chroma key on the main picture, 6 mask shapes with feather/invert, backdrop colour, 10 blend modes for layers);
 **0.6.0 Motion** (8 new transitions → 17 total, 6 easings per keyframe, rotation for layers and "zoom and move", arrive/leave animations for layers);
 **0.7.1 Fixes** from running the app on real footage: AAC encoder bit rate now fits the sample rate (exact cuts of 22.05/24 kHz videos used to fail with -12651); shape and subject masks sit on the picture when it has bars; a delayed sound follows the clip's speed and ends with the clip; one `Project.allowsFastCut` for the Export panel and the plan; joined ranges honour "burn subtitles in"; cutting a zoom-and-move animation keeps its turn; freeze frames of any length (`VideoLook.minimumSpeed`); jobs restored after a crash start when asked and never block new jobs; audio-track picker shows the playing track; undo names are translated; speech error messages.
+**0.8.0 Two sides** — Home with **Playlists** (watch only: play, rename, Trash; no inspector) and **Editing** (list of projects, new project asks the kind
+and always where to save). Two project kinds: **video** (timeline) and **photo** (exactly one photo, plus text and logos). Quick mode removed (old
+`.quick` files upgrade on opening, schema 3; the old file is copied to Recovery first). **"Replace original" removed** (code, UI, tests); old replace
+journals are still recovered at launch and old queue jobs of that kind fail instead of running. Autosave writes the project file itself. Projects can be
+renamed (the file) and moved to the Trash from the list.
+**0.8.1 Fix**: the timeline strip of a project that started empty kept a near-zero width after videos were added (it looked frozen and flickered
+while playing); the visible range is now `Core/TimelineViewport.swift` and follows the project's length. Self-test flow G0 covers it.
 **0.7.0 Sound** (8 voice presets + manual bass/mid/treble/pitch/room/echo through an offline AVAudioEngine render, hand-drawn volume curve per sound clip).
 
 ## 6. Rendering and data-flow rules that are easy to break
@@ -144,9 +158,15 @@ Then: **0.2.1** tree files as grid; **0.3.0** adjustable preview size + green "o
 - Speed is never clamped to a different minimum in different places: use `VideoLook.minimumSpeed`.
 - Audio sync offset (`AudioSettings.offsetSeconds`) is counted in seconds of the *finished picture*: a delay is made after the clip's speed is applied (see `CompositionBuilder`).
 - A mask on the main picture is made as big as the placed picture (`mainPicture`), because `MaskRenderer.apply` puts a mask on the picture's own corner.
-- `ExportJob.needsReencode` and the app's `previewNeeded` must include any new setting that changes picture or sound, or a "fast cut" would silently drop it.
-- **Safe save** (never weaken): export to a temp file next to the target, verify (opens, duration, tracks, first frame decodes), then move into place under a journal; default is "save as new copy";
-  "replace original" asks, backs up, checks the source was not changed by another app, refuses extension changes/insufficient space. Undo never brings an old file back.
+- `ExportJob.needsReencode` must include any new setting that changes picture or sound, or a "fast cut" would silently drop it.
+- **Project kinds:** a photo project uses the top-level `look`, `overlays` and logos in `overlayClips` (image kind, no time); a video project keeps
+  `look`/`audio` neutral and edits each `TimelineClip`. Every way of adding media asks `ProjectRules.canAdd` first. `Project.mode` exists only to
+  read 0.7 files (never written). Paths are compared with `PathUtil.same` (file names arrive in either Unicode form).
+- **Autosave** goes through `ProjectFileWriter` (one write at a time, older writes dropped, crash copy first, then the project file checked against its
+  last fingerprint so a change made elsewhere is never overwritten). `ProjectStore` only ever writes `.macplayer`/`.macvideo` files and its own folder.
+- **Safe save** (never weaken): export to a temp file next to the target, verify (opens, duration, tracks, first frame decodes), then move into place;
+  always a NEW file, never the source (compared with `PathUtil.same`), never over an existing file unless confirmed (and never over media: `OriginalGuard`,
+  `StillExporter` refuses existing files). There is no "replace original" any more; `SafeSaver.recoverLegacyReplaceJournals` only finishes what 0.7 left.
 - Fast cut (passthrough) is only valid when nothing changes picture or sound; exact cut uses `AVAssetReader → AVAssetWriter`.
 
 ## 7. Conventions and gotchas
@@ -171,6 +191,7 @@ Then: **0.2.1** tree files as grid; **0.3.0** adjustable preview size + green "o
 - Vision cannot be tested on synthetic pictures: tests replace `SubjectMasker.provider`. Audio effects are tested with generated tones (zero-crossing counts, RMS).
 - Always run the whole suite before a release. **Known flaky:** `StabilizerTests.anExportedVideoIsSteadierThanTheOneItCameFrom` fails about half of the runs on the maintainer's machine, also before the
   0.4.0–0.7.0 work (verified on the older commit); do not "fix" other code for it.
+- `Scripts/crash_test.py` modes: `copy`, `batch`, `autosave` (kill while the project is written over and over: the file must always decode).
 - The in-app self-test (`--selftest`) had 2 failing checks on the current macOS 27 setup even before the 0.4–0.7 work (window size kept through photo slideshow; a duplicate-shortcut check that sees the
   system's "Emoji & Symbols"/"Enter Full Screen" items). Injected mouse events in the self-test are flaky; the click flows run only with `MACPLAYER_TREE_SPEED_ONLY=1`.
 - Never run tests against the maintainer's real media except through the read-only paths documented in `docs/kiem-thu-video-that.md`.

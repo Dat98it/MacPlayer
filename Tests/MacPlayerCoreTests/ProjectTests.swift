@@ -5,7 +5,7 @@ import Testing
 private func t(_ s: Double) -> MediaTime { MediaTime(seconds: s, timescale: 1000) }
 
 private func sampleProject() -> Project {
-    var p = Project(name: "Bài giảng", mode: .quick,
+    var p = Project(name: "Bài giảng", kind: .video,
                     sources: [SourceRef(path: "/Videos/lecture.mp4", bookmark: Data([9, 8]),
                                         fingerprint: FileFingerprint(size: 123_456, modified: Date(timeIntervalSinceReferenceDate: 700_000_000.123456), fileID: 42),
                                         info: MediaInfo(duration: MediaTime(value: 6000, timescale: 600), fileExtension: "mp4", fileSize: 123_456,
@@ -61,6 +61,7 @@ private func sampleProject() -> Project {
         let p = sampleProject()
         try store.autosave(p, savedPath: nil)
         #expect(store.recoverable().count == 1)
+        fs.directories.insert("/Proj")
         try store.save(p, to: "/Proj/a.macplayer")
         #expect(store.recoverable().isEmpty, "an explicit save supersedes the crash copy")
         #expect(try store.load(path: "/Proj/a.macplayer").name == "Bài giảng")
@@ -85,6 +86,7 @@ private func sampleProject() -> Project {
 
     @Test func autosaveNewerThanTheSavedFileIsOfferedOlderIsNot() throws {
         let (fs, store, p) = setup()
+        fs.directories.insert("/Proj")
         try store.save(p, to: "/Proj/a.macplayer")       // saved file at clock
         fs.clock += 60
         try store.autosave(p, savedPath: "/Proj/a.macplayer")
@@ -183,7 +185,7 @@ private func sampleProject() -> Project {
     }
 
     @Test func projectEditsUndoAsWholeProjects() {
-        var h = History(Project(name: "P"))
+        var h = History(Project(name: "P", kind: .video))
         var p = h.present
         p.look.rotation = 90
         h.commit(p, label: "Rotate")
@@ -194,19 +196,10 @@ private func sampleProject() -> Project {
 }
 
 @Suite struct ProjectModelTests {
-    @Test func replacingTheOriginalNeedsExactlyOneSource() {
-        var p = Project(name: "P", mode: .quick, sources: [SourceRef(path: "/a.mp4")])
-        #expect(p.canReplaceOriginal)
-        p.mode = .project
-        p.sources.append(SourceRef(path: "/b.mp4"))
-        p.timeline = p.sources.map { TimelineClip(sourceID: $0.id, sourceStart: t(0), sourceEnd: t(5)) }
-        #expect(!p.canReplaceOriginal, "a multi-source project must be saved as a new file")
-    }
-
     @Test func missingAndChangedSourcesAreDetected() throws {
         let fs = FakeFileSystem()
         fs.put("/a.mp4", "A"); fs.put("/b.mp4", "B")
-        var p = Project(name: "P", sources: [
+        var p = Project(name: "P", kind: .video, sources: [
             SourceRef(path: "/a.mp4", fingerprint: try fs.fingerprint("/a.mp4")),
             SourceRef(path: "/b.mp4", fingerprint: try fs.fingerprint("/b.mp4")),
             SourceRef(path: "/gone.mp4"),
@@ -215,8 +208,6 @@ private func sampleProject() -> Project {
         #expect(p.changedSources(fs: fs).isEmpty)
         fs.touchExternally("/b.mp4", "B edited elsewhere")
         #expect(p.changedSources(fs: fs).map(\.path) == ["/b.mp4"])
-        p.sources[0].changedAfterReplace = true
-        #expect(p.sources[0].changedAfterReplace)
     }
 
     @Test func splitTrimMoveAndRippleOnTheTimeline() {
@@ -309,7 +300,7 @@ private func sampleProject() -> Project {
     }
 
     @Test func sameFileIsOneSource() {
-        var p = Project(name: "P", mode: .project)
+        var p = Project(name: "P", kind: .video)
         let a = p.addSource(SourceRef(path: "/v/a.mp4"))
         let again = p.addSource(SourceRef(path: "/v/../v/a.mp4"))
         let b = p.addSource(SourceRef(path: "/v/b.mp4"))
@@ -337,7 +328,7 @@ private func sampleProject() -> Project {
     }
 
     @Test func piecesCarryEachClipsOwnLookAndSkipMissingSources() {
-        var p = Project(name: "P", mode: .project)
+        var p = Project(name: "P", kind: .video)
         let a = p.addSource(SourceRef(path: "/v/a.mp4")), b = p.addSource(SourceRef(path: "/v/b.mp4"))
         var c1 = clip(a, 0, 5); c1.look.rotation = 90
         let c2 = clip(b, 2, 4)
@@ -347,11 +338,11 @@ private func sampleProject() -> Project {
         #expect(pieces[0].look?.rotation == 90 && pieces[1].look?.rotation == 0)
     }
 
-    @Test func activeLookTargetsTheSelectedClipInProjectModeAndTheWholeVideoInQuickMode() {
-        var p = Project(name: "P", mode: .quick)
-        p.activeLook.rotation = 90
-        #expect(p.look.rotation == 90)
-        p.mode = .project
+    @Test func activeLookTargetsTheSelectedClipOfAVideoProjectAndThePhotoOfAPhotoProject() {
+        var photo = Project(name: "P", kind: .photo)
+        photo.activeLook.rotation = 90
+        #expect(photo.look.rotation == 90)
+        var p = Project(name: "P", kind: .video)
         let a = p.addSource(SourceRef(path: "/v/a.mp4"))
         p.timeline = [clip(a, 0, 5), clip(a, 5, 9)]
         p.activeClipID = p.timeline[1].id
@@ -361,13 +352,13 @@ private func sampleProject() -> Project {
         #expect(p.timeline[1].audio.muted && !p.timeline[0].audio.muted)
     }
 
-    @Test func projectWithSeveralSourcesRoundTripsAndCannotReplaceAnOriginal() throws {
-        var p = Project(name: "Ghép", mode: .project)
+    @Test func projectWithSeveralSourcesRoundTrips() throws {
+        var p = Project(name: "Ghép", kind: .video)
         let a = p.addSource(SourceRef(path: "/v/a.mp4")), b = p.addSource(SourceRef(path: "/v/b.mp4"))
         p.timeline = [clip(a, 0, 5), clip(b, 1, 3, speed: 1.5)]
         p.activeClipID = p.timeline[0].id
         let back = try ProjectCodec.decode(ProjectCodec.encode(p))
-        #expect(back == p && !back.canReplaceOriginal)
+        #expect(back == p)
         #expect(abs(back.timelineDuration.seconds - (5 + 2 / 1.5)) < 0.01)
     }
 }

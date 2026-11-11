@@ -17,7 +17,7 @@ guard args.count >= 2 else { fail("usage: macplayer-probe gen|info|spike ...") }
 func run() async throws {
     switch args[1] {
     case "gen":
-        guard args.count >= 3 else { fail("gen <out> [h264|hevc] [seconds] [fps] [gop]") }
+        guard args.count >= 3 else { fail("gen <out> [h264|hevc] [seconds] [fps] [gop] [WxH]") }
         var s = SyntheticMedia.Spec()
         let url = URL(fileURLWithPath: args[2])
         s.container = SyntheticMedia.Container(rawValue: url.pathExtension.lowercased()) ?? .mp4
@@ -25,6 +25,7 @@ func run() async throws {
         if args.count > 4 { s.seconds = Double(args[4]) ?? 10 }
         if args.count > 5 { s.frameRate = FrameRate(approximately: Double(args[5]) ?? 30) }
         if args.count > 6 { s.keyframeInterval = Int(args[6]) ?? 60 }
+        if args.count > 7 { let wh = args[7].split(separator: "x").compactMap { Int($0) }; if wh.count == 2 { s.width = wh[0]; s.height = wh[1] } }
         try await SyntheticMedia.generate(to: url, spec: s)
         print("wrote \(url.path)")
     case "info":
@@ -38,7 +39,7 @@ func run() async throws {
         let v = URL(fileURLWithPath: args[2])
         let info = try await MediaProbe.probe(url: v)
         let src = SourceRef(path: v.path, fingerprint: try? RealFileSystem().fingerprint(v.path), info: info)
-        var p = Project(name: v.deletingPathExtension().lastPathComponent, mode: .project, sources: [src])
+        var p = Project(name: v.deletingPathExtension().lastPathComponent, kind: .video, sources: [src])
         p.timeline = [TimelineClip(sourceID: src.id, sourceStart: .zero, sourceEnd: info.duration, name: p.name)]
         p.activeClipID = p.timeline.first?.id
         try ProjectCodec.encode(p).write(to: URL(fileURLWithPath: args[3]))

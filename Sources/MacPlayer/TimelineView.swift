@@ -2,22 +2,23 @@ import AppKit
 import Combine
 import MacPlayerCore
 
-/// The strip under the video: ruler, waveform, clips, markers, playhead. Click or drag to move the playhead;
-/// drag a clip's edges to trim it; shift-drag to draw a new clip; scroll to move, pinch or ⌘-scroll to zoom.
+/// The strip under the video: ruler, waveform, clips, markers, playhead. Click or drag to move the playhead; in a video project,
+/// drag a clip to move it and its edges to trim it; scroll to move, pinch or ⌘-scroll to zoom. When only watching, it is the
+/// waveform and the playhead.
 @MainActor
 final class TimelineView: NSView {
     private weak var session: EditorSession?
     private var bag = Set<AnyCancellable>()
 
-    private var visibleStart = 0.0
-    private var visibleLength = 10.0
+    private var viewport = TimelineViewport()
+    private var visibleStart: Double { viewport.start }
+    private var visibleLength: Double { viewport.length }
     private var followPlayhead = true
 
-    private enum Drag { case none, playhead, edge(UUID, left: Bool), newRange(anchor: Double), pan, moveClip(UUID, startX: CGFloat), overlayMove(UUID, grab: Double), overlayEdge(UUID, left: Bool) }
+    private enum Drag { case none, playhead, edge(UUID, left: Bool), pan, moveClip(UUID, startX: CGFloat), overlayMove(UUID, grab: Double), overlayEdge(UUID, left: Bool) }
     private var moveTarget: Int?
     private var movedFar = false
     private var drag = Drag.none
-    private var newRangePreview: (Double, Double)?
 
     private let rulerHeight: CGFloat = 20
     private let laneHeight: CGFloat = 24
@@ -33,15 +34,24 @@ final class TimelineView: NSView {
         wantsLayer = true
         setAccessibilityRole(.slider)
         setAccessibilityLabel(L("Timeline"))
-        session.objectWillChange.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.needsDisplay = true; self?.followIfNeeded() }.store(in: &bag)
+        session.objectWillChange.receive(on: DispatchQueue.main).sink { [weak self] _ in
+            guard let self else { return }
+            // The project's length changes when videos are added or clips trimmed: the strip follows (it used to keep the
+            // width an empty project had, and then scrolled on every frame).
+            self.viewport.totalChanged(to: self.total)
+            self.needsDisplay = true; self.followIfNeeded()
+        }.store(in: &bag)
         fitAll()
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private var total: Double { max(0.001, session?.duration.seconds ?? 1) }
+    private var total: Double { max(0, session?.duration.seconds ?? 0) }
 
-    func fitAll() { visibleStart = 0; visibleLength = total; needsDisplay = true }
+    func fitAll() { viewport.fitAll(total: total); needsDisplay = true }
+
+    /// What the strip shows now, in seconds (for the self-test).
+    var visibleSpan: (start: Double, length: Double) { (viewport.start, viewport.length) }
 
     private func x(_ t: Double) -> CGFloat { CGFloat((t - visibleStart) / visibleLength) * bounds.width }
     private func time(_ x: CGFloat) -> Double { visibleStart + Double(x / max(1, bounds.width)) * visibleLength }
@@ -49,8 +59,7 @@ final class TimelineView: NSView {
 
     private func followIfNeeded() {
         guard followPlayhead, let s = session, s.player.isPlaying else { return }
-        let t = s.player.currentTime.seconds
-        if t > visibleStart + visibleLength * 0.95 || t < visibleStart { visibleStart = min(max(0, t - visibleLength * 0.1), max(0, total - visibleLength)) }
+        viewport.follow(playhead: s.player.currentTime.seconds)
     }
 
     // MARK: Drawing
@@ -72,7 +81,8 @@ final class TimelineView: NSView {
             var px = CGFloat(0)
             while px < bounds.width {
                 let t0 = time(px), t1 = time(px + 1)
-                let i0 = max(0, min(n - 1, Int(t0 / total * Double(n)))), i1 = max(i0, min(n - 1, Int(t1 / total * Double(n))))
+                let span = max(0.001, total)
+                let i0 = max(0, min(n - 1, Int(t0 / span * Double(n)))), i1 = max(i0, min(n - 1, Int(t1 / span * Double(n))))
                 var peak: Float = 0
                 for i in i0...i1 { peak = max(peak, s.peaks[i]) }
                 let h = max(1, CGFloat(peak) * half)
@@ -81,39 +91,7 @@ final class TimelineView: NSView {
             }
         }
 
-        // Clips
-        for (i, c) in (s.isProject ? [] : s.project.selections.items).enumerated() {
-            let r = CGRect(x: x(c.start.seconds), y: track.minY + 2, width: x(c.end.seconds) - x(c.start.seconds), height: track.height - 4)
-            guard r.maxX > 0, r.minX < bounds.width else { continue }
-            let selected = s.selectedClipIDs.contains(c.id)
-            let base = Self.palette[i % Self.palette.count]
-            ctx.setFillColor(base.withAlphaComponent(selected ? 0.42 : 0.26).cgColor)
-            ctx.fill(r)
-            ctx.setStrokeColor(base.cgColor)
-            ctx.setLineWidth(selected ? 2 : 1)
-            ctx.stroke(r.insetBy(dx: 0.5, dy: 0.5))
-            // Edge handles
-            ctx.setFillColor(base.cgColor)
-            ctx.fill(CGRect(x: r.minX, y: r.minY, width: 3, height: r.height))
-            ctx.fill(CGRect(x: r.maxX - 3, y: r.minY, width: 3, height: r.height))
-            let label = c.name as NSString
-            label.draw(at: CGPoint(x: max(r.minX, 0) + 6, y: r.minY + 2), withAttributes: [.font: NSFont.systemFont(ofSize: 10, weight: .medium), .foregroundColor: NSColor.labelColor])
-        }
-
-        // In/Out being set
         if s.isProject { drawProjectClips(s, ctx, track); drawLanes(s, ctx) }
-        if !s.isProject, s.inPoint != nil || s.outPoint != nil {
-            let a = s.inPoint?.seconds ?? 0, b = s.outPoint?.seconds ?? total
-            ctx.setFillColor(NSColor.systemYellow.withAlphaComponent(0.2).cgColor)
-            ctx.fill(CGRect(x: x(a), y: track.minY, width: x(b) - x(a), height: track.height))
-            ctx.setFillColor(NSColor.systemYellow.cgColor)
-            if s.inPoint != nil { ctx.fill(CGRect(x: x(a) - 1, y: track.minY, width: 3, height: track.height)) }
-            if s.outPoint != nil { ctx.fill(CGRect(x: x(b) - 2, y: track.minY, width: 3, height: track.height)) }
-        }
-        if let (a, b) = newRangePreview {
-            ctx.setFillColor(NSColor.systemOrange.withAlphaComponent(0.3).cgColor)
-            ctx.fill(CGRect(x: x(min(a, b)), y: track.minY, width: abs(x(b) - x(a)), height: track.height))
-        }
 
         // Markers
         for m in s.project.markers {
@@ -286,17 +264,6 @@ final class TimelineView: NSView {
 
     // MARK: Mouse
 
-    private func edge(at p: CGPoint) -> (UUID, Bool)? {
-        guard let s = session, p.y > rulerHeight else { return nil }
-        for c in s.project.selections.items {
-            if abs(p.x - x(c.start.seconds)) <= 5 { return (c.id, true) }
-            if abs(p.x - x(c.end.seconds)) <= 5 { return (c.id, false) }
-        }
-        return nil
-    }
-
-    private func clipAt(_ t: Double) -> ClipSelection? { session?.project.selections.items.last { $0.start.seconds <= t && t < $0.end.seconds } }
-
     override func mouseDown(with e: NSEvent) {
         guard let s = session else { return }
         window?.makeFirstResponder(self)
@@ -328,13 +295,6 @@ final class TimelineView: NSView {
             s.player.scrub(to: MediaTime(seconds: clampTime(time(p.x)), timescale: 600))
             return
         }
-        if e.modifierFlags.contains(.shift), p.y > rulerHeight {
-            drag = .newRange(anchor: clampTime(time(p.x))); newRangePreview = (clampTime(time(p.x)), clampTime(time(p.x))); return
-        }
-        if let (id, left) = edge(at: p) { drag = .edge(id, left: left); s.selectedClipIDs = [id]; return }
-        if p.y > rulerHeight, let c = clipAt(time(p.x)) {
-            s.selectedClipIDs = e.modifierFlags.contains(.command) ? s.selectedClipIDs.symmetricDifference([c.id]) : [c.id]
-        } else if p.y > rulerHeight { s.selectedClipIDs = [] }
         drag = .playhead
         s.player.scrub(to: MediaTime(seconds: clampTime(time(p.x)), timescale: 600))
     }
@@ -345,7 +305,7 @@ final class TimelineView: NSView {
         let t = clampTime(time(p.x))
         switch drag {
         case .playhead: s.player.scrub(to: MediaTime(seconds: t, timescale: 600))
-        case .edge(let id, let left) where s.isProject:
+        case .edge(let id, let left):
             s.trimClip(id, leftEdge: left, toTimelineTime: MediaTime(seconds: t, timescale: 600))
         case .overlayMove(let id, let grab):
             let lane = max(0, min(laneCount - 1, Int((p.y - lanesTop) / laneHeight)))
@@ -355,42 +315,23 @@ final class TimelineView: NSView {
         case .moveClip(_, let startX):
             if abs(p.x - startX) > 6 { movedFar = true }
             if movedFar { moveTarget = dropIndex(at: t); needsDisplay = true }
-        case .edge(let id, let left):
-            guard let c = s.project.selections.items.first(where: { $0.id == id }) else { return }
-            let snapped = snap(t)
-            let a = left ? snapped : c.start.seconds, b = left ? c.end.seconds : snapped
-            if b - a > 0.05 { s.edit("Trim clip", coalesce: "trim-\(id)", refreshPreview: false) { $0.selections.setRange(id, start: MediaTime(seconds: a, timescale: 600), end: MediaTime(seconds: b, timescale: 600), duration: s.info?.duration) } }
-        case .newRange(let anchor): newRangePreview = (anchor, t); needsDisplay = true
         default: break
         }
     }
 
     override func mouseUp(with e: NSEvent) {
         guard let s = session else { return }
-        if case .newRange = drag, let (a, b) = newRangePreview, abs(b - a) > 0.05 {
-            s.inPoint = MediaTime(seconds: min(a, b), timescale: 600); s.outPoint = MediaTime(seconds: max(a, b), timescale: 600)
-            s.addClipFromInOut()
-        }
         switch drag { case .edge, .overlayMove, .overlayEdge: s.endCoalescing(); default: break }
         if case .moveClip(let id, _) = drag, movedFar, let target = moveTarget { s.moveClip(id, toIndex: target) }
         moveTarget = nil; movedFar = false
-        newRangePreview = nil; drag = .none; needsDisplay = true
-    }
-
-    /// Edges snap to the playhead, markers and other clips' edges within a few pixels (design section 6: snap).
-    private func snap(_ t: Double) -> Double {
-        guard let s = session else { return t }
-        var candidates = [s.player.currentTime.seconds] + s.project.markers.map { $0.time.seconds }
-        for c in s.project.selections.items { candidates += [c.start.seconds, c.end.seconds] }
-        let tol = visibleLength / Double(max(1, bounds.width)) * 6
-        return candidates.min(by: { abs($0 - t) < abs($1 - t) }).flatMap { abs($0 - t) <= tol ? $0 : nil } ?? t
+        drag = .none; needsDisplay = true
     }
 
     override func scrollWheel(with e: NSEvent) {
         if e.modifierFlags.contains(.command) || e.modifierFlags.contains(.option) { zoom(by: 1 - e.scrollingDeltaY * 0.01, around: convert(e.locationInWindow, from: nil).x) }
         else {
             let dx = abs(e.scrollingDeltaX) > abs(e.scrollingDeltaY) ? e.scrollingDeltaX : e.scrollingDeltaY
-            visibleStart = min(max(0, visibleStart - Double(dx) / Double(bounds.width) * visibleLength), max(0, total - visibleLength))
+            viewport.scroll(by: -Double(dx) / Double(max(1, bounds.width)) * visibleLength)
             needsDisplay = true
         }
     }
@@ -398,9 +339,7 @@ final class TimelineView: NSView {
     override func magnify(with e: NSEvent) { zoom(by: 1 - e.magnification, around: convert(e.locationInWindow, from: nil).x) }
 
     func zoom(by factor: Double, around px: CGFloat) {
-        let anchor = time(px)
-        visibleLength = min(total, max(0.5, visibleLength * factor))
-        visibleStart = min(max(0, anchor - Double(px / max(1, bounds.width)) * visibleLength), max(0, total - visibleLength))
+        viewport.zoom(by: factor, anchor: time(px), fraction: Double(px / max(1, bounds.width)))
         needsDisplay = true
     }
 
@@ -422,22 +361,18 @@ final class TimelineView: NSView {
             m.addItem(withTitle: L("Split at Playhead"), action: #selector(splitHere), keyEquivalent: "").target = self
             m.addItem(withTitle: L("Duplicate"), action: #selector(duplicateSelected), keyEquivalent: "").target = self
             m.addItem(withTitle: L("Delete Clip"), action: #selector(deleteClickedClip), keyEquivalent: "").target = self
+            m.addItem(withTitle: L("Add Marker Here"), action: #selector(addMarkerHere), keyEquivalent: "").target = self
+            clickTime = time(p.x)
             return m
         }
-        if let c = clipAt(time(p.x)) {
-            s.selectedClipIDs = [c.id]
-            m.addItem(withTitle: L("Delete Clip"), action: #selector(deleteClickedClip), keyEquivalent: "").target = self
-        }
-        m.addItem(withTitle: L("Add Marker Here"), action: #selector(addMarkerHere), keyEquivalent: "").target = self
-        clickTime = time(p.x)
-        return m
+        return nil      // watching only: nothing to edit here
     }
     private var clickTime = 0.0
     @objc private func duplicateOverlayHere() { if let s = session, let id = s.selectedOverlayID { s.duplicateOverlay(id) } }
     @objc private func deleteOverlayHere() { if let s = session, let id = s.selectedOverlayID { s.deleteOverlay(id) } }
     @objc private func splitHere() { session?.splitAtPlayhead() }
     @objc private func duplicateSelected() { if let s = session { s.duplicateTimelineClips(s.selectedClipIDs) } }
-    @objc private func deleteClickedClip() { if let s = session { s.removeClips(s.selectedClipIDs) } }
+    @objc private func deleteClickedClip() { if let s = session { s.deleteTimelineClips(s.selectedClipIDs) } }
     @objc private func addMarkerHere() {
         session?.edit("Add marker", refreshPreview: false) { $0.markers.append(Marker(time: MediaTime(seconds: self.clickTime, timescale: 600), name: LF("Marker %d", $0.markers.count + 1))) }
     }

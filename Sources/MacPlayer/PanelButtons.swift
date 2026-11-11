@@ -55,7 +55,6 @@ extension InspectorTab {
         case .audio: return "speaker.wave.2"
         case .text: return "textformat"
         case .subtitles: return "captions.bubble"
-        case .thumbnail: return "photo"
         case .export: return "square.and.arrow.up"
         }
     }

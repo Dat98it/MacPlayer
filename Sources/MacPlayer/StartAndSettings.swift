@@ -7,63 +7,33 @@ extension Notification.Name {
     static let recentsChanged = Notification.Name("MacPlayerRecentsChanged")
 }
 
-struct StartView: View {
-    var open: () -> Void
-    var openFolder: () -> Void
-    var openURL: (URL) -> Void
-    @StateObject private var refresh = Box<Int>(0)
-
-    var body: some View {
-        let _ = refresh.value      // read so that the view is rebuilt when the recent list is cleared
-        let recents = Array(NSDocumentController.shared.recentDocumentURLs.prefix(8))
-        VStack(spacing: 14) {
-            Image(systemName: "play.rectangle.on.rectangle").font(.system(size: 54)).foregroundColor(.accentColor).accessibilityHidden(true)
-            Text("MacPlayer").font(.largeTitle.bold())
-            Text(L("Watch. Edit. Export.")).font(.title3).foregroundColor(.secondary)
-            HStack {
-                Button(L("Open a Video or Photo…")) { open() }.controlSize(.large).keyboardShortcut(.defaultAction)
-                Button(L("Open a Folder as Playlist…")) { openFolder() }.controlSize(.large)
-            }
-            Text(L("Or drop a video, photo or folder here.")).font(.callout).foregroundColor(.secondary)
-            if let last = recents.first {
-                Button(LF("Continue with “%@”", last.lastPathComponent)) { openURL(last) }
-            }
-            if recents.count > 1 {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(L("Recent")).font(.headline)
-                    ForEach(recents, id: \.self) { u in
-                        Button { openURL(u) } label: { Label(u.lastPathComponent, systemImage: ProjectFile.isProject(u) ? "doc.text" : "film").lineLimit(1) }.buttonStyle(.link)
-                    }
-                }.frame(maxWidth: 360, alignment: .leading)
-            }
-        }
-        .padding(30).frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(NSColor.windowBackgroundColor))
-        .onReceive(NotificationCenter.default.publisher(for: .recentsChanged)) { _ in refresh.value += 1 }
-    }
-}
-
-/// A slim bar above the picture: which video is open, and the button that closes it again.
+/// A slim bar above the picture while watching: which file is open, rename / Trash, "Edit", and the button that closes it again.
 struct VideoHeader: View {
     @ObservedObject var session: EditorSession
     var onClose: () -> Void
     var onRename: () -> Void = {}
     var onTrash: () -> Void = {}
+    var onEdit: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: session.isProject ? "doc.text" : (session.isPhoto ? "photo" : "film")).foregroundColor(.secondary).accessibilityHidden(true)
-            Text((session.isProject ? nil : session.sourceURL?.lastPathComponent) ?? session.project.name)
+            Image(systemName: session.isPhoto ? "photo" : "film").foregroundColor(.secondary).accessibilityHidden(true)
+            Text(session.sourceURL?.lastPathComponent ?? session.project.name)
                 .font(.callout.weight(.medium)).lineLimit(1).truncationMode(.middle)
-            if session.isDirty { Text("•").foregroundColor(.secondary).accessibilityLabel(L("Unsaved edits")) }
-            if !session.isProject, session.sourceURL != nil {
+            if session.sourceURL != nil {
                 Button(action: onRename) { Image(systemName: "pencil") }.buttonStyle(.borderless).help(L("Rename the file")).accessibilityLabel(L("Rename the file"))
                 Button(action: onTrash) { Image(systemName: "trash") }.buttonStyle(.borderless).help(L("Move the file to the Trash")).accessibilityLabel(L("Move the file to the Trash"))
             }
             Spacer(minLength: 8)
+            if session.sourceURL != nil {
+                Button(action: onEdit) { Label(L("Edit"), systemImage: "slider.horizontal.below.rectangle") }
+                    .controlSize(.small)
+                    .help(L("Make a project from this file and edit it (⌘E). The file itself is never changed."))
+            }
             Button(action: onClose) { Label(L("Close"), systemImage: "xmark.circle") }
                 .controlSize(.small)
-                .help(L("Close this video and go back to the start screen (⇧⌘W)"))
-                .accessibilityLabel(L("Close video"))
+                .help(L("Close this file and go back to the playlists (⇧⌘W)"))
+                .accessibilityLabel(L("Close"))
         }
         .padding(.horizontal, 12).padding(.vertical, 5)
         .background(Color(NSColor.windowBackgroundColor))
@@ -113,15 +83,10 @@ struct SettingsView: View {
             }.tabItem { Text(L("Playback")) }.padding(16)
 
             Form {
-                Picker(L("Default when saving"), selection: Binding(get: { p.defaultSave }, set: { p.defaultSave = $0; r.bump() })) {
-                    Text(L("Save as a new copy (recommended)")).tag(SaveDefault.newCopy); Text(L("Apply changes to the original")).tag(SaveDefault.replaceOriginal)
-                }
-                Text(L("Replacing the original always asks you to confirm the file first.")).font(.caption).foregroundColor(.secondary)
-                Toggle(L("Keep a backup copy before replacing an original"), isOn: Binding(get: { p.backupBeforeReplace }, set: { p.backupBeforeReplace = $0; r.bump() }))
+                Label(L("MacPlayer never changes your original videos and photos. Every export is a new file."), systemImage: "lock.shield")
                 TextField(L("Added to copy names"), text: Binding(get: { p.copySuffix }, set: { p.copySuffix = $0; r.bump() }))
                 Divider()
-                Toggle(L("Autosave projects for recovery"), isOn: Binding(get: { p.autosaveEnabled }, set: { p.autosaveEnabled = $0; r.bump() }))
-                Text(L("Autosave only stores your edits. It never changes a video file.")).font(.caption).foregroundColor(.secondary)
+                Text(L("Projects are saved into their own file as you work. A recovery copy is also kept on this Mac, in case the app stops.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             }.tabItem { Text(L("Saving")) }.padding(16)
 
             Form {
@@ -146,14 +111,15 @@ struct SettingsView: View {
             }.frame(maxWidth: .infinity, alignment: .leading).tabItem { Text(L("Privacy")) }.padding(16)
 
             Form {
+                shortcut("⌘1  ⌘2  ⇧⌘H", L("Playlists / projects / home")); shortcut("⌘N", L("New project (in Editing)")); shortcut("⌘E", L("Edit the file you are watching"))
                 shortcut("Space", L("Play / pause")); shortcut("← →", L("Skip back / forward")); shortcut("⇧← ⇧→", L("Big skip"))
-                shortcut(", .", L("Previous / next frame")); shortcut("I   O", L("Set In / Out point")); shortcut("Return", L("Add clip from In to Out"))
-                shortcut("M", L("Add marker")); shortcut("{   }", L("Previous / next marker")); shortcut("- =", L("Slower / faster")); shortcut("F", L("Full screen"))
-                shortcut("Delete", L("Delete selected clip")); shortcut("⌘Z  ⇧⌘Z", L("Undo / redo")); shortcut("⌘S", L("Save project")); shortcut("⌥⌘S", L("Save video…"))
+                shortcut(", .", L("Previous / next frame")); shortcut("S", L("Split clip at playhead")); shortcut("M", L("Add marker"))
+                shortcut("{   }", L("Previous / next marker")); shortcut("- =", L("Slower / faster")); shortcut("F", L("Full screen"))
+                shortcut("Delete", L("Delete selected clip")); shortcut("⌘Z  ⇧⌘Z", L("Undo / redo")); shortcut("⌘S", L("Save now")); shortcut("⌥⌘S", L("Export video…"))
                 Text(L("These shortcuts cannot be changed in this version.")).font(.caption).foregroundColor(.secondary)
             }.tabItem { Text(L("Shortcuts")) }.padding(16)
         }
-        .frame(width: 520, height: 360)
+        .frame(width: 560, height: 400)
     }
 
     private func shortcut(_ keys: String, _ what: String) -> some View {

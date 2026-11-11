@@ -60,69 +60,17 @@ import MacPlayerCore
         #expect(try Data(contentsOf: src) == (try Data(contentsOf: master)))
     }
 
-    @Test func replacingTheOriginalKeepsABackupAndSwapsTheContent() async throws {
+    @Test func anOldReplaceJobFailsWithoutTouchingTheSource() async throws {
         let master = try await Fixtures.shared.source()
-        let dir = try workFolder("replace")
+        let dir = try workFolder("legacy-replace")
         let src = dir.appendingPathComponent("lecture.mp4"); try FileManager.default.copyItem(at: master, to: src)
         let original = try Data(contentsOf: src)
         let (runner, _) = runner(dir)
-        let fp = try fs.fingerprint(src.path)
-        let backups = dir.appendingPathComponent("Backups").path
-        let r = try await runner.run(job: job(source: src, from: 30, to: 90, target: .replaceOriginal(path: src.path, expected: fp, backupFolder: backups)))
-        let backup = try #require(r.outcome.backupPath)
-        #expect(try Data(contentsOf: URL(fileURLWithPath: backup)) == original, "the backup is the untouched original")
-        #expect(try Data(contentsOf: src) != original)
-        let info = try await MediaProbe.probe(url: src)
-        #expect(abs(info.duration.seconds - 2.0) < 0.2, "the original path now holds the 2-second edit")
-        let idx = try await FrameScanner.scanVideo(url: src).compactMap(\.index)
-        #expect(idx.first == 30 && idx.last == 89)
-        #expect(leftovers(in: dir).isEmpty)
-        #expect(((try? FileManager.default.contentsOfDirectory(atPath: dir.appendingPathComponent("journal").path)) ?? []).isEmpty, "the journal is gone after success")
-    }
-
-    @Test func cancellingAReplaceLeavesTheOriginalAndNoBackupClutter() async throws {
-        let master = try await Fixtures.shared.source()
-        let dir = try workFolder("cancel-replace")
-        let src = dir.appendingPathComponent("lecture.mp4"); try FileManager.default.copyItem(at: master, to: src)
-        let original = try Data(contentsOf: src)
-        let (runner, _) = runner(dir)
-        let fp = try fs.fingerprint(src.path)
-        let backups = dir.appendingPathComponent("Backups").path
-        let j = job(source: src, from: 0, to: 120, target: .replaceOriginal(path: src.path, expected: fp, backupFolder: backups))
-        let task = Task { try await runner.run(job: j) }
-        try await Task.sleep(nanoseconds: 40_000_000)
-        task.cancel()
-        _ = try? await task.value
-        #expect(try Data(contentsOf: src) == original, "cancelling must leave the original byte-identical")
-        #expect(leftovers(in: dir).isEmpty)
-        #expect(((try? FileManager.default.contentsOfDirectory(atPath: backups)) ?? []).isEmpty, "an unused backup is removed")
-    }
-
-    @Test func aSourceChangedByAnotherAppIsNotReplaced() async throws {
-        let master = try await Fixtures.shared.source()
-        let dir = try workFolder("changed")
-        let src = dir.appendingPathComponent("lecture.mp4"); try FileManager.default.copyItem(at: master, to: src)
-        let (runner, _) = runner(dir)
-        let fp = try fs.fingerprint(src.path)
-        // Another app appends data after the project recorded its fingerprint.
-        let h = try FileHandle(forWritingTo: src); try h.seekToEnd(); try h.write(contentsOf: Data("x".utf8)); try h.close()
-        let changed = try Data(contentsOf: src)
-        await #expect(throws: SaveError.sourceChanged) {
-            try await runner.run(job: job(source: src, target: .replaceOriginal(path: src.path, expected: fp, backupFolder: nil)))
+        await #expect(throws: SaveError.produceFailed(SaveTarget.legacyReplaceMessage)) {
+            try await runner.run(job: job(source: src, target: .legacyReplaceOriginal(path: src.path)))
         }
-        #expect(try Data(contentsOf: src) == changed)
-    }
-
-    @Test func aNewExtensionCannotReplaceTheOriginal() async throws {
-        let master = try await Fixtures.shared.source()
-        let dir = try workFolder("ext")
-        let src = dir.appendingPathComponent("lecture.mp4"); try FileManager.default.copyItem(at: master, to: src)
-        let (runner, _) = runner(dir)
-        let fp = try fs.fingerprint(src.path)
-        await #expect(throws: SaveError.extensionWouldChange(from: "mp4", to: "mov")) {
-            try await runner.run(job: job(source: src, target: .replaceOriginal(path: src.path, expected: fp, backupFolder: nil),
-                                          options: ExportOptions(mode: .exact, container: .mov)))
-        }
+        #expect(try Data(contentsOf: src) == original, "MacPlayer never writes over an original")
+        #expect(leftovers(in: dir).isEmpty)
     }
 
     @Test func aReadOnlyFolderIsReportedAndNothingIsWritten() async throws {
@@ -181,7 +129,7 @@ import MacPlayerCore
     }
 
     @Test func recoveryAfterACrashDuringTheSwapRestoresTheOriginal() async throws {
-        // Simulates the process dying after the original was moved aside, using the real file system.
+        // MacPlayer 0.7 died after the original was moved aside (real file system): the update still puts it back.
         let master = try await Fixtures.shared.source()
         let dir = try workFolder("crash")
         let src = dir.appendingPathComponent("a.mp4"); try FileManager.default.copyItem(at: master, to: src)
@@ -192,7 +140,7 @@ import MacPlayerCore
         try Data("half".utf8).write(to: temp)
         let j = ["id": "zz", "source": src.path, "temp": temp.path, "aside": aside.path]
         try JSONSerialization.data(withJSONObject: j).write(to: journalDir.appendingPathComponent("zz.journal.json"))
-        let reports = SafeSaver(fs: fs, journalFolder: journalDir.path).recoverInterrupted()
+        let reports = SafeSaver(fs: fs, journalFolder: journalDir.path).recoverLegacyReplaceJournals()
         #expect(reports.map(\.action) == [.restoredOriginal])
         #expect(try Data(contentsOf: src) == original && leftovers(in: dir).isEmpty)
     }

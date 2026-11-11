@@ -279,33 +279,10 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
         // Layers (Picture in Picture, logos), lowest lane first, over the colour-adjusted main picture.
         for (d, pb) in layerFrames {
             let spec = d.live ? (LayerLive.spec(for: d.spec.id) ?? d.spec) : d.spec
-            guard let st = spec.state(at: MediaTime(seconds: time, timescale: 6000)), st.opacity > 0.001 else { continue }
             var li: CIImage
             if let pb { li = normalized(CIImage(cvPixelBuffer: pb).oriented(d.orientation)) } else if let im = d.image { li = normalized(im) } else { continue }
-            guard li.extent.width > 0, li.extent.height > 0 else { continue }
-            if let key = spec.transform.chromaKey { li = LookEffectsRenderer.chromaKeyed(li, key: key) }
-            if spec.transform.isolateSubject, let subject = SubjectMasker.mask(for: li, mode: plan.subjectMode) { li = MaskRenderer.apply(subject, to: li) }
-            if let m = spec.transform.mask { li = MaskRenderer.apply(MaskRenderer.alpha(m, size: li.extent.size), to: li) }
-            let r = OverlayRect.rect(for: st, outputWidth: ow, outputHeight: oh, aspect: Double(li.extent.width / li.extent.height))
-            let k = r.width / Double(li.extent.width)
-            li = li.transformed(by: CGAffineTransform(scaleX: k, y: k))
-            // CI origin is bottom-left; `r.y` is measured from the top.
-            li = li.transformed(by: CGAffineTransform(translationX: r.x, y: oh - r.y - r.height))
-            let bw = spec.transform.borderWidth * oh
-            if bw > 0.5 {
-                let edge = CIImage(color: d.live ? CompositionBuilder.ciColor(hex: spec.transform.borderHex) : d.border).cropped(to: li.extent.insetBy(dx: -bw, dy: -bw))
-                li = li.composited(over: edge)
-            }
-            if st.rotation != 0 {
-                let c = CGPoint(x: r.x + r.width / 2, y: oh - r.y - r.height / 2)
-                li = li.transformed(by: CGAffineTransform(translationX: -c.x, y: -c.y).concatenating(CGAffineTransform(rotationAngle: -st.rotation * .pi / 180)).concatenating(CGAffineTransform(translationX: c.x, y: c.y)))
-            }
-            if st.opacity < 0.999 { li = li.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: st.opacity)]) }
-            if let blend = spec.transform.blend.filterName {
-                out = li.applyingFilter(blend, parameters: [kCIInputBackgroundImageKey: out]).cropped(to: frame)
-            } else {
-                out = li.composited(over: out).cropped(to: frame)
-            }
+            out = drawLayer(li, spec: spec, border: d.live ? CompositionBuilder.ciColor(hex: spec.transform.borderHex) : d.border, time: time,
+                            subjectMode: plan.subjectMode, over: out, frame: frame)
         }
 
         // Text and subtitles.
@@ -316,6 +293,37 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
             }
         }
         return out.cropped(to: frame)
+    }
+
+    /// One layer (a picture or a video frame) drawn over `out` as its spec says at `time`: cut-out, place, border, turn, opacity, blend.
+    /// Used by video frames and by photos (logos), so both look the same.
+    static func drawLayer(_ picture: CIImage, spec: LayerSpec, border: CIColor, time: Double, subjectMode: SubjectMasker.Mode, over out: CIImage, frame: CGRect) -> CIImage {
+        let ow = Double(frame.width), oh = Double(frame.height)
+        guard let st = spec.state(at: MediaTime(seconds: time, timescale: 6000)), st.opacity > 0.001 else { return out }
+        var li = picture
+        guard li.extent.width > 0, li.extent.height > 0 else { return out }
+        if let key = spec.transform.chromaKey { li = LookEffectsRenderer.chromaKeyed(li, key: key) }
+        if spec.transform.isolateSubject, let subject = SubjectMasker.mask(for: li, mode: subjectMode) { li = MaskRenderer.apply(subject, to: li) }
+        if let m = spec.transform.mask { li = MaskRenderer.apply(MaskRenderer.alpha(m, size: li.extent.size), to: li) }
+        let r = OverlayRect.rect(for: st, outputWidth: ow, outputHeight: oh, aspect: Double(li.extent.width / li.extent.height))
+        let k = r.width / Double(li.extent.width)
+        li = li.transformed(by: CGAffineTransform(scaleX: k, y: k))
+        // CI origin is bottom-left; `r.y` is measured from the top.
+        li = li.transformed(by: CGAffineTransform(translationX: r.x, y: oh - r.y - r.height))
+        let bw = spec.transform.borderWidth * oh
+        if bw > 0.5 {
+            let edge = CIImage(color: border).cropped(to: li.extent.insetBy(dx: -bw, dy: -bw))
+            li = li.composited(over: edge)
+        }
+        if st.rotation != 0 {
+            let c = CGPoint(x: r.x + r.width / 2, y: oh - r.y - r.height / 2)
+            li = li.transformed(by: CGAffineTransform(translationX: -c.x, y: -c.y).concatenating(CGAffineTransform(rotationAngle: -st.rotation * .pi / 180)).concatenating(CGAffineTransform(translationX: c.x, y: c.y)))
+        }
+        if st.opacity < 0.999 { li = li.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: st.opacity)]) }
+        if let blend = spec.transform.blend.filterName {
+            return li.applyingFilter(blend, parameters: [kCIInputBackgroundImageKey: out]).cropped(to: frame)
+        }
+        return li.composited(over: out).cropped(to: frame)
     }
 
     /// Gives the output the same colour description as the frame it came from. Without it, the encoder and the

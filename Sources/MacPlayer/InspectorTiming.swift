@@ -36,10 +36,7 @@ struct TimingPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if !session.isProject {
-                Text(L("These tools work on a clip of the timeline. They cut, hold or reverse parts of the video, so the video becomes a project first.")).font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-                Button(L("Make a Project from the Whole Video")) { session.makeProject(fromClips: false) }
-            } else if session.timingClip == nil {
+            if session.timingClip == nil {
                 Text(L("Select a clip on the timeline to use these tools.")).foregroundColor(.secondary)
             } else {
                 ToolCard(title: L("Speed"), icon: "speedometer") {

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3 -I
 """Kills a running MacPlayer with SIGKILL in the middle of an export, at many different moments, then relaunches it the way
 a user would and checks the promises of the save flow:
-  * the original video is never lost or damaged (byte-identical, or replaced by a complete valid video with a backup);
+  * the original video is never changed (byte-identical: MacPlayer never writes over an original);
   * no half-written file is left where a result should be, and no MacPlayer temp files remain after recovery;
-  * the crash is recoverable: recovery reports are sane and interrupted queue jobs come back as "queued".
+  * the crash is recoverable: recovery reports are sane and interrupted queue jobs come back as "queued";
+  * killed while a project is being saved into its file over and over (autosave), the project file is always a whole,
+    readable project.
 
 Usage: python3 -I Scripts/crash_test.py <MacPlayer.app> <macplayer-probe> <long-video.mp4> [iterations] [seed]
 The long video should take a few seconds to export (a 60 s 640x360 clip does). Works only in a throw-away sandbox
@@ -34,14 +36,15 @@ def temps(d):
     return out
 
 failures, rows = [], []
-for mode in ("copy", "replace", "batch"):
+for mode in ("copy", "batch", "autosave"):
     for it in range(iterations):
         work = tempfile.mkdtemp(prefix="mv-crash-"); sandbox = os.path.join(work, "sandbox"); os.makedirs(sandbox)
         src = os.path.join(work, "source.mp4"); outdir = os.path.join(work, "out"); os.makedirs(outdir)
         shutil.copy(media, src)
         original = sha(src)
         delay = random.uniform(0.15, 3.0)
-        p = subprocess.Popen([exe, "--sandbox", sandbox, "--crash-export", src, outdir, mode], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        flag = "--crash-autosave" if mode == "autosave" else "--crash-export"
+        p = subprocess.Popen([exe, "--sandbox", sandbox, flag, src, outdir, mode], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         started = None
         t0 = time.time()
         while time.time() - t0 < 20:
@@ -61,19 +64,17 @@ for mode in ("copy", "replace", "batch"):
         problems = []
         if not os.path.exists(src): problems.append("THE ORIGINAL IS GONE")
         else:
-            same = sha(src) == original
-            if mode == "replace":
-                if not same:
-                    if not valid_video(src): problems.append("original replaced by an INVALID file")
-                    backups = [os.path.join(dp, f) for dp, _, fs in os.walk(work) for f in fs if ".original-" in f]
-                    if not backups: problems.append("original replaced but NO backup")
-                    elif not any(sha(b) == original for b in backups): problems.append("backup differs from the original")
-            elif not same: problems.append("source changed by a copy/batch export")
+            if sha(src) != original: problems.append("THE SOURCE WAS CHANGED")
         for out in started:
-            if os.path.exists(out) and not valid_video(out): problems.append(f"a result file exists but is not a valid video: {os.path.basename(out)}")
+            if mode == "autosave":
+                try:
+                    proj = json.load(open(out))
+                    if proj.get("schemaVersion") != 3 or proj.get("kind") != "video" or not proj.get("timeline"): problems.append("the project file is not a whole project")
+                except Exception as e: problems.append(f"the project file cannot be read after the crash: {e}")
+            elif os.path.exists(out) and not valid_video(out): problems.append(f"a result file exists but is not a valid video: {os.path.basename(out)}")
         left = temps(work)
         if left: problems.append(f"temp files remain after recovery: {[os.path.basename(x) for x in left]}")
-        if mode != "replace" and rec.get("restoredJobs", 0) == 0 and killed_running and not any(os.path.exists(o) for o in started):
+        if mode != "autosave" and rec.get("restoredJobs", 0) == 0 and killed_running and not any(os.path.exists(o) for o in started):
             problems.append("an interrupted job was not offered again")
         rows.append((mode, it, round(delay, 2), killed_running, before_temps, rec.get("journal", []), rec.get("restoredJobs"), "OK" if not problems else "; ".join(problems)))
         failures += [f"{mode}#{it} (kill at {delay:.2f}s): {x}" for x in problems]

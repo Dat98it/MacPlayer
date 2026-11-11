@@ -16,32 +16,55 @@ final class VideoWindow: NSWindow {
     }
 }
 
+/// What a window shows. Each window has its own: one can play a playlist while another edits a project.
+enum WindowRoute: Equatable { case home, playlist, projects, editor }
+
 @MainActor
 final class ContentViewController: NSViewController {
-    var session: EditorSession? { didSet { rebuild() } }
-    var onOpen: () -> Void = {}
-    var onOpenFolder: () -> Void = {}
-    var onOpenURL: (URL) -> Void = { _ in }
+    var route = WindowRoute.home
+    var session: EditorSession?
     var onDropFiles: ([URL]) -> Void = { _ in }
     var onClose: () -> Void = {}
     var onRenameFile: () -> Void = {}
     var onTrashFile: () -> Void = {}
+    var onEditFile: () -> Void = {}
+    var onRoute: (WindowRoute) -> Void = { _ in }
     private(set) var timeline: TimelineView?
     private(set) var host: PlayerHostView?
     private(set) var photoHost: PhotoHostView?
+    /// The bar above the picture (file name and Close while watching; back, name and save state while editing), when one is shown.
+    private(set) var header: NSView?
     var playlists: PlaylistModel?
     private var bag = Set<AnyCancellable>()
     private var timelineHeight: NSLayoutConstraint?
 
     override func loadView() { let v = NSView(); v.wantsLayer = true; v.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor; view = v }
 
+    func show(_ route: WindowRoute, session: EditorSession?) {
+        self.route = route; self.session = session
+        rebuild()
+    }
+
+    private var app: AppDelegate? { NSApp.delegate as? AppDelegate }
+
     private func rebuild() {
         view.subviews.forEach { $0.removeFromSuperview() }
         bag.removeAll()
-        timeline = nil; host = nil; photoHost = nil
+        timeline = nil; host = nil; photoHost = nil; header = nil
         guard let s = session else {
-            let start = NSHostingView(rootView: StartView(open: onOpen, openFolder: onOpenFolder, openURL: onOpenURL))
-            pin(start, to: view)
+            let root: AnyView
+            switch route {
+            case .home, .editor:
+                root = AnyView(HomeView(openPlaylists: { [weak self] in self?.onRoute(.playlist) }, openProjects: { [weak self] in self?.onRoute(.projects) }))
+            case .playlist:
+                root = AnyView(PlaylistStartView(open: { (NSApp.delegate as? AppDelegate)?.openMedia(nil) },
+                                                 openFolder: { (NSApp.delegate as? AppDelegate)?.openFolderAsPlaylist(nil) },
+                                                 openURL: { u in (NSApp.delegate as? AppDelegate)?.open(urls: [u]) },
+                                                 home: { [weak self] in self?.onRoute(.home) }))
+            case .projects:
+                root = AnyView(ProjectsView(projects: AppEnvironment.shared.projects, home: { [weak self] in self?.onRoute(.home) }))
+            }
+            pin(NSHostingView(rootView: root), to: view)
             // The empty window still accepts drops.
             let drop = DropCatcher(); drop.onDrop = { [weak self] in self?.onDropFiles($0) }
             pin(drop, to: view)
@@ -53,7 +76,7 @@ final class ContentViewController: NSViewController {
         host = ph
         ph.manipulator.attach(s)
         ph.fallbackAspect = { [weak s] in s?.outputAspect ?? 16.0 / 9 }
-        let header = NSHostingView(rootView: VideoHeader(session: s, onClose: { [weak self] in self?.onClose() }, onRename: { [weak self] in self?.onRenameFile() }, onTrash: { [weak self] in self?.onTrashFile() }))
+        let header = makeHeader(s)
         let notice = NSHostingView(rootView: NoticeBar(session: s))
         let transport = NSHostingView(rootView: TransportBar(session: s, player: s.player))
         let tl = TimelineView(session: s)
@@ -71,12 +94,30 @@ final class ContentViewController: NSViewController {
             tl.topAnchor.constraint(equalTo: transport.bottomAnchor), tl.leadingAnchor.constraint(equalTo: view.leadingAnchor), tl.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tl.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
-        // Project mode adds three layer lines under the main track.
-        let h = tl.heightAnchor.constraint(equalToConstant: s.isProject ? 190 : 110)
+        // A video project adds three layer lines under the main track; watching only needs the waveform and the playhead.
+        let h = tl.heightAnchor.constraint(equalToConstant: s.isProject ? 190 : 70)
         h.isActive = true
         timelineHeight = h
-        s.objectWillChange.receive(on: DispatchQueue.main).sink { [weak self, weak s] _ in self?.timelineHeight?.constant = (s?.isProject ?? false) ? 190 : 110 }.store(in: &bag)
         s.player.$failure.receive(on: DispatchQueue.main).sink { [weak ph] f in ph?.show(message: f) }.store(in: &bag)
+        if s.isProject {
+            // An empty timeline says what to do, right on the picture.
+            let empty = NSHostingView(rootView: EmptyVideoProjectView(session: s))
+            empty.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(empty)
+            NSLayoutConstraint.activate([empty.centerXAnchor.constraint(equalTo: ph.centerXAnchor), empty.centerYAnchor.constraint(equalTo: ph.centerYAnchor)])
+        }
+    }
+
+    private func makeHeader(_ s: EditorSession) -> NSHostingView<AnyView> {
+        let v: NSHostingView<AnyView>
+        if s.isEditor {
+            v = NSHostingView(rootView: AnyView(EditorHeader(session: s, onBack: { [weak self] in self?.onClose() })))
+        } else {
+            v = NSHostingView(rootView: AnyView(VideoHeader(session: s, onClose: { [weak self] in self?.onClose() }, onRename: { [weak self] in self?.onRenameFile() },
+                                                            onTrash: { [weak self] in self?.onTrashFile() }, onEdit: { [weak self] in self?.onEditFile() })))
+        }
+        header = v
+        return v
     }
 
     /// A photo has no transport and no timeline: the picture, and under it the bar with next/previous, slideshow and zoom.
@@ -84,7 +125,7 @@ final class ContentViewController: NSViewController {
         let ph = PhotoHostView(session: s)
         ph.onDropFiles = { [weak self] in self?.onDropFiles($0) }
         photoHost = ph
-        let header = NSHostingView(rootView: VideoHeader(session: s, onClose: { [weak self] in self?.onClose() }, onRename: { [weak self] in self?.onRenameFile() }, onTrash: { [weak self] in self?.onTrashFile() }))
+        let header = makeHeader(s)
         let notice = NSHostingView(rootView: NoticeBar(session: s))
         let model = playlists ?? (NSApp.delegate as! AppDelegate).playlists
         let bar = NSHostingView(rootView: PhotoBar(session: s, playlists: model, actualZoom: { [weak ph] in ph?.actualPixelsZoom() ?? 1 }))
@@ -97,6 +138,12 @@ final class ContentViewController: NSViewController {
             bar.topAnchor.constraint(equalTo: notice.bottomAnchor), bar.leadingAnchor.constraint(equalTo: view.leadingAnchor), bar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             bar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+        if s.isEditor {
+            let empty = NSHostingView(rootView: EmptyPhotoProjectView(session: s))
+            empty.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(empty)
+            NSLayoutConstraint.activate([empty.centerXAnchor.constraint(equalTo: ph.centerXAnchor), empty.centerYAnchor.constraint(equalTo: ph.centerYAnchor)])
+        }
     }
 
     private func pin(_ v: NSView, to parent: NSView) {
@@ -122,6 +169,7 @@ final class DropCatcher: NSView {
 @MainActor
 final class MainWindowController: NSWindowController, NSWindowDelegate, PlaylistHost {
     private(set) var session: EditorSession?
+    private(set) var route = WindowRoute.home
     let playlists: PlaylistModel
     private let content = ContentViewController()
     private let inspector = NSHostingController(rootView: AnyView(EmptyView()))
@@ -135,6 +183,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
     private var resumeTimer: Timer?
     private var sessionBag = Set<AnyCancellable>()
     private var slideTimer: Timer?
+    private var app: AppDelegate? { NSApp.delegate as? AppDelegate }
 
     init(playlists: PlaylistModel) {
         self.playlists = playlists
@@ -179,70 +228,132 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
             }
         }
 
-        content.onOpen = { (NSApp.delegate as? AppDelegate)?.openDocument(nil) }
-        content.onOpenFolder = { (NSApp.delegate as? AppDelegate)?.openFolderAsPlaylist(nil) }
-        content.onOpenURL = { u in (NSApp.delegate as? AppDelegate)?.open(urls: [u]) }
         content.onDropFiles = { urls in (NSApp.delegate as? AppDelegate)?.dropped(urls: urls) }
         content.onClose = { [weak self] in self?.closeVideo() }
         content.onRenameFile = { [weak self] in if let p = self?.session?.sourceURL?.path { (NSApp.delegate as? AppDelegate)?.renameFile(at: p) } }
         content.onTrashFile = { [weak self] in if let p = self?.session?.sourceURL?.path { (NSApp.delegate as? AppDelegate)?.trashFile(at: p) } }
+        content.onEditFile = { [weak self] in if let self { (NSApp.delegate as? AppDelegate)?.editViewedFile(in: self) } }
+        content.onRoute = { [weak self] r in self?.go(to: r) }
         content.playlists = playlists
-        content.session = nil
-        setPanels(sidebarHidden: prefs.playlistPanelHidden, toolsHidden: true)
+        // A development aid for screenshots: start a window on one of its screens (test runs only).
+        let start = AppEnvironment.shared.isSandbox ? ProcessInfo.processInfo.environment["MACPLAYER_START_ROUTE"] : nil
+        route = start == "playlist" ? .playlist : start == "projects" ? .projects : .home
+        content.show(route, session: nil)
+        applyPanels()
         // A panel closed or opened by dragging its edge is the person's choice too.
         panelObservers = [
-            sidebarItem.observe(\.isCollapsed) { [weak self] item, _ in MainActor.assumeIsolated { if let self, !self.settingPanels { self.prefs.playlistPanelHidden = item.isCollapsed } } },
-            inspectorItem.observe(\.isCollapsed) { [weak self] item, _ in MainActor.assumeIsolated { if let self, !self.settingPanels, self.session != nil { self.prefs.toolsPanelHidden = item.isCollapsed } } },
+            sidebarItem.observe(\.isCollapsed) { [weak self] item, _ in MainActor.assumeIsolated { if let self, !self.settingPanels, self.route == .playlist { self.prefs.playlistPanelHidden = item.isCollapsed } } },
+            inspectorItem.observe(\.isCollapsed) { [weak self] item, _ in MainActor.assumeIsolated { if let self, !self.settingPanels, self.route == .editor { self.prefs.toolsPanelHidden = item.isCollapsed } } },
         ]
         resumeTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { if let s = self?.session, self?.fromPlaylist == true { self?.playlists.rememberResume(s.player.currentTime) } }
         }
+        updateTitle()
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: Where the window is
+
+    /// Goes to another screen of this window. What is open is closed first (an editor's edits are written to its file first);
+    /// false when the person chose to stay.
+    @discardableResult
+    func go(to r: WindowRoute) -> Bool {
+        if session != nil, !(r == .playlist && session?.role == .viewer) {
+            guard closeVideo(goingTo: r) else { return false }
+            return true
+        }
+        route = r
+        if r == .projects { AppEnvironment.shared.projects.refresh() }
+        content.show(r, session: session)
+        applyPanels()
+        updateTitle()
+        return true
+    }
+
+    /// The side panels each screen has: the playlists only while watching, the tools only while editing.
+    private func applyPanels() {
+        switch route {
+        case .playlist: setPanels(sidebarHidden: prefs.playlistPanelHidden, toolsHidden: true)
+        case .editor: setPanels(sidebarHidden: true, toolsHidden: session == nil ? true : prefs.toolsPanelHidden)
+        case .home, .projects: setPanels(sidebarHidden: true, toolsHidden: true)
+        }
+    }
+
+    private func updateTitle() {
+        guard let w = window else { return }
+        if let s = session {
+            if s.isEditor, let p = s.projectPath {
+                w.title = URL(fileURLWithPath: p).deletingPathExtension().lastPathComponent
+                w.representedURL = URL(fileURLWithPath: p)
+            } else {
+                w.title = s.sourceURL?.lastPathComponent ?? s.project.name
+                w.representedURL = s.sourceURL
+            }
+            return
+        }
+        w.representedURL = nil
+        switch route {
+        case .home, .editor: w.title = "MacPlayer"
+        case .playlist: w.title = L("Playlists")
+        case .projects: w.title = L("Projects")
+        }
+    }
 
     // MARK: Session swap
 
     func setSession(_ s: EditorSession, fromPlaylist fp: Bool) {
         slideTimer?.invalidate(); slideTimer = nil
-        session?.close(discardRecovery: true)
+        if let old = session { finish(old) }
         session = s
         fromPlaylist = fp
-        content.session = s
-        inspector.rootView = AnyView(InspectorView(session: s))
-        setPanels(sidebarHidden: sidebarItem.isCollapsed, toolsHidden: prefs.toolsPanelHidden)
-        window?.title = s.project.name
-        window?.representedURL = s.sourceURL
+        route = s.isEditor ? .editor : .playlist
+        content.show(route, session: s)
+        inspector.rootView = s.isEditor ? AnyView(InspectorView(session: s)) : AnyView(EmptyView())
+        applyPanels()
+        updateTitle()
         s.player.onEnded = { [weak self] in
             MainActor.assumeIsolated { if self?.fromPlaylist == true { self?.playlists.advance(auto: true) } }
         }
         sessionBag.removeAll()
-        s.$isDirty.receive(on: DispatchQueue.main).sink { [weak self] d in self?.window?.isDocumentEdited = d }.store(in: &sessionBag)
-        s.$projectPath.receive(on: DispatchQueue.main).sink { [weak self] p in
-            self?.window?.title = p.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent } ?? (self?.session?.project.name ?? "MacPlayer")
+        s.$saveState.receive(on: DispatchQueue.main).sink { [weak self] st in
+            switch st { case .failed, .externallyChanged: self?.window?.isDocumentEdited = true; default: self?.window?.isDocumentEdited = false }
         }.store(in: &sessionBag)
+        s.$projectPath.receive(on: DispatchQueue.main).sink { [weak self] _ in DispatchQueue.main.async { self?.updateTitle() } }.store(in: &sessionBag)
         applyFloating()
-        if let u = s.sourceURL { NSDocumentController.shared.noteNewRecentDocumentURL(u) }
+        if s.role == .viewer, let u = s.sourceURL { NSDocumentController.shared.noteNewRecentDocumentURL(u) }
+        if s.isEditor, let p = s.projectPath {
+            NSDocumentController.shared.noteNewRecentDocumentURL(URL(fileURLWithPath: p))
+            // A project listed without a picture gets one once its picture is ready.
+            if !FileManager.default.fileExists(atPath: AppEnvironment.shared.projects.thumbnailURL(s.project.id).path) {
+                Task { [weak s] in try? await Task.sleep(nanoseconds: 1_500_000_000); s?.storeThumbnail() }
+            }
+        }
         scheduleSlide()
     }
+
+    /// Lets go of a session: an editor's last edits are written, its card gets a fresh picture, the player stops.
+    private func finish(_ s: EditorSession) {
+        if s.isEditor {
+            s.saveNow()
+            storeThumbnail(of: s)
+        }
+        s.close()
+    }
+
+    private func storeThumbnail(of s: EditorSession) { s.storeThumbnail() }
 
     // MARK: Slideshow
 
     func slideshowChanged() { scheduleSlide() }
 
-    /// While the slideshow is on, a photo from a playlist stays for a few seconds and then the playlist moves on. A photo with changes that
-    /// are not saved is never left behind: the slideshow stops there.
+    /// While the slideshow is on, a photo from a playlist stays for a few seconds and then the playlist moves on.
     private func scheduleSlide() {
         slideTimer?.invalidate(); slideTimer = nil
-        guard playlists.slideshowOn, fromPlaylist, let s = session, s.isPhoto else { return }
+        guard playlists.slideshowOn, fromPlaylist, let s = session, s.isPhoto, s.role == .viewer else { return }
         slideTimer = Timer.scheduledTimer(withTimeInterval: prefs.photoSlideSeconds, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, let s = self.session, s.isPhoto else { return }
-                if s.isDirty {
-                    self.playlists.stopSlideshow()
-                    s.flash(L("The slideshow stopped because this photo has changes that are not saved."))
-                    return
-                }
                 self.playlists.advance(auto: true)
             }
         }
@@ -252,12 +363,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
 
     // MARK: PlaylistHost
 
-    var hostHasUnsavedEdits: Bool { session?.isDirty ?? false }
+    /// Watching never has unsaved edits; an editor writes its own.
+    var hostHasUnsavedEdits: Bool { false }
 
     func playPlaylistItem(url: URL, startAt: MediaTime?) async -> Bool {
-        if session?.isDirty == true {
-            guard confirmDiscardEdits() else { return false }
-        }
+        // A project being edited in this window is written and closed first; the playlist plays here.
+        if let s = session, s.isEditor { guard closeVideo(goingTo: .playlist) else { return false } }
         do {
             let s = try await EditorSession.open(url: url)
             setSession(s, fromPlaylist: true)
@@ -274,33 +385,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
     func showPlaylistMessage(_ text: String, isError: Bool) { session?.flash(text, error: isError) }
 
     func stopPlaylistPlayback(path: String?) {
-        guard fromPlaylist, let s = session else { return }
+        guard fromPlaylist, let s = session, s.role == .viewer else { return }
         if let p = path, s.sourceURL?.standardizedFileURL.path != URL(fileURLWithPath: p).standardizedFileURL.path { return }
-        if s.isDirty {
-            // The edits exist only in this window: never close them away. Stop the video and cut its tie to the playlist.
-            s.player.pause(); fromPlaylist = false
-            s.flash(L("Removed from the playlist. The video stays open because it has unsaved edits."), error: false)
-            return
-        }
-        clearSession()
+        clearSession(to: .playlist)
     }
 
-    /// Closes the video in the window and shows the start screen again.
-    private func clearSession() {
+    /// Closes what is open in the window and shows `next` (by default the list it came from).
+    private func clearSession(to next: WindowRoute? = nil) {
         slideTimer?.invalidate(); slideTimer = nil
-        session?.close(discardRecovery: true)
+        let wasEditor = session?.isEditor ?? false
+        if let s = session { finish(s) }
         session = nil; fromPlaylist = false
         sessionBag.removeAll()
-        content.session = nil
+        route = next ?? (wasEditor ? .projects : .playlist)
+        if route == .projects { AppEnvironment.shared.projects.refresh() }
+        content.show(route, session: nil)
         inspector.rootView = AnyView(EmptyView())
-        setPanels(sidebarHidden: sidebarItem.isCollapsed, toolsHidden: true)
+        applyPanels()
         window?.isDocumentEdited = false
-        window?.title = "MacPlayer"; window?.representedURL = nil
+        updateTitle()
     }
 
     /// The open video's file was renamed: open the same video again under its new name, at the same moment, playing or paused.
     func reopen(at url: URL) {
-        guard let s = session else { return }
+        guard let s = session, s.role == .viewer else { return }
         let time = s.player.currentTime, playing = s.player.isPlaying, wasFromPlaylist = fromPlaylist
         Task {
             guard let fresh = try? await EditorSession.open(url: url) else { return }
@@ -312,83 +420,121 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
 
     // MARK: Opening
 
+    /// Opens a video or photo to watch in this window.
     func open(url: URL) async {
         do {
-            let s = ProjectFile.isProject(url) ? try await EditorSession.openProject(path: url.path) : try await EditorSession.open(url: url)
+            let s = try await EditorSession.open(url: url)
             setSession(s, fromPlaylist: false)
             if s.sourceURL != nil, s.player.duration > .zero { s.player.pause() }
         } catch {
-            let a = NSAlert()
-            a.alertStyle = .warning
-            a.messageText = LF("“%@” cannot be opened.", url.lastPathComponent)
-            a.informativeText = ((error as? CustomStringConvertible)?.description ?? error.localizedDescription) + "\n\n" + L("MacPlayer plays and edits the formats macOS supports, such as MP4 and MOV with H.264 or HEVC. MKV and WebM are not supported yet.")
-            a.runModal()
+            Self.cannotOpen(url, error)
         }
     }
 
-    private func confirmDiscardEdits() -> Bool {
-        let a = NSAlert(); a.messageText = L("This video has unsaved edits."); a.informativeText = L("Save the project first, or discard the edits and continue.")
-        a.addButton(withTitle: L("Discard Edits")); a.addButton(withTitle: L("Cancel"))
-        return a.runModal() == .alertFirstButtonReturn
+    static func cannotOpen(_ url: URL, _ error: Error) {
+        let a = NSAlert()
+        a.alertStyle = .warning
+        a.messageText = LF("“%@” cannot be opened.", url.lastPathComponent)
+        a.informativeText = ((error as? CustomStringConvertible)?.description ?? error.localizedDescription) + "\n\n" + L("MacPlayer plays and edits the formats macOS supports, such as MP4 and MOV with H.264 or HEVC. MKV and WebM are not supported yet.")
+        a.runModal()
     }
 
     // MARK: Closing
-
-    // MARK: Full screen
 
     /// What the window and its picture look like, for the full-screen check and the tests.
     var contentController: ContentViewController { content }
     var panelsCollapsed: (sidebar: Bool, inspector: Bool) { (sidebarItem.isCollapsed, inspectorItem.isCollapsed) }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        guard let s = session, s.isDirty else { return true }
-        return confirmLeavingEdits(s)
+        guard let s = session, s.isEditor else { return true }
+        return writeOrAsk(s)
     }
 
-    /// Asks what to do with unsaved edits. True when it is fine to go on (saved, or the person chose not to save).
-    private func confirmLeavingEdits(_ s: EditorSession) -> Bool {
-        let a = NSAlert()
-        a.messageText = LF("Save the project “%@”?", s.project.name)
-        a.informativeText = L("Your edits are kept in a project file. The video file is not changed.")
-        a.addButton(withTitle: L("Save…")); a.addButton(withTitle: L("Don't Save")); a.addButton(withTitle: L("Cancel"))
-        switch a.runModal() {
-        case .alertFirstButtonReturn: return (NSApp.delegate as? AppDelegate)?.saveProject(session: s, forceDialog: false) ?? false
-        case .alertSecondButtonReturn: return true
-        default: return false
+    /// An editor's edits are written into the project file. If that cannot be done, the person decides: try again, save somewhere
+    /// else, or close anyway (the edits stay in the recovery copy). True when it is fine to go on.
+    func writeOrAsk(_ s: EditorSession) -> Bool {
+        while true {
+            if s.saveNow() { return true }
+            if case .externallyChanged = s.saveState {
+                let a = NSAlert()
+                a.messageText = L("The project file was changed outside MacPlayer.")
+                a.informativeText = L("Keep your edits (they replace the file on disk), or close and keep the file as it is on disk. Your edits are also kept in the recovery data.")
+                a.addButton(withTitle: L("Keep My Edits")); a.addButton(withTitle: L("Close Without Them")); a.addButton(withTitle: L("Cancel"))
+                switch a.runModal() {
+                case .alertFirstButtonReturn: if s.saveNow(force: true) { return true }
+                case .alertSecondButtonReturn: return true
+                default: return false
+                }
+                continue
+            }
+            let why: String = { if case .failed(let m) = s.saveState { return m }; return "" }()
+            let a = NSAlert()
+            a.alertStyle = .warning
+            a.messageText = LF("The project “%@” could not be saved.", s.project.name)
+            a.informativeText = why + "\n\n" + L("Your edits are kept in MacPlayer's recovery data, and MacPlayer offers them again next time.")
+            a.addButton(withTitle: L("Try Again")); a.addButton(withTitle: L("Save Somewhere Else…")); a.addButton(withTitle: L("Close Anyway")); a.addButton(withTitle: L("Cancel"))
+            switch a.runModal() {
+            case .alertFirstButtonReturn: continue
+            case .alertSecondButtonReturn: if app?.moveProjectFile(of: s) == true { continue } else { return false }
+            case .alertThirdButtonReturn: return true
+            default: return false
+            }
         }
     }
 
-    /// Closes the video in this window and shows the start screen, without having to open another one. A video with unsaved edits asks
-    /// first (`confirm` replaces that question, for tests). A playlist stops playing and remembers where the viewer stopped.
-    /// False when the person chose to keep the video open.
+    /// Closes what is open in this window and goes back to the list it came from (or to `goingTo`). An editor's edits are written
+    /// first. `confirm` is for tests. False when the person chose to stay.
     @discardableResult
-    func closeVideo(confirm: ((EditorSession) -> Bool)? = nil) -> Bool {
-        guard let s = session else { return false }
-        if s.isDirty, !(confirm ?? { [unowned self] in self.confirmLeavingEdits($0) })(s) { return false }
+    func closeVideo(goingTo: WindowRoute? = nil, confirm: ((EditorSession) -> Bool)? = nil) -> Bool {
+        guard let s = session else {
+            guard let g = goingTo else { return false }      // nothing open: nothing to close
+            route = g; content.show(g, session: nil); applyPanels(); updateTitle()
+            return true
+        }
+        if s.isEditor, !(confirm ?? { [unowned self] in self.writeOrAsk($0) })(s) { return false }
         if fromPlaylist { playlists.rememberResume(s.player.currentTime); playlists.stop() }
-        clearSession()
+        clearSession(to: goingTo)
         return true
+    }
+
+    /// The project file of this window went to the Trash: close it without writing anything more.
+    func closeTrashedProject() {
+        guard let s = session, s.isEditor else { return }
+        s.writingPaused = true
+        s.close()
+        session = nil
+        sessionBag.removeAll()
+        route = .projects
+        content.show(.projects, session: nil)
+        inspector.rootView = AnyView(EmptyView())
+        applyPanels(); window?.isDocumentEdited = false; updateTitle()
     }
 
     func windowWillClose(_ notification: Notification) {
         resumeTimer?.invalidate(); slideTimer?.invalidate()
         // Its size and place are already saved; let go of the name so the next window that opens can take it over.
         if window?.frameAutosaveName == "MacPlayerMainWindow" { window?.setFrameAutosaveName("") }
-        if let s = session { if fromPlaylist { playlists.rememberResume(s.player.currentTime) }; s.close(discardRecovery: true) }
+        if let s = session { if fromPlaylist { playlists.rememberResume(s.player.currentTime) }; finish(s) }
         if playlists.host === self { playlists.host = nil }
     }
 
-    func windowDidBecomeKey(_ notification: Notification) { playlists.host = self; session?.refreshSourceState() }
+    func windowDidBecomeKey(_ notification: Notification) {
+        playlists.host = self
+        session?.refreshSourceState()
+        if route == .projects, session == nil { AppEnvironment.shared.projects.refresh() }
+    }
 
     func toggleSidebar() {
+        guard route == .playlist else { return }
         let hide = !sidebarItem.isCollapsed
         prefs.playlistPanelHidden = hide
         sidebarItem.animator().isCollapsed = hide
     }
 
     func toggleInspector() {
+        guard route == .editor, session != nil else { return }
         let hide = !inspectorItem.isCollapsed
-        if session != nil { prefs.toolsPanelHidden = hide }
+        prefs.toolsPanelHidden = hide
         inspectorItem.animator().isCollapsed = hide
     }
 
@@ -402,15 +548,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
 
     // MARK: Keyboard
 
-    /// A photo: the arrows go to the next and previous picture of the playlist, Space starts or stops the slideshow, and the rest is zoom.
+    /// A photo: when watching, the arrows go to the next and previous picture of the playlist and Space starts or stops the slideshow;
+    /// the rest is zoom.
     private func handlePhotoKey(_ e: NSEvent, _ s: EditorSession, _ ch: String) -> Bool {
-        switch e.keyCode {
-        case 123: if fromPlaylist { playlists.previous(); return true }; return false
-        case 124: if fromPlaylist { playlists.advance(auto: false); return true }; return false
-        default: break
+        if s.role == .viewer {
+            switch e.keyCode {
+            case 123: if fromPlaylist { playlists.previous(); return true }; return false
+            case 124: if fromPlaylist { playlists.advance(auto: false); return true }; return false
+            default: break
+            }
+            if ch == " " { if fromPlaylist { playlists.toggleSlideshow(); return true }; return false }
         }
         switch ch.lowercased() {
-        case " ": if fromPlaylist { playlists.toggleSlideshow(); return true }; return false
         case "+", "=": s.photoZoomIn(); return true
         case "-": s.photoZoomOut(); return true
         case "0": s.photoFit(); return true
@@ -431,20 +580,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
         case 124: s.player.skip(seconds: shift ? prefs.bigSkipSeconds : prefs.skipSeconds); return true   // →
         case 115: Task { await s.player.seek(to: .zero) }; return true                                      // Home
         case 119: Task { await s.player.seek(to: s.duration) }; return true                                 // End
-        case 36, 76: if s.isProject { return false }; s.addClipFromInOut(); return true                    // Return
-        case 51, 117: if let o = s.selectedOverlayID, s.isProject { s.deleteOverlay(o); return true }; if !s.selectedClipIDs.isEmpty { s.removeClips(s.selectedClipIDs); return true }; return false // Delete
+        case 51, 117:                                                                                         // Delete
+            guard s.isProject else { return false }
+            if let o = s.selectedOverlayID { s.deleteOverlay(o); return true }
+            if !s.selectedClipIDs.isEmpty { s.deleteTimelineClips(s.selectedClipIDs); return true }
+            return false
         default: break
         }
         switch ch.lowercased() {
         case " ": s.player.togglePlay(); return true
-        case "i": if s.isProject { return false }; s.markIn(); return true
-        case "o": if s.isProject { return false }; s.markOut(); return true
         case "s": if s.isProject { s.splitAtPlayhead(); return true }; return false
-        case "m": s.addMarker(); return true
+        case "m": if s.isProject { s.addMarker(); return true }; return false
         case ",": s.player.step(frames: -1); return true
         case ".": s.player.step(frames: 1); return true
-        case "{", "[": s.jumpToMarker(forward: false); return true
-        case "}", "]": s.jumpToMarker(forward: true); return true
+        case "{", "[": if s.isProject { s.jumpToMarker(forward: false); return true }; return false
+        case "}", "]": if s.isProject { s.jumpToMarker(forward: true); return true }; return false
         case "-": s.player.setSpeed(s.player.speed / 1.25); return true
         case "=", "+": s.player.setSpeed(s.player.speed * 1.25); return true
         case "f": window?.toggleFullScreen(nil); return true

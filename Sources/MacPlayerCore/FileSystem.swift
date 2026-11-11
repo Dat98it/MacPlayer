@@ -46,6 +46,10 @@ public protocol FileSystem: AnyObject {
 }
 
 public enum PathUtil {
+    /// The same file can arrive with its name in either Unicode form (Finder and the command line give "ệ" composed or not):
+    /// paths are compared through this.
+    public static func key(_ path: String) -> String { (path as NSString).standardizingPath.precomposedStringWithCanonicalMapping }
+    public static func same(_ a: String, _ b: String) -> Bool { key(a) == key(b) }
     public static func directory(of path: String) -> String { (path as NSString).deletingLastPathComponent }
     public static func fileName(of path: String) -> String { (path as NSString).lastPathComponent }
     public static func stem(of path: String) -> String { ((path as NSString).lastPathComponent as NSString).deletingPathExtension }

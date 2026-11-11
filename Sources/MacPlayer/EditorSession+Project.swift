@@ -3,7 +3,7 @@ import AppKit
 import MacPlayerCore
 import MacPlayerMedia
 
-/// Project mode: one timeline of clips taken from several videos (design section 6, "Dự án").
+/// A video project: one timeline of clips taken from several videos.
 extension EditorSession {
 
     // MARK: Sources
@@ -53,45 +53,11 @@ extension EditorSession {
         } catch { flash((error as? CustomStringConvertible)?.description ?? error.localizedDescription, error: true) }
     }
 
-    // MARK: Becoming a project
-
-    /// Turns the open video into a project timeline: from the chosen clips if there are any, else the whole video.
-    /// Text, subtitles and markers move with the clips so they stay on the same pictures.
-    func makeProject(fromClips: Bool) {
-        guard !isProject, let src = project.sources.first, let info else { return }
-        let chosen = fromClips ? project.selections.effective() : []
-        var firstID: UUID?
-        edit("Make project", refreshPreview: false) { p in
-            let look = p.look, audio = p.audio
-            var clips: [TimelineClip]
-            if chosen.isEmpty {
-                clips = [TimelineClip(sourceID: src.id, sourceStart: .zero, sourceEnd: info.duration, name: p.name, look: look, audio: audio)]
-            } else {
-                clips = chosen.map { TimelineClip(sourceID: src.id, sourceStart: $0.start, sourceEnd: $0.end, name: $0.name, look: look, audio: audio) }
-                let r = RecipeBuilder.joinedRecipe(look: look, audio: audio, overlays: p.overlays, subtitles: p.subtitles, burnIn: true, spans: chosen.map(\.span))
-                p.overlays = r.overlays
-                p.subtitles.cues = r.burnedInCues
-                p.markers = p.markers.compactMap { m in
-                    guard let c = clips.first(where: { $0.sourceSpan.contains(m.time) }), let t = TimelineMap.timelineTime(for: m.time, inClip: c.id, of: clips) else { return nil }
-                    var n = m; n.time = t; return n
-                }
-            }
-            p.mode = .project
-            p.timeline = clips
-            p.look = VideoLook(); p.audio = AudioSettings()       // from now on these belong to each clip
-            p.selections = SelectionList()
-            p.activeClipID = clips.first?.id
-            firstID = clips.first?.id
-        }
-        inPoint = nil; outPoint = nil
-        selectedClipIDs = firstID.map { [$0] } ?? []
-        activeTool = .clips
-        Task { await loadPlayer(at: .zero) }
-    }
-
     /// Adds whole videos to the end of the timeline (or after the selected clip).
     func addVideos(_ urls: [URL]) async {
-        if !isProject { makeProject(fromClips: false) }
+        guard isProject, canEdit else { return }
+        let decision = ProjectRules.canAdd(paths: urls.map(\.path), to: project)
+        guard decision == .ok else { flash(Self.ruleText(decision), error: true); return }
         var lastAdded: UUID?
         // Where the first new clip goes: after the selected clip, else at the end. Each further video goes right after the one before it,
         // so several videos added at once keep the order they were given in.
@@ -113,6 +79,7 @@ extension EditorSession {
                 lastAdded = newID
             } catch { flash(LF("“%@” cannot be opened.", url.lastPathComponent) + " " + ((error as? CustomStringConvertible)?.description ?? error.localizedDescription), error: true) }
         }
+        if sourceURL == nil, let f = project.sources.first { sourceURL = sourceURLs[f.id]; info = infos[f.id] }
         loadWaveforms()
         if let id = lastAdded { selectedClipIDs = [id] }
         await loadPlayer(at: player.effectiveTime)
@@ -142,7 +109,7 @@ extension EditorSession {
         }
     }
 
-    /// Where the clip the Picture tools edit starts on the timeline, and how long it is (the whole video in quick mode).
+    /// Where the clip the Picture tools edit starts on the timeline, and how long it is.
     var activeClipStart: MediaTime {
         guard isProject, let id = project.activeClipID else { return .zero }
         return TimelineEditor.starts(project.timeline)[id] ?? .zero
@@ -207,7 +174,6 @@ extension EditorSession {
 
     func planProjectExport(_ r: ExportRequest) throws -> (jobs: [ExportJob], batch: BatchPlan) {
         let p = project
-        guard r.saveKind == .newCopy else { throw PlanError.replaceNotPossible(L("A project with several videos must be saved as a new file.")) }
         guard !p.timeline.isEmpty else { throw PlanError.nothingToExport }
         let missing = Set(p.timeline.map(\.sourceID) + p.overlayClips.compactMap(\.sourceID)).filter { sourceURLs[$0] == nil }
         var missingNames = p.sources.filter { missing.contains($0.id) }.map { PathUtil.fileName(of: $0.path) }
@@ -233,7 +199,7 @@ extension EditorSession {
         guard batch.canRun else { throw PlanError.issues(batch.issues) }
         let dest = batch.outputs[0].path
         let allPaths = pieces.map(\.sourcePath) + layers.map(\.path)
-        if allPaths.contains(where: { ($0 as NSString).standardizingPath == (dest as NSString).standardizingPath }) { throw PlanError.issues([BatchIssue(kind: .destinationIsSource(dest))]) }
+        if allPaths.contains(where: { PathUtil.same($0, dest) }) { throw PlanError.issues([BatchIssue(kind: .destinationIsSource(dest))]) }
 
         let shift = MediaTime(seconds: p.subtitles.syncOffset)
         var cues = p.subtitles.cues

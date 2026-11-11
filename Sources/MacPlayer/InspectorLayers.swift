@@ -15,10 +15,18 @@ struct LayersPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if !session.isProject {
-                Text(L("Layers put a second video or a picture over the main picture: Picture in Picture, a logo, a watermark. They live in a project, on the timeline.")).font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-                Button(L("Make a Project from the Whole Video")) { session.makeProject(fromClips: false) }
-            } else {
+            if session.isPhoto {
+                let clips = session.project.overlayClips
+                HStack {
+                    Text(LF("%d logos", clips.count)).font(.headline)
+                    Spacer()
+                    Button(L("Add Logo…")) { (NSApp.delegate as? AppDelegate)?.addOverlayPicture(nil) }.disabled(session.project.sources.isEmpty)
+                }.font(.caption)
+                Text(L("A logo is a picture laid over the photo (a signature, a watermark). The photo stays the only photo of the project; the logo file is never changed.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                if clips.isEmpty { Text(L("No logos yet.")).foregroundColor(.secondary) }
+                ForEach(clips.sorted { $0.lane < $1.lane }) { c in row(c) }
+                if let c = session.selectedOverlay { Divider(); editor(c) }
+            } else if session.isProject {
                 let clips = session.project.overlayClips
                 HStack {
                     Text(LF("%d layers", clips.count)).font(.headline)
@@ -41,7 +49,9 @@ struct LayersPane: View {
             Image(systemName: c.isVideo ? "film" : "photo").foregroundColor(missing ? .red : .secondary).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(c.name).lineLimit(1).font(.callout.weight(.medium))
-                Text("L\(c.lane + 1) · \(Timecode.format(c.start)) – \(Timecode.format(c.end))" + (missing ? " · " + L("Missing") : "")).font(.caption2.monospacedDigit()).foregroundColor(missing ? .red : .secondary)
+                if !session.isPhoto {
+                    Text("L\(c.lane + 1) · \(Timecode.format(c.start)) – \(Timecode.format(c.end))" + (missing ? " · " + L("Missing") : "")).font(.caption2.monospacedDigit()).foregroundColor(missing ? .red : .secondary)
+                }
             }
             Spacer()
             if !c.keyframes.isEmpty { Image(systemName: "diamond.fill").font(.caption2).foregroundColor(.accentColor).accessibilityLabel(L("Animated")) }
@@ -50,7 +60,7 @@ struct LayersPane: View {
         .padding(8)
         .background(RoundedRectangle(cornerRadius: 6).fill(selected ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.08)))
         .overlay(RoundedRectangle(cornerRadius: 6).stroke(selected ? Color.accentColor : Color.clear, lineWidth: 1.5))
-        .onTapGesture { session.selectedOverlayID = c.id; session.selectedClipIDs = []; Task { await session.player.seek(to: c.start) } }
+        .onTapGesture { session.selectedOverlayID = c.id; session.selectedClipIDs = []; if !session.isPhoto { Task { await session.player.seek(to: c.start) } } }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(LF("Layer %@, line %d, from %@ to %@", c.name, c.lane + 1, Timecode.format(c.start), Timecode.format(c.end)))
         .contextMenu {
@@ -64,6 +74,12 @@ struct LayersPane: View {
         let st = OverlayEditor.editableState(c, at: now)
         let animated = !c.keyframes.isEmpty
         TextField(L("Name"), text: Binding(get: { c.name }, set: { n in session.updateOverlay(c.id, "Rename layer", coalesce: "ovname") { $0.name = n } })).textFieldStyle(.roundedBorder)
+        if !session.isPhoto { timing(c, now: now) }
+        positionAndLook(c, st: st, now: now)
+        if !session.isPhoto { motion(c, now: now, animated: animated) }
+    }
+
+    @ViewBuilder private func timing(_ c: OverlayClip, now: MediaTime) -> some View {
         HStack {
             Picker(L("Line"), selection: Binding(get: { c.lane }, set: { l in
                 if OverlayEditor.firstFreeLane(session.project.overlayClips.filter { $0.id != c.id }, start: c.start, duration: c.duration) == nil || session.project.overlayClips.contains(where: { $0.id != c.id && $0.lane == l && $0.span.overlaps(c.span) }) {
@@ -77,10 +93,13 @@ struct LayersPane: View {
         } else {
             Text(LF("Length %@. Drag the edges on the timeline to trim.", Format.duration(c.duration))).font(.caption).foregroundColor(.secondary)
         }
+    }
+
+    @ViewBuilder private func positionAndLook(_ c: OverlayClip, st: OverlayState, now: MediaTime) -> some View {
 
         GroupBox(L("Position and size")) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(c.state(at: now) == nil ? L("Move the playhead into this layer to drag it on the picture.")
+                Text(session.isPhoto ? L("Place the logo with the buttons and sliders below.") : c.state(at: now) == nil ? L("Move the playhead into this layer to drag it on the picture.")
                                              : L("Drag the layer on the picture to move it, drag a corner to resize it. It snaps to the centre and the margins; hold ⌥ to turn that off."))
                     .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 4) {
@@ -100,8 +119,10 @@ struct LayersPane: View {
             VStack(alignment: .leading, spacing: 6) {
                 SliderRow(title: L("Border"), value: Binding(get: { c.transform.borderWidth }, set: { v in session.updateOverlay(c.id, "Layer border", coalesce: "ovbw") { $0.transform.borderWidth = v; $0.transform = $0.transform.clamped() } }), range: 0...0.05, format: "%.3f", onDone: { session.endCoalescing() })
                 ColorPicker(L("Border colour"), selection: Binding(get: { Color(NSColor(cgColor: OverlayRendererBridge.color(c.transform.borderHex)) ?? .white) }, set: { col in session.updateOverlay(c.id, "Border colour", coalesce: "ovbc") { $0.transform.borderHex = OverlayRendererBridge.hex(col) } }))
+                if !session.isPhoto {
                 SliderRow(title: L("Fade in (s)"), value: Binding(get: { c.fadeIn }, set: { v in session.updateOverlay(c.id, "Layer fade", coalesce: "ovfi") { $0.fadeIn = v } }), range: 0...3, format: "%.1f", onDone: { session.endCoalescing() })
                 SliderRow(title: L("Fade out (s)"), value: Binding(get: { c.fadeOut }, set: { v in session.updateOverlay(c.id, "Layer fade", coalesce: "ovfo") { $0.fadeOut = v } }), range: 0...3, format: "%.1f", onDone: { session.endCoalescing() })
+                }
             }.padding(4)
         }
         GroupBox(L("Green screen")) {
@@ -134,6 +155,9 @@ struct LayersPane: View {
                              done: { session.endCoalescing() })
             }.padding(4)
         }
+    }
+
+    @ViewBuilder private func motion(_ c: OverlayClip, now: MediaTime, animated: Bool) -> some View {
         if c.isVideo {
             GroupBox(L("Layer sound")) {
                 VStack(alignment: .leading, spacing: 6) {

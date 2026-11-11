@@ -10,6 +10,7 @@ extension EditorSession {
 
     /// What the compositor will do for the output picture's shape, so presets land inside the frame.
     var outputAspect: Double {
+        if isPhoto, let size = photoOutputSize, size.height > 0 { return Double(size.width / size.height) }
         guard let v = infos[project.timeline.first?.sourceID ?? UUID()]?.primaryVideo ?? info?.primaryVideo else { return 16.0 / 9 }
         let size = RenderGeometry.outputSize(source: PixelSize(width: v.width, height: v.height), look: project.timeline.first?.look ?? VideoLook())
         return Double(size.width) / Double(max(1, size.height))
@@ -29,6 +30,7 @@ extension EditorSession {
     /// Shows a change to a layer's look at once, without rebuilding the preview: the compositor reads the new numbers
     /// and, when paused, the frame on screen is drawn again. (The full rebuild follows shortly after, as for any edit.)
     func pushLiveLayer(_ id: UUID) {
+        if isPhoto { renderPhoto(); return }
         guard isProject else { return }
         if let spec = project.layerSpecs(resolve: { sourceURLs[$0]?.path }).first(where: { $0.id == id }) { LayerLive.set(spec) }
         player.refreshFrame()
@@ -37,8 +39,8 @@ extension EditorSession {
     // MARK: Adding
 
     func addOverlayVideos(_ urls: [URL]) async {
-        if !isProject { makeProject(fromClips: false) }
-        guard !project.timeline.isEmpty else { return }
+        guard isProject else { return }
+        guard !project.timeline.isEmpty else { flash(L("Add a video to the timeline first."), error: true); return }
         var last: UUID?
         for url in urls {
             do {
@@ -68,8 +70,10 @@ extension EditorSession {
     }
 
     func addOverlayPicture(_ url: URL) async {
-        if !isProject { makeProject(fromClips: false) }
-        guard !project.timeline.isEmpty else { return }
+        guard canEdit else { return }
+        if isPhoto { addLogo(url); return }
+        guard isProject else { return }
+        guard !project.timeline.isEmpty else { flash(L("Add a video to the timeline first."), error: true); return }
         guard let src = CGImageSourceCreateWithURL(url as CFURL, nil), let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
               let w = props[kCGImagePropertyPixelWidth] as? Double, let h = props[kCGImagePropertyPixelHeight] as? Double, w > 0, h > 0 else {
             flash(LF("“%@” cannot be opened.", url.lastPathComponent), error: true); return
@@ -91,6 +95,26 @@ extension EditorSession {
         await loadPlayer(at: player.effectiveTime)
     }
 
+    /// A logo on a photo project: a picture laid over the photo, always shown. The photo itself stays the only photo of the project.
+    func addLogo(_ url: URL) {
+        guard isPhoto else { return }
+        guard !project.sources.isEmpty else { flash(L("Choose the photo of this project first."), error: true); return }
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil), let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+              let w = props[kCGImagePropertyPixelWidth] as? Double, let h = props[kCGImagePropertyPixelHeight] as? Double, w > 0, h > 0 else {
+            flash(LF("“%@” cannot be opened.", url.lastPathComponent), error: true); return
+        }
+        var made: UUID?
+        edit("Add logo") { p in
+            var t = OverlayTransform(); t.width = 0.2
+            OverlayEditor.apply(.topRight, to: &t, outputAspect: outputAspect, layerAspect: w / h)
+            let lane = min(OverlayClip.laneCount - 1, p.overlayClips.count)
+            let c = OverlayClip(name: url.deletingPathExtension().lastPathComponent, kind: .image(path: url.path, bookmark: Bookmarks.make(url)), lane: lane,
+                                start: .zero, duration: MediaTime(seconds: 200_000), transform: t)
+            p.overlayClips.append(c); made = c.id
+        }
+        selectedOverlayID = made; activeTool = .layers
+    }
+
     // MARK: Editing
 
     func deleteOverlay(_ id: UUID) {
@@ -101,6 +125,12 @@ extension EditorSession {
     func duplicateOverlay(_ id: UUID) {
         guard let c = project.overlayClips.first(where: { $0.id == id }) else { return }
         var copy = c; copy.id = UUID(); copy.name = c.name + " 2"; copy.keyframes = c.keyframes.map { var k = $0; k.id = UUID(); return k }
+        if isPhoto {
+            copy.transform.centerX = min(0.95, c.transform.centerX + 0.05); copy.transform.centerY = min(0.95, c.transform.centerY + 0.05)
+            edit("Duplicate layer") { $0.overlayClips.append(copy) }
+            selectedOverlayID = copy.id
+            return
+        }
         // Next free place: right after the original in its lane, or another lane at the same time.
         let after = c.end
         let total = project.timelineDuration

@@ -23,6 +23,7 @@ public final class ExportRunner: @unchecked Sendable {
 
     public func run(job: ExportJob, onProgress: (@Sendable (Double) -> Void)? = nil) async throws -> ExportResult {
         guard !job.pieces.isEmpty else { throw SaveError.produceFailed("nothing to export") }
+        if case .legacyReplaceOriginal = job.target { throw SaveError.produceFailed(SaveTarget.legacyReplaceMessage) }
         let pieces = job.pieces.map {
             RenderPiece(sourceURL: URL(fileURLWithPath: $0.sourcePath), span: $0.span, look: $0.look ?? job.recipe.look, audio: $0.audio ?? job.recipe.audio)
         }
@@ -57,11 +58,10 @@ public final class ExportRunner: @unchecked Sendable {
         let outcome: SaveOutcome
         switch job.target {
         case .newCopy(let path, let overwrite):
-            if job.sourcePaths.contains(where: { ($0 as NSString).standardizingPath == (path as NSString).standardizingPath }) { throw SaveError.destinationIsSource }
+            if job.sourcePaths.contains(where: { PathUtil.same($0, path) }) { throw SaveError.destinationIsSource }
             outcome = try await saver.saveCopy(sourcePath: job.sourcePaths.first, destination: path, overwrite: overwrite, estimatedBytes: estimate, produce: produce, verify: verify)
-        case .replaceOriginal(let path, let expected, let backupFolder):
-            let plan = ReplacePlan(sourcePath: path, expected: expected, backupFolder: backupFolder, newExtension: job.options.container.fileExtension)
-            outcome = try await saver.replaceOriginal(plan: plan, estimatedBytes: estimate, produce: produce, verify: verify)
+        case .legacyReplaceOriginal:
+            throw SaveError.produceFailed(SaveTarget.legacyReplaceMessage)
         }
 
         var thumbPath: String?

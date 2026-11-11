@@ -36,18 +36,22 @@ struct SubtitlesPane: View {
             Picker(L("Language"), selection: Binding(get: { language.value }, set: { language.value = $0 })) {
                 ForEach(locales.value, id: \.identifier) { Text(Locale.current.localizedString(forIdentifier: $0.identifier) ?? $0.identifier).tag($0.identifier) }
             }
-            Button(working.value ? L("Listening…") : L("Create Subtitles from Speech")) { transcribe() }.disabled(working.value || locales.value.isEmpty || session.sourceURL == nil)
+            Button(working.value ? L("Listening…") : L("Create Subtitles from Speech")) { transcribe() }.disabled(working.value || locales.value.isEmpty || session.timingClip == nil)
             if working.value { ProgressView().controlSize(.small) }
-            Text(session.sourceURL == nil ? L("Open a single video to write its subtitles. In a project, write them from each video first.")
-                                           : L("Listens to the speech on this Mac only and writes timed subtitles you can then edit. Nothing is sent anywhere. Only the part between the In and Out points is used when they are set."))
+            Text(session.timingClip == nil ? L("Add a video to the timeline first.")
+                                           : L("Listens to the speech of the selected clip on this Mac only and writes timed subtitles you can then edit. Nothing is sent anywhere."))
                 .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .task { locales.value = SpeechTranscriber.onDeviceLocales(); if !locales.value.contains(where: { $0.identifier == language.value }), let l = locales.value.first(where: { $0.identifier.hasPrefix(Locale.current.language.languageCode?.identifier ?? "en") }) ?? locales.value.first { language.value = l.identifier } }
     }
 
     private func transcribe() {
-        guard let url = session.sourceURL else { return }
-        let span: TimeSpan? = (session.inPoint != nil || session.outPoint != nil) ? TimeSpan(start: session.inPoint ?? .zero, end: session.outPoint ?? session.duration) : nil
+        guard let clip = session.timingClip, let url = session.sourceURLs[clip.sourceID] else { return }
+        let span: TimeSpan? = clip.sourceSpan
+        let clipStart = TimelineEditor.starts(session.project.timeline)[clip.id] ?? .zero
+        let speed = max(VideoLook.minimumSpeed, clip.look.speed)
+        /// The recogniser counts in the video's own time; the subtitles live on the timeline.
+        func onTimeline(_ t: MediaTime) -> MediaTime { clipStart + MediaTime(seconds: (t - clip.sourceStart).seconds / speed, timescale: 6000) }
         if !session.project.subtitles.cues.isEmpty {
             let a = NSAlert(); a.messageText = L("Replace the subtitles you have?"); a.informativeText = L("The new subtitles will be added to the existing ones. You can undo this.")
             a.addButton(withTitle: L("Add")); a.addButton(withTitle: L("Cancel"))
@@ -58,7 +62,7 @@ struct SubtitlesPane: View {
         Task {
             do {
                 let words = try await SpeechTranscriber.transcribe(source: url, span: span, locale: locale)
-                let cues = SubtitleBuilder.cues(from: words)
+                let cues = SubtitleBuilder.cues(from: words).map { c -> SubtitleCue in var n = c; n.start = onTimeline(c.start); n.end = onTimeline(c.end); return n }
                 session.edit("Automatic subtitles") { $0.subtitles.cues.append(contentsOf: cues) }
                 session.flash(LF("%d subtitles were written.", cues.count))
             } catch { session.flash((error as? CustomStringConvertible)?.description ?? error.localizedDescription, error: true) }
@@ -185,6 +189,7 @@ struct SubtitlesPane: View {
     private func exportFile(_ f: SubtitleCodec.Format) {
         let panel = NSSavePanel(); panel.nameFieldStringValue = session.project.name + (f == .srt ? ".srt" : ".vtt")
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        if let why = OriginalGuard.problem(writing: url.path) { session.flash(why, error: true); return }
         let text = SubtitleCodec.serialize(session.project.subtitles.cues, format: f, offsetSeconds: session.project.subtitles.syncOffset)
         do { try Data(text.utf8).write(to: url, options: .atomic); session.flash(LF("Saved %@", url.lastPathComponent)) } catch { session.flash(error.localizedDescription, error: true) }
     }

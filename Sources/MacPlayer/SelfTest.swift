@@ -23,6 +23,14 @@ enum SelfTest {
         while env.exports.queue.hasWork && Date() < end { try? await Task.sleep(nanoseconds: 100_000_000) }
     }
 
+    /// A project made from `url` in the test's data folder and opened in the editor, as after "Edit" (the file itself is only read).
+    static func editor(_ url: URL, kind: ProjectKind? = nil) async -> EditorSession? {
+        let dir = AppEnvironment.shared.support.appendingPathComponent("SelfTestProjects", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let path = dir.appendingPathComponent("\(url.deletingPathExtension().lastPathComponent)-\(UUID().uuidString.prefix(6)).macplayer").path
+        return try? await EditorSession.makeProjectFile(kind: kind ?? (ImageFiles.isCandidate(url.path) ? .photo : .video), media: url, at: path)
+    }
+
     static func frames(_ path: String) async -> [Int] { ((try? await FrameScanner.scanVideo(url: URL(fileURLWithPath: path))) ?? []).compactMap(\.index) }
 
     static func run(mediaDir: URL, app: AppDelegate) async {
@@ -35,6 +43,10 @@ enum SelfTest {
         try? fm.copyItem(at: mediaDir.appendingPathComponent("demo.mp4"), to: demo)
         let original = (try? Data(contentsOf: demo)) ?? Data()
 
+        if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_THREE"] != nil {
+            for _ in 0..<(Int(ProcessInfo.processInfo.environment["MACPLAYER_ONLY_THREE"] ?? "") ?? 1) { await threeVideosFlow(env: env, work: work, app: app) }
+            finish(); return
+        }
         if ProcessInfo.processInfo.environment["MACPLAYER_TREE_SPEED_ONLY"] != nil {
             await treeSpeedFlow(app: app)
             await treeClickFlow(app: app)
@@ -60,10 +72,10 @@ enum SelfTest {
         // The mouse-click flows (treeClickFlow) are run on their own with MACPLAYER_TREE_SPEED_ONLY=1: clicks sent into a window by a test are not
         // reliable enough to be part of every run.
 
-        // A. open -> play/seek -> select -> export a copy
-        print("== A: open, seek, select a range, export a copy")
+        // A. open to watch -> play/seek -> make a project -> export a part as a new file
+        print("== A: watch, seek, make a project, export a part")
         guard let s = try? await EditorSession.open(url: demo) else { check(false, "open demo.mp4"); finish(); return }
-        check(s.info?.primaryVideo?.codec == "avc1" && s.duration.seconds > 19, "opened: H.264, \(Int(s.duration.seconds)) s")
+        check(s.role == .viewer && s.info?.primaryVideo?.codec == "avc1" && s.duration.seconds > 19, "opened to watch: H.264, \(Int(s.duration.seconds)) s")
         s.player.play()
         try? await Task.sleep(nanoseconds: 800_000_000) // start-up latency is not what is being measured
         let t0 = s.player.currentTime.seconds
@@ -74,85 +86,86 @@ enum SelfTest {
         await s.player.seek(to: MediaTime.frameStart(index: 75, frameRate: s.frameRate))
         check(abs(s.player.currentTime.seconds - 2.5) < 0.04, "exact seek to frame 75")
         s.player.step(frames: 1); try? await Task.sleep(nanoseconds: 700_000_000)
-        check(abs(s.player.currentTime.seconds - (2.5 + 1.0 / 30)) < 0.04, "step one frame forward (now \(s.player.currentTime.seconds), canStep=\(s.player.player.currentItem?.canStepForward ?? false), status=\(s.player.player.currentItem?.status.rawValue ?? -1))")
-        s.inPoint = MediaTime.frameStart(index: 75, frameRate: s.frameRate); s.outPoint = MediaTime.frameStart(index: 150, frameRate: s.frameRate)
-        s.addClipFromInOut(name: "Intro")
-        check(s.project.selections.items.count == 1, "clip added from In/Out")
-        var req = ExportRequest(scope: .allClips, saveKind: .newCopy, options: ExportOptions(mode: .exact), folder: work.path, baseName: nil)
-        if let (jobs, _) = try? s.planExport(req) {
+        check(abs(s.player.currentTime.seconds - (2.5 + 1.0 / 30)) < 0.04, "step one frame forward (now \(s.player.currentTime.seconds))")
+        s.edit("nothing", refreshPreview: false) { $0.look.rotation = 90 }
+        check(s.project.look.rotation == 0 && !s.isDirty, "watching never edits")
+        s.close()
+        let projPath = work.appendingPathComponent("demo.macplayer").path
+        guard let p = try? await EditorSession.makeProjectFile(kind: .video, media: demo, at: projPath) else { check(false, "make a video project from demo.mp4"); finish(); return }
+        check(p.isProject && p.project.timeline.count == 1 && fm.fileExists(atPath: projPath), "a video project with the video in it, saved where chosen")
+        if let id = p.project.timeline.first?.id {
+            p.edit("Trim", refreshPreview: false) { TimelineEditor.trim(&$0.timeline, clipID: id, start: MediaTime.frameStart(index: 75, frameRate: p.frameRate), end: MediaTime.frameStart(index: 150, frameRate: p.frameRate), sourceDuration: p.info?.duration ?? .zero) }
+        }
+        var req = ExportRequest(options: ExportOptions(mode: .exact), folder: work.path, baseName: "part")
+        if let (jobs, _) = try? p.planExport(req) {
             env.exports.enqueue(jobs); await waitForQueue(env)
-            let path = jobs[0].outputPath
-            let f = await frames(path)
-            check(f.first == 75 && f.last == 149 && f.count == 75, "exported copy has frames 75...149 (\(f.first ?? -1)...\(f.last ?? -1))")
+            let f = await frames(jobs[0].outputPath)
+            check(f.first == 75 && f.last == 149 && f.count == 75, "exported a NEW file with frames 75...149 (\(f.first ?? -1)...\(f.last ?? -1))")
         } else { check(false, "plan export") }
         check((try? Data(contentsOf: demo)) == original, "source untouched, byte for byte")
 
-        // C. several clips -> names -> batch
-        print("== C: several clips, naming, batch export")
-        s.edit("more clips", refreshPreview: false) { p in
-            p.selections.add(start: MediaTime(seconds: 5), end: MediaTime(seconds: 6), name: "Middle")
-            p.selections.add(start: MediaTime(seconds: 10), end: MediaTime(seconds: 11), name: "Q&A / part 2")
+        // C. several clips joined
+        print("== C: several clips on the timeline, joined in one new file")
+        if let first = p.project.timeline.first {
+            let second = TimelineClip(sourceID: first.sourceID, sourceStart: MediaTime(seconds: 10), sourceEnd: MediaTime(seconds: 11), name: "Q&A")
+            p.edit("more clips", refreshPreview: false) { $0.timeline.append(second) }
         }
-        let batchDir = work.appendingPathComponent("batch"); try? fm.createDirectory(at: batchDir, withIntermediateDirectories: true)
-        req = ExportRequest(scope: .allClips, saveKind: .newCopy, options: ExportOptions(mode: .exact), folder: batchDir.path, baseName: nil)
-        if let (jobs, plan) = try? s.planExport(req) {
-            check(jobs.count == 3 && plan.outputs.map(\.name) == ["demo - 01 - Intro", "demo - 02 - Middle", "demo - 03 - Q&A part 2"], "three jobs with the right names: \(plan.outputs.map(\.name))")
+        req.baseName = "joined"
+        if let (jobs, _) = try? p.planExport(req) {
             env.exports.enqueue(jobs); await waitForQueue(env)
-            let ok = jobs.allSatisfy { j in if case .succeeded = env.exports.queue.jobs.first(where: { $0.id == j.id })?.state { return true }; return false }
-            check(ok, "all three succeeded")
-            let counts = await withTaskGroup(of: Int.self) { g -> [Int] in for j in jobs { g.addTask { await frames(j.outputPath).count } }; var r: [Int] = []; for await c in g { r.append(c) }; return r.sorted() }
-            check(counts == [30, 30, 75], "frame counts per file \(counts)")
-        } else { check(false, "plan batch") }
+            let n = await frames(jobs[0].outputPath).count
+            check(n == 105, "joined file has 75 + 30 frames (\(n))")
+        } else { check(false, "plan joined export") }
 
-        // E. project save / reopen / crash recovery
-        print("== E: save project, reopen, autosave recovery")
-        s.edit("look", refreshPreview: false) { $0.look.rotation = 90; $0.look.color.brightness = 0.2 }
-        let projPath = work.appendingPathComponent("demo.macplayer").path
-        s.saveProject(to: projPath)
-        check(!s.isDirty && fm.fileExists(atPath: projPath), "project saved")
+        // E. autosave into the project file, reopen, crash copy, old quick projects
+        print("== E: autosave into the project file, reopen, recovery, old projects")
+        p.edit("look", refreshPreview: false) { $0.activeLook.rotation = 90; $0.activeLook.color.brightness = 0.2 }
+        try? await Task.sleep(nanoseconds: 4_500_000_000) // autosave writes 2 s after the last edit
+        if case .saved = p.saveState { check(!p.isDirty, "autosave wrote the edits into the project file") } else { check(false, "autosave wrote the edits (state \(p.saveState))") }
+        check(!env.projectStore.recoverable().contains { $0.projectID == p.project.id }, "a project whose file is up to date is not offered for recovery")
+        let projectID = p.project.id
+        p.close()
         if let re = try? await EditorSession.openProject(path: projPath) {
-            check(re.project.selections.items.count == 3 && re.project.look.rotation == 90 && re.project.look.color.brightness == 0.2, "reopened with clips and look")
-            check(re.project.selections.items.map(\.start) == s.project.selections.items.map(\.start), "timing identical after reopen")
+            check(re.project.timeline.count == 2 && re.project.timeline[0].look.rotation == 90 && re.project.timeline[0].look.color.brightness == 0.2, "reopened with its clips and look")
             re.edit("after reopen", refreshPreview: false) { $0.markers.append(Marker(time: MediaTime(seconds: 3), name: "crash")) }
-            try? await Task.sleep(nanoseconds: 4_500_000_000) // autosave fires 2 s after the last edit
+            // A crash before the file is written: only the crash copy has the edit.
+            try? env.projectStore.autosave(re.project, savedPath: projPath)
             let rec = env.projectStore.recoverable()
-            check(rec.contains { $0.projectID == re.project.id }, "autosave exists after an edit (no clean close = crash)")
-            if let c = rec.first(where: { $0.projectID == re.project.id }), let p = try? env.projectStore.loadAutosave(c) {
-                check(p.markers.count == 1 && p.markers[0].name == "crash", "autosave holds the unsaved edit")
-            }
-            check((try? Data(contentsOf: demo)) == original, "autosave did not touch the video")
-            re.close(discardRecovery: true)
+            check(rec.contains { $0.projectID == projectID }, "a crash copy newer than the file is offered for recovery")
+            check(re.saveNow(), "saving now writes the file")
+            check(!env.projectStore.recoverable().contains { $0.projectID == projectID }, "after saving, nothing is left to recover")
+            check((try? env.projectStore.load(path: projPath))?.markers.first?.name == "crash", "the file holds the edit")
+            check((try? Data(contentsOf: demo)) == original, "saving did not touch the video")
+            re.close()
         } else { check(false, "reopen project") }
+        // A project made by MacPlayer 0.7 in "quick" mode opens as a video project with one clip; a copy of the old file is kept.
+        let oldPath = work.appendingPathComponent("old quick.macvideo").path
+        var old = Project(name: "old", kind: .video, sources: [SourceRef(path: demo.path, info: s.info)])
+        old.look.rotation = 180
+        if var obj = (try? JSONSerialization.jsonObject(with: ProjectCodec.encode(old))) as? [String: Any] {
+            obj["schemaVersion"] = 2; obj["mode"] = "quick"; obj["kind"] = nil
+            try? JSONSerialization.data(withJSONObject: obj).write(to: URL(fileURLWithPath: oldPath))
+        }
+        let oldBytes = (try? Data(contentsOf: URL(fileURLWithPath: oldPath))) ?? Data()
+        if let up = try? await EditorSession.openProject(path: oldPath) {
+            check(up.isProject && up.project.timeline.count == 1 && up.project.timeline[0].look.rotation == 180 && up.project.look.isNeutral, "an old quick project opens as a video project with its edit on the clip")
+            check(up.saveNow(), "the upgraded project is written")
+            let copies = env.projectStore.preUpgradeCopies(projectID: up.project.id)
+            check(copies.count == 1 && (try? Data(contentsOf: URL(fileURLWithPath: copies[0]))) == oldBytes, "a copy of the old file was kept before it was upgraded")
+            check(ProjectCodec.schema(of: (try? Data(contentsOf: URL(fileURLWithPath: oldPath))) ?? Data()) == Project.currentSchema, "the file now has the new format")
+            up.close()
+        } else { check(false, "open an old quick project") }
 
-        // Replace original, with backup
-        print("== F: apply changes to the original (with backup)")
-        let victim = work.appendingPathComponent("victim.mp4"); try? fm.copyItem(at: demo, to: victim)
-        let victimBytes = (try? Data(contentsOf: victim)) ?? Data()
-        if let v = try? await EditorSession.open(url: victim) {
-            v.inPoint = MediaTime.frameStart(index: 30, frameRate: v.frameRate); v.outPoint = MediaTime.frameStart(index: 90, frameRate: v.frameRate)
-            let r = ExportRequest(scope: .inOut, saveKind: .replaceOriginal, options: ExportOptions(mode: .exact), folder: work.path, baseName: nil)
-            if let (jobs, _) = try? v.planExport(r) {
-                env.exports.enqueue(jobs); await waitForQueue(env)
-                let ff = await frames(victim.path)
-                check(ff.first == 30 && ff.last == 89, "original now holds frames 30...89")
-                let backups = (try? fm.contentsOfDirectory(atPath: work.appendingPathComponent("MacPlayer Backups").path)) ?? []
-                check(backups.count == 1 && (try? Data(contentsOf: work.appendingPathComponent("MacPlayer Backups/\(backups[0])"))) == victimBytes, "backup is the untouched original")
-                check(((try? fm.contentsOfDirectory(atPath: work.path)) ?? []).allSatisfy { !$0.contains(".macplayer-") }, "no temp files left")
-            } else { check(false, "plan replace") }
-            // Another app changes the file: replace must be refused.
-            v.refreshSourceState()
-            try? Data("x".utf8).write(to: victim)
-            v.refreshSourceState()
-            check(v.sourceChangedExternally, "an outside change to the source is detected")
-            let r2 = ExportRequest(scope: .whole, saveKind: .replaceOriginal, options: ExportOptions(mode: .exact), folder: work.path, baseName: nil)
-            check((try? v.planExport(r2)) == nil, "replacing a changed source is refused")
-        } else { check(false, "open victim") }
+        // F'. MacPlayer never writes over an original.
+        print("== F: originals are never changed")
+        check((try? Data(contentsOf: demo)) == original, "demo.mp4 is byte for byte what it was after projects, exports and autosave")
+        check(((try? fm.contentsOfDirectory(atPath: work.path)) ?? []).allSatisfy { !$0.contains(".macplayer-") }, "no temp files left")
 
         // Cancel
         print("== Cancel: stops quickly, leaves nothing")
         let cancelDir = work.appendingPathComponent("cancel"); try? fm.createDirectory(at: cancelDir, withIntermediateDirectories: true)
-        if let c = try? await EditorSession.open(url: demo) {
-            let r = ExportRequest(scope: .whole, saveKind: .newCopy, options: ExportOptions(mode: .exact), folder: cancelDir.path, baseName: "cancelme")
+        if let c = try? await EditorSession.makeProjectFile(kind: .video, media: demo, at: cancelDir.appendingPathComponent("c.macplayer").path) {
+            let r = ExportRequest(options: ExportOptions(mode: .exact), folder: cancelDir.path, baseName: "cancelme")
             if let (jobs, _) = try? c.planExport(r) {
                 let t0 = Date()
                 env.exports.enqueue(jobs); try? await Task.sleep(nanoseconds: 250_000_000)
@@ -160,11 +173,13 @@ enum SelfTest {
                 let st = env.exports.queue.jobs.first(where: { $0.id == jobs[0].id })?.state
                 check(st == .cancelled, "job is cancelled (\(String(describing: st)))")
                 check(Date().timeIntervalSince(t0) < 5, "cancel took \(String(format: "%.1f", Date().timeIntervalSince(t0))) s")
-                check(((try? fm.contentsOfDirectory(atPath: cancelDir.path)) ?? []).isEmpty, "no partial file remains")
+                check(((try? fm.contentsOfDirectory(atPath: cancelDir.path)) ?? []).filter { !$0.hasSuffix(".macplayer") }.isEmpty, "no partial file remains")
             }
+            c.close()
         }
 
         // G. multi-source timeline
+        await threeVideosFlow(env: env, work: work, app: app)
         await timelineFlow(env: env, work: work, demo: demo, demoBytes: original)
 
         // H. layers over the timeline
@@ -210,7 +225,7 @@ enum SelfTest {
         check(seen == ["clip 1", "clip 2", "clip 10"], "played in order and moved on by itself: \(seen)")
         check(host.messages.contains(L("End of the playlist.")), "stops at the end of the list")
         // A video that leaves the playlist must stop playing: removing it from the list, or deleting the whole list.
-        host.current?.close(discardRecovery: true); host.current = nil
+        host.current?.close(); host.current = nil
         let pid2 = model.create(name: "Stop test")
         model.add(urls: [pl.appendingPathComponent("clip 1.mp4"), pl.appendingPathComponent("clip 2.mp4")], to: pid2)
         let ids2 = model.selected?.items.map(\.id) ?? []
@@ -244,12 +259,11 @@ enum SelfTest {
         model.host = wc
         model.play(ids3[1], in: pid3)
         await waitFor(10) { wc.session?.player.isPlaying == true }
-        wc.session?.addClipFromInOut()
-        check(wc.session?.isDirty == true, "real window: made an edit")
+        check(wc.session?.role == .viewer && wc.session?.isDirty == false, "real window: watching has nothing to save")
         model.host = host
         model.delete(pid3)
-        check(wc.session != nil && wc.session?.player.isPlaying == false && wc.session?.isDirty == true, "real window: a video with unsaved edits stays open, but stopped")
-        wc.session?.close(discardRecovery: true); wc.window?.orderOut(nil)
+        check(wc.session == nil, "real window: deleting the playlist closes the video that was playing")
+        wc.window?.orderOut(nil)
         model.host = host
 
         // Two playlists, folders and "follow": a folder goes where it was chosen for, nothing leaks from one list into the other,
@@ -371,9 +385,7 @@ enum SelfTest {
         let wcf = MainWindowController(playlists: model); app.adopt(wcf)
         if let sKeep = try? await EditorSession.open(url: URL(fileURLWithPath: ffile("keep"))) {
             wcf.setSession(sKeep, fromPlaylist: false)
-            check(app.reasonBusy(ffile("keep")) == nil, "a video that is only open is free to rename")
-            sKeep.addClipFromInOut()
-            check(app.reasonBusy(ffile("keep")) != nil, "a video open with unsaved edits is not (the person is told to save first)")
+            check(app.reasonBusy(ffile("keep")) == nil, "a video that is only open to watch is free to rename")
             wcf.closeVideo(confirm: { _ in true })
         }
         if let sT = try? await EditorSession.open(url: URL(fileURLWithPath: ffile("target"))) {
@@ -409,20 +421,23 @@ enum SelfTest {
             check(item.title == L("Close Video") && item.keyEquivalent == "w" && item.keyEquivalentModifierMask.contains([.command, .shift]) && item.target != nil, "File ▸ Close Video exists with ⇧⌘W")
             check(app.allMenuItems.filter { $0.keyEquivalent == "w" && $0.keyEquivalentModifierMask == [.command] }.count == 1, "⌘W still only closes the window")
         } else { check(false, "File ▸ Close Video exists") }
-        func hasHeader(_ v: NSView) -> Bool { String(describing: type(of: v)).contains("VideoHeader") || v.subviews.contains(where: hasHeader) }
         if let s1 = try? await EditorSession.open(url: pl.appendingPathComponent("clip 1.mp4")) {
             cw.setSession(s1, fromPlaylist: false)
-            check(cw.window?.contentViewController.map { hasHeader($0.view) } == true, "an open video shows the bar with the Close button")
+            check(cw.contentController.header != nil && cw.route == .playlist, "an open video shows the bar with the Close button, on the Playlists side")
             check(cw.closeVideo() == true && cw.session == nil && s1.player.isPlaying == false, "Close Video closes the video and stops it")
-            check(cw.window?.contentViewController.map { hasHeader($0.view) } == false, "the start screen is shown again, without the bar")
+            check(cw.contentController.header == nil && cw.route == .playlist, "the playlists screen is shown again, without the bar")
         } else { check(false, "open a video to close") }
-        if let s2 = try? await EditorSession.open(url: pl.appendingPathComponent("clip 2.mp4")) {
+        let closeProj = pl.appendingPathComponent("close test.macplayer").path
+        try? fm.removeItem(atPath: closeProj)
+        if let s2 = try? await EditorSession.makeProjectFile(kind: .video, media: pl.appendingPathComponent("clip 2.mp4"), at: closeProj) {
             cw.setSession(s2, fromPlaylist: false)
-            s2.addClipFromInOut()
+            s2.addMarker()
             check(s2.isDirty, "made an edit before closing")
-            check(cw.closeVideo(confirm: { _ in false }) == false && cw.session === s2, "unsaved edits: choosing Cancel keeps the video open")
-            check(cw.closeVideo(confirm: { _ in true }) == true && cw.session == nil, "unsaved edits: choosing not to save closes it")
-        } else { check(false, "open a second video to close") }
+            check(cw.closeVideo(confirm: { _ in false }) == false && cw.session === s2, "a project that cannot be saved stays open when the person chooses to")
+            check(cw.closeVideo() == true && cw.session == nil && cw.route == .projects, "closing a project writes it and goes back to the list of projects")
+            check((try? env.projectStore.load(path: closeProj))?.markers.count == 1, "the edit is in the project file")
+            try? fm.removeItem(atPath: closeProj)
+        } else { check(false, "make a project to close") }
         let pid4 = model.create(name: "Close test")
         model.add(urls: [pl.appendingPathComponent("clip 1.mp4"), pl.appendingPathComponent("clip 2.mp4")], to: pid4)
         let ids4 = model.selected?.items.map(\.id) ?? []
@@ -454,14 +469,23 @@ enum SelfTest {
             check((fw.window?.frame.width ?? 0) >= 1999, "the window can be as wide as a big screen; nothing caps its width (asked 2000, got \(Int(fw.window?.frame.width ?? 0)))")
             let p0 = picture()
             check(p0.height > 700 && p0.width > 1300 && abs(p0.width - cc.view.bounds.width) < 1, "wide window: the picture takes the middle (\(Int(p0.width))×\(Int(p0.height)) of \(Int(cc.view.bounds.width))×\(Int(cc.view.bounds.height)))")
-            check(fw.panelsCollapsed.sidebar == false && fw.panelsCollapsed.inspector == false, "the playlist and the tools stay visible")
+            check(fw.panelsCollapsed.sidebar == false && fw.panelsCollapsed.inspector == true, "watching: the playlists show, the tools do not")
             fw.toggleSidebar(); await settle()
             check(picture().width > p0.width + 150 && picture().height > 700, "closing the playlist gives its room to the picture (\(Int(p0.width)) → \(Int(picture().width)))")
-            fw.toggleInspector(); await settle()
-            check(picture().width > p0.width + 400, "closing the tools too gives it more (\(Int(picture().width)))")
-            fw.toggleSidebar(); fw.toggleInspector(); await settle()
-            check(abs(picture().width - p0.width) < 2 && picture().height > 700 && (fw.window?.frame.width ?? 0) >= 1999, "opening both again brings the picture back, and the window keeps its width")
-            fs1.close(discardRecovery: true)
+            fw.toggleSidebar(); await settle()
+            check(abs(picture().width - p0.width) < 2 && (fw.window?.frame.width ?? 0) >= 1999, "opening it again brings the picture back, and the window keeps its width")
+            fs1.close()
+            // Editing: the tools show, the playlists do not.
+            if let fe = await editor(pl.appendingPathComponent("clip 1.mp4")) {
+                fw.setSession(fe, fromPlaylist: false); await settle()
+                let e0 = picture()
+                check(fw.panelsCollapsed.sidebar == true && fw.panelsCollapsed.inspector == false, "editing: the tools show, the playlists do not")
+                fw.toggleInspector(); await settle()
+                check(picture().width > e0.width + 250, "closing the tools gives the picture their room (\(Int(e0.width)) → \(Int(picture().width)))")
+                fw.toggleInspector(); await settle()
+                check(abs(picture().width - e0.width) < 2, "opening them again brings the picture back")
+                fw.closeVideo()
+            } else { check(false, "make a project for the layout checks") }
         } else { check(false, "open a video for the layout checks") }
         fw.window?.orderOut(nil)
 
@@ -499,17 +523,73 @@ enum SelfTest {
         while !cond() && Date() < end { try? await Task.sleep(nanoseconds: 100_000_000) }
     }
 
+    /// A new, empty video project, three different videos added at once (sizes, codecs, frame rates, with and without sound), shown
+    /// in a window and played: the playhead must move and the preview must not keep being rebuilt (it flickered and stood still).
+    static func threeVideosFlow(env: AppEnvironment, work: URL, app: AppDelegate) async {
+        print("== G0: a new video project of three different videos plays")
+        app.quitWhenLastWindowCloses = false
+        let fm = FileManager.default
+        var urls: [URL] = []
+        // Like the maintainer's: portrait phone videos of slightly different heights, of very different lengths; and a mix of kinds.
+        let portrait = ProcessInfo.processInfo.environment["MACPLAYER_THREE_PORTRAIT"] != nil
+        let kinds: [(Int, Int, Int, SyntheticMedia.Codec, Bool, Double)] = portrait
+            ? [(1080, 1918, 30, .h264, true, 14.3), (1080, 1920, 30, .h264, true, 51.2), (1080, 1918, 30, .h264, true, 44.1)]
+            : [(1280, 720, 30, .h264, true, 4), (640, 360, 25, .hevc, true, 4), (720, 1280, 60, .h264, false, 4)]
+        for (i, (w, h, fps, codec, audio, secs)) in kinds.enumerated() {
+            var spec = SyntheticMedia.Spec(); spec.width = w; spec.height = h; spec.seconds = secs; spec.codec = codec; spec.withAudio = audio
+            spec.frameRate = FrameRate(numerator: Int32(fps), denominator: 1)
+            let u = work.appendingPathComponent("three-\(i).mp4"); try? fm.removeItem(at: u)
+            try? await SyntheticMedia.generate(to: u, spec: spec)
+            urls.append(u)
+        }
+        let path = work.appendingPathComponent("three.macplayer").path; try? fm.removeItem(atPath: path)
+        guard let s = try? await EditorSession.makeProjectFile(kind: .video, media: nil, at: path) else { check(false, "make an empty video project"); return }
+        let wc = MainWindowController(playlists: app.playlists); app.adopt(wc)
+        wc.setSession(s, fromPlaylist: false)
+        wc.showWindow(nil)
+        await s.addVideos(urls)
+        let total = kinds.reduce(0) { $0 + $1.5 }
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        let span = wc.contentController.timeline?.visibleSpan ?? (start: -1, length: -1)
+        check(span.start == 0 && abs(span.length - s.duration.seconds) < 0.05, "the timeline strip shows the whole project once the videos are in (\(String(format: "%.1f", span.length)) of \(String(format: "%.1f", s.duration.seconds)) s); it used to keep the width of the empty project")
+        check(s.project.timeline.count == 3 && abs(s.duration.seconds - total) < 0.2, "three clips, \(total) s (\(s.project.timeline.count) clips, \(String(format: "%.2f", s.duration.seconds)) s)")
+        await waitFor(20) { s.player.duration.seconds > total - 1 }
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        let loadsBefore = s.previewLoads
+        s.player.play()
+        try? await Task.sleep(nanoseconds: 600_000_000)
+        let t0 = s.player.currentTime.seconds
+        let layoutsBefore = PlayerHostView.layouts
+        var worst = 0.0
+        let end = Date().addingTimeInterval(3)
+        while Date() < end {
+            let a = ProcessInfo.processInfo.systemUptime
+            try? await Task.sleep(nanoseconds: 10_000_000)
+            worst = max(worst, ProcessInfo.processInfo.systemUptime - a - 0.010)
+        }
+        let t1 = s.player.currentTime.seconds
+        let layouts = PlayerHostView.layouts - layoutsBefore
+        let after = wc.contentController.timeline?.visibleSpan ?? (start: -1, length: -1)
+        check(after.start == 0, "playing does not scroll a strip that shows everything (start \(String(format: "%.2f", after.start)) s)")
+        print("   playhead \(String(format: "%.2f", t0)) → \(String(format: "%.2f", t1)), playing \(s.player.isPlaying), preview built \(s.previewLoads - loadsBefore) times, picture laid out \(layouts) times, main loop held up \(Int(worst * 1000)) ms at worst, state \(s.saveState)")
+        check(layouts <= 2, "the picture is not laid out again and again while playing (\(layouts) times in 3 s)")
+        check(worst < 0.25, "the interface keeps up while playing (held up \(Int(worst * 1000)) ms at worst)")
+        check(t1 - t0 > 2.4, "the playhead moves while playing (\(String(format: "%.2f", t1 - t0)) s in 3 s)")
+        check(s.previewLoads - loadsBefore == 0, "the preview is not built again while playing (\(s.previewLoads - loadsBefore) times)")
+        s.player.pause()
+        wc.closeVideo(); wc.window?.orderOut(nil)
+    }
+
     static func timelineFlow(env: AppEnvironment, work: URL, demo: URL, demoBytes: Data) async {
         print("== G: timeline of several videos")
         let fm = FileManager.default
         let second = work.appendingPathComponent("second.mp4")
         var spec = SyntheticMedia.Spec(); spec.width = 320; spec.height = 180; spec.seconds = 2; spec.withAudio = false
         try? await SyntheticMedia.generate(to: second, spec: spec)
-        guard let s = try? await EditorSession.open(url: demo) else { check(false, "open for timeline"); return }
-        s.makeProject(fromClips: false)
+        guard let s = await editor(demo) else { check(false, "open for timeline"); return }
         await waitFor { s.player.duration.seconds > 19 }
         try? await Task.sleep(nanoseconds: 800_000_000) // let the preview finish loading before seeking
-        check(s.isProject && s.project.timeline.count == 1 && abs(s.duration.seconds - 20) < 0.1, "became a project with one clip of 20 s")
+        check(s.isProject && s.project.timeline.count == 1 && abs(s.duration.seconds - 20) < 0.1, "a video project with one clip of 20 s")
         await s.player.seek(to: MediaTime.frameStart(index: 150, frameRate: s.frameRate))
         check(abs(s.player.currentTime.seconds - 5) < 0.05, "playhead is at 5 s on the timeline (\(String(format: "%.2f", s.player.currentTime.seconds)))")
         s.splitAtPlayhead()
@@ -545,11 +625,9 @@ enum SelfTest {
         check(s.project.timeline[1].look.flipHorizontal, "redo brings it back")
 
         let outDir = work.appendingPathComponent("joined"); try? fm.createDirectory(at: outDir, withIntermediateDirectories: true)
-        let replace = ExportRequest(scope: .whole, saveKind: .replaceOriginal, options: ExportOptions(mode: .exact), folder: outDir.path, baseName: nil)
-        check((try? s.planExport(replace)) == nil, "replacing an original is refused for several videos")
-        let fast = ExportRequest(scope: .whole, saveKind: .newCopy, options: ExportOptions(mode: .fast), folder: outDir.path, baseName: "joined")
+        let fast = ExportRequest(options: ExportOptions(mode: .fast), folder: outDir.path, baseName: "joined")
         check((try? s.planExport(fast)) == nil, "fast cut is refused for a joined timeline")
-        let req = ExportRequest(scope: .whole, saveKind: .newCopy, options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "joined")
+        let req = ExportRequest(options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "joined")
         if let (jobs, _) = try? s.planExport(req) {
             env.exports.enqueue(jobs); await waitForQueue(env, timeout: 120)
             let out = jobs[0].outputPath
@@ -563,13 +641,13 @@ enum SelfTest {
             check((try? Data(contentsOf: demo)) == demoBytes, "the original videos are untouched")
         } else { check(false, "plan joined export") }
 
-        let proj = work.appendingPathComponent("joined.macplayer").path
-        s.saveProject(to: proj)
+        check(s.saveNow(), "the project is saved into its file")
+        let proj = s.projectPath ?? ""
         if let re = try? await EditorSession.openProject(path: proj) {
             check(re.project.sources.count == 2 && re.project.timeline == s.project.timeline, "reopened with both sources and the same clips")
             await waitFor { re.player.duration.seconds > 21 }
             check(abs(re.player.duration.seconds - 22) < 0.2, "preview is built for the whole timeline (\(String(format: "%.1f", re.player.duration.seconds)) s)")
-            re.close(discardRecovery: true)
+            re.close()
         } else { check(false, "reopen multi-source project") }
 
         // Missing media: reported, blocks the export, relink repairs it.
@@ -581,10 +659,10 @@ enum SelfTest {
             check(re.missingSourceIDs.count == 1, "a missing video is detected on open")
             check((try? re.planExport(req)) == nil, "export is blocked while media is missing")
             if let id = re.missingSourceIDs.first { await re.relinkSource(id, to: hidden) }
-            check(re.missingSourceIDs.isEmpty && (try? re.planExport(ExportRequest(scope: .whole, saveKind: .newCopy, options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "after-relink"))) != nil, "relinking repairs it")
-            re.close(discardRecovery: true)
+            check(re.missingSourceIDs.isEmpty && (try? re.planExport(ExportRequest(options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "after-relink"))) != nil, "relinking repairs it")
+            re.close()
         }
-        s.close(discardRecovery: true)
+        s.close()
     }
 
     static func soundsFlow(env: AppEnvironment, work: URL, demo: URL, demoBytes: Data) async {
@@ -607,8 +685,8 @@ enum SelfTest {
             }
             try file.write(from: buf)
         } catch { check(false, "make a test sound: \(error)"); return }
-        guard let s = try? await EditorSession.open(url: demo) else { check(false, "open for sounds"); return }
-        check(s.canHaveSounds, "a video can have sounds laid under it")
+        guard let s = await editor(demo) else { check(false, "open for sounds"); return }
+        check(s.canHaveSounds, "a video project can have sounds laid under it")
         await s.player.seek(to: MediaTime(seconds: 2))
         await s.addSounds(urls: [music], kind: .music)
         check(s.sounds.count == 1 && abs(s.sounds[0].start.seconds - 2) < 0.1 && abs(s.sounds[0].duration.seconds - 5) < 0.1, "music added at the playhead with the file's length")
@@ -620,7 +698,7 @@ enum SelfTest {
         s.redo()
 
         let outDir = work.appendingPathComponent("sounds"); try? fm.createDirectory(at: outDir, withIntermediateDirectories: true)
-        let req = ExportRequest(scope: .whole, saveKind: .newCopy, options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "with-music")
+        let req = ExportRequest(options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "with-music")
         if let (jobs, _) = try? s.planExport(req) {
             check(jobs[0].recipe.soundClips.count == 1, "the export job carries the music")
             env.exports.enqueue(jobs); await waitForQueue(env, timeout: 120)
@@ -628,13 +706,13 @@ enum SelfTest {
             check((try? await MediaProbe.probe(url: URL(fileURLWithPath: out)))?.hasAudio == true, "the exported video has sound")
             check((try? Data(contentsOf: demo)) == demoBytes, "the original is untouched")
         } else { check(false, "plan export with music") }
-        if let fastPlan = try? s.planExport(ExportRequest(scope: .whole, saveKind: .newCopy, options: ExportOptions(mode: .fast), folder: outDir.path, baseName: "fast")) { _ = fastPlan; check(false, "a fast cut cannot carry music") }
+        if let fastPlan = try? s.planExport(ExportRequest(options: ExportOptions(mode: .fast), folder: outDir.path, baseName: "fast")) { _ = fastPlan; check(false, "a fast cut cannot carry music") }
         else { check(true, "a fast cut cannot carry music") }
 
         // Noise reduction of the video's own sound: the cleaned copy is made first, then the setting is applied.
         s.setDenoise(0.6, for: .main)
-        await waitFor(60) { s.project.audio.denoise != nil }
-        check(s.project.audio.denoise == 0.6, "noise reduction is switched on once the cleaned copy exists")
+        await waitFor(60) { s.project.activeAudio.denoise != nil }
+        check(s.project.activeAudio.denoise == 0.6, "noise reduction is switched on once the cleaned copy exists (on the selected clip)")
         if let u = s.sourceURL { check(NoiseReducer.cached(for: u, strength: 0.6) != nil, "the cleaned copy is kept") }
         s.setDenoise(nil, for: .main)
         check(s.project.audio.denoise == nil, "and can be switched off")
@@ -646,7 +724,7 @@ enum SelfTest {
         s.deleteSound(id)
         check(s.sounds.isEmpty && (try? s.planExport(req)) != nil, "removing that sound unblocks it")
 
-        s.close(discardRecovery: true)
+        s.close()
     }
 
     static func photosFlow(env: AppEnvironment, work: URL, app: AppDelegate) async {
@@ -668,11 +746,11 @@ enum SelfTest {
         let before = (try? Data(contentsOf: a)) ?? Data()
 
         // Opening: it is a photo, the picture comes up, and only the tools that fit a photo are on offer.
-        guard let s = try? await EditorSession.open(url: a) else { check(false, "open a photo"); return }
+        guard let s = await editor(a) else { check(false, "open a photo"); return }
         await waitFor(10) { s.photoImage != nil }
-        check(s.isPhoto && s.info?.primaryVideo?.width == 800 && s.info?.primaryVideo?.height == 400, "a photo opens with its size")
+        check(s.isPhoto && s.info?.primaryVideo?.width == 800 && s.info?.primaryVideo?.height == 400, "a photo project opens with its photo's size")
         check(s.photoImage != nil && s.photoImage?.width == 800, "the picture is drawn (\(s.photoImage?.width ?? 0) px wide)")
-        check(s.activeTool == .picture && InspectorTab.tabs(forPhoto: true) == [.picture, .color, .mask, .effects, .text, .export], "the Picture tool opens, and a photo has no timeline, sound or subtitle tools")
+        check(s.activeTool == .picture && InspectorTab.tabs(for: .photo) == [.picture, .color, .mask, .effects, .layers, .text, .export], "the Picture tool opens, and a photo has no timeline, sound or subtitle tools")
         check(s.photoDraft.options.format == .jpeg, "it is saved in its own format unless told otherwise")
         s.photoCropAdjusting = false          // the crop frame has its own checks (flow N): here the picture shows every edit as it will be saved
 
@@ -702,22 +780,29 @@ enum SelfTest {
         check((try? Data(contentsOf: a)) == before, "the original is untouched")
         check(((try? fm.contentsOfDirectory(atPath: out.path)) ?? []).allSatisfy { !$0.contains(".macplayer-") }, "no temporary files are left")
 
-        // Replacing the original: refused when the format differs, then done with a backup after the question.
-        s.photoDraft.replaceOriginal = true
-        check(s.photoReplaceProblem != nil, "replacing a JPEG while PNG is chosen is refused")
-        s.photoDraft.options.format = .jpeg
-        check(s.photoReplaceProblem == nil, "and allowed once the format is the original's")
-        EditorSession.confirmReplace = { _ in true }
+        // A logo over the photo: drawn on the screen and in the saved file; the photo stays the only photo.
+        let logo = make("logo.png", w: 100, h: 100, type: .png)
+        s.addLogo(logo)
+        check(s.project.overlayClips.count == 1 && s.project.sources.count == 1, "a logo is added over the photo, which stays the only photo")
+        s.photoDraft.name = "with logo"; s.photoDraft.lastSaved = nil
         s.savePhoto()
-        await waitFor(15) { s.photoDraft.lastSaved != nil && !s.photoDraft.saving && !s.isDirty }
-        check((try? PhotoLoader.info(url: a))?.primaryVideo?.width == 400, "the original now holds the edited picture")
-        let backups = (try? fm.contentsOfDirectory(atPath: dir.appendingPathComponent("MacPlayer Backups").path)) ?? []
-        check(backups.count == 1 && (try? Data(contentsOf: dir.appendingPathComponent("MacPlayer Backups").appendingPathComponent(backups[0]))) == before, "a backup of the old original was kept")
-        check(!s.isDirty && s.project.overlays.isEmpty && s.photoImage?.width == 400, "the session starts again from the new file")
-        s.close(discardRecovery: true)
+        await waitFor(15) { s.photoDraft.lastSaved != nil && !s.photoDraft.saving }
+        check(fm.fileExists(atPath: out.appendingPathComponent("with logo.png").path), "the photo with its logo is saved as a new file")
+        // A second photo cannot join: a photo project holds one photo.
+        check(ProjectRules.canAdd(paths: [b.path], to: s.project) == .photoAlreadyChosen && ProjectRules.canAdd(paths: [b.path, c.path], to: s.project) == .onePhotoOnly,
+              "a photo project takes no second photo")
+        EditorSession.confirmReplacePhoto = { _ in true }
+        let square = make("square.png", w: 300, h: 300, type: .png)
+        await s.replacePhoto(square)
+        await waitFor(10) { s.info?.primaryVideo?.width == 300 }
+        check(s.project.sources.count == 1 && s.project.sources[0].path == square.path && s.project.look.crop == .full && s.project.look.effects.filter == .mono, "changing the photo keeps the edit, starts the crop again (other shape)")
+        s.undo()
+        check(s.project.sources.first?.path == a.path, "and can be undone")
+        check((try? Data(contentsOf: a)) == before, "the original is still untouched")
+        s.close()
 
         // A photo turned by the camera opens upright; a file that is not a picture is refused.
-        if let t = try? await EditorSession.open(url: c) { check(t.info?.primaryVideo?.width == 800 && t.info?.primaryVideo?.height == 400, "a photo the camera held on its side opens upright (\(t.info?.primaryVideo?.width ?? 0)×\(t.info?.primaryVideo?.height ?? 0))"); t.close(discardRecovery: true) }
+        if let t = try? await EditorSession.open(url: c) { check(t.info?.primaryVideo?.width == 800 && t.info?.primaryVideo?.height == 400, "a photo the camera held on its side opens upright (\(t.info?.primaryVideo?.width ?? 0)×\(t.info?.primaryVideo?.height ?? 0))"); t.close() }
         let junk = dir.appendingPathComponent("junk.jpg"); try? Data("nope".utf8).write(to: junk)
         check((try? await EditorSession.open(url: junk)) == nil, "a file that is not a picture is refused")
 
@@ -745,10 +830,8 @@ enum SelfTest {
         await waitFor(6) { cw.session?.sourceURL?.lastPathComponent == "b2.png" }
         check(cw.session?.sourceURL?.lastPathComponent == "b2.png", "the slideshow moves on to the next photo after the time set")
         cw.session?.edit("crop") { $0.look.crop = CropRect(x: 0, y: 0, width: 0.5, height: 1) }
-        await waitFor(6) { model.slideshowOn == false }
-        check(model.slideshowOn == false && cw.session?.sourceURL?.lastPathComponent == "b2.png", "a photo with changes that are not saved stops the slideshow")
+        check(cw.session?.project.look.crop == .full, "a photo being watched cannot be edited")
         check(cw.window?.frame.size == beforeFrame, "the window keeps its size through all this")
-        cw.session?.edit("undo") { $0.look.crop = .full }
         env.prefs.photoSlideSeconds = 5
         model.stop(); cw.window?.orderOut(nil)
         model.delete(pid)
@@ -794,7 +877,7 @@ enum SelfTest {
         let d = CGImageDestinationCreateWithURL(a as CFURL, UTType.png.identifier as CFString, 1, nil)!
         CGImageDestinationAddImage(d, cg(800, 400), nil); CGImageDestinationFinalize(d)
 
-        guard let s = try? await EditorSession.open(url: a) else { check(false, "open a photo"); return }
+        guard let s = await editor(a) else { check(false, "open a photo"); return }
         await waitFor(10) { s.photoImage != nil }
         // While the Picture tool is open the frame is shown on the whole picture; leaving it shows the cut.
         check(s.photoCropEditing && s.activeTool == .picture, "the Picture tool shows the crop frame")
@@ -836,13 +919,13 @@ enum SelfTest {
 
         // A project of a photo: saved, opened again, and recovered after a crash.
         s.edit("text") { $0.overlays.append(TextOverlay(text: "Hi", start: .zero, end: MediaTime(seconds: 100_000), sizeFraction: 0.2)) }
-        let proj = work.appendingPathComponent("photo.macplayer").path
-        s.saveProject(to: proj)
-        check(!s.isDirty && s.projectPath == proj, "a photo's edit is saved as a project")
+        check(s.saveNow(), "a photo project is saved into its file")
+        let proj = s.projectPath ?? ""
+        check(!s.isDirty, "and nothing is left unsaved")
         if let re = try? await EditorSession.openProject(path: proj) {
             await waitFor(10) { re.photoImage != nil }
             check(re.isPhoto && re.project.look == s.project.look && re.project.overlays == s.project.overlays && re.photoImage != nil && !re.isDirty, "and opens again with the same edit")
-            re.close(discardRecovery: true)
+            re.close()
         } else { check(false, "the photo project opens again") }
         s.edit("more") { $0.look.effects.filter = .mono }
         var p = s.project; p.playhead = .zero
@@ -850,13 +933,15 @@ enum SelfTest {
         let found = env.projectStore.recoverable().first { $0.projectID == p.id }
         check(found != nil, "an autosave of a photo is offered for recovery")
         if let found, let rp = try? env.projectStore.loadAutosave(found) {
-            let r = await EditorSession.restore(project: rp, savedPath: found.savedPath)
+            s.close()
+            let r = await EditorSession.restore(project: rp, savedPath: found.savedPath ?? proj)
             await waitFor(10) { r.photoImage != nil }
-            check(r.isPhoto && r.isDirty && r.project.look.effects.filter == .mono && r.photoImage != nil, "the recovered photo has the last edit and counts as unsaved")
-            r.close(discardRecovery: true)
+            check(r.isPhoto && r.isDirty && r.project.look.effects.filter == .mono && r.photoImage != nil, "the recovered photo has the last edit, to be written into its file")
+            check(r.saveNow() && (try? env.projectStore.load(path: proj))?.look.effects.filter == .mono, "and it is written into the project file")
+            r.close()
         }
         env.projectStore.clearAutosave(projectID: p.id)
-        s.close(discardRecovery: true)
+        s.close()
 
         // An animation: its frames play, and the edit goes on every frame when it is saved as a GIF.
         let g = dir.appendingPathComponent("anim.gif")
@@ -868,7 +953,7 @@ enum SelfTest {
             CGImageDestinationAddImage(gd, ctx.makeImage()!, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.1]] as CFDictionary)
         }
         CGImageDestinationFinalize(gd)
-        guard let an = try? await EditorSession.open(url: g) else { check(false, "open an animated GIF"); return }
+        guard let an = await editor(g) else { check(false, "open an animated GIF"); return }
         await waitFor(10) { an.photoFrames.count == 6 }
         check(an.photoAnimation?.frameCount == 6 && an.photoFrames.count == 6 && an.photoPlaying, "an animated GIF opens with its 6 frames, playing")
         check(an.photoDraft.options.format == .gif, "and is saved as a GIF unless told otherwise")
@@ -881,7 +966,7 @@ enum SelfTest {
         await waitFor(30) { an.photoDraft.lastSaved != nil && !an.photoDraft.saving }
         let outGif = dir.appendingPathComponent("anim-edited.gif")
         check(PhotoLoader.animation(url: outGif)?.frameCount == 6 && (try? PhotoLoader.info(url: outGif))?.primaryVideo?.width == 60, "the saved GIF is still an animation of 6 frames, cut")
-        an.close(discardRecovery: true)
+        an.close()
     }
 
     static func layersFlow(env: AppEnvironment, work: URL, demo: URL, demoBytes: Data) async {
@@ -895,9 +980,10 @@ enum SelfTest {
             ctx.setFillColor(CGColor(srgbRed: 1, green: 0, blue: 1, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 36))
             if let img = ctx.makeImage() { try? ImageWriter.write(img, to: logo, format: .png) }
         }
-        guard let s = try? await EditorSession.open(url: demo) else { check(false, "open for layers"); return }
-        s.edit("clip", refreshPreview: false) { _ = $0.selections.add(start: .zero, end: MediaTime(seconds: 6), name: "Six seconds") }
-        s.makeProject(fromClips: true)
+        guard let s = await editor(demo) else { check(false, "open for layers"); return }
+        if let id = s.project.timeline.first?.id {
+            s.edit("clip", refreshPreview: false) { TimelineEditor.trim(&$0.timeline, clipID: id, end: MediaTime(seconds: 6), sourceDuration: s.info?.duration ?? .zero) }
+        }
         await waitFor { s.player.duration.seconds > 5 }
         try? await Task.sleep(nanoseconds: 800_000_000)
         check(s.isProject && abs(s.duration.seconds - 6) < 0.1, "project of 6 s")
@@ -937,7 +1023,7 @@ enum SelfTest {
         s.redo()
 
         let outDir = work.appendingPathComponent("layered"); try? fm.createDirectory(at: outDir, withIntermediateDirectories: true)
-        let req = ExportRequest(scope: .whole, saveKind: .newCopy, options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "layered")
+        let req = ExportRequest(options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "layered")
         if let (jobs, _) = try? s.planExport(req) {
             check(jobs[0].recipe.layers.count == 2, "the export job carries both layers")
             env.exports.enqueue(jobs); await waitForQueue(env, timeout: 120)
@@ -948,19 +1034,19 @@ enum SelfTest {
             check((try? Data(contentsOf: demo)) == demoBytes, "the original is untouched")
         } else { check(false, "plan layered export") }
 
-        let proj = work.appendingPathComponent("layers.macplayer").path
-        s.saveProject(to: proj)
-        if let text = try? String(contentsOfFile: proj, encoding: .utf8) { check(text.contains("\"schemaVersion\" : 2"), "saved in format 2") }
+        check(s.saveNow(), "the project is saved into its file")
+        let proj = s.projectPath ?? ""
+        if let text = try? String(contentsOfFile: proj, encoding: .utf8) { check(text.contains("\"schemaVersion\" : 3") && text.contains("\"kind\" : \"video\""), "saved in format 3, as a video project") }
         if let re = try? await EditorSession.openProject(path: proj) {
             check(re.project.overlayClips == s.project.overlayClips, "reopened with both layers and their keyframes")
-            re.close(discardRecovery: true)
+            re.close()
         } else { check(false, "reopen project with layers") }
 
         try? fm.removeItem(at: logo)
         check((try? s.planExport(req)) == nil, "export is blocked when a layer's picture file is gone")
         s.deleteOverlay(picID)
         check(s.project.overlayClips.count == 1 && (try? s.planExport(req)) != nil, "removing that layer unblocks it")
-        s.close(discardRecovery: true)
+        s.close()
     }
 
     static func mouse(_ type: NSEvent.EventType, _ p: CGPoint, _ win: NSWindow, _ mods: NSEvent.ModifierFlags = []) -> NSEvent {
@@ -1051,7 +1137,8 @@ enum SelfTest {
     static func interfaceFlow(env: AppEnvironment, work: URL, demo: URL, app: AppDelegate) async {
         print("== J: shortcuts, menus, window level, parallel exports, audio tracks")
         let fm = FileManager.default
-        guard let s = try? await EditorSession.open(url: demo) else { check(false, "open for interface checks"); return }
+        guard let s = await editor(demo) else { check(false, "open for interface checks"); return }
+        await waitFor { s.player.duration.seconds > 19 }
         let wc = MainWindowController(playlists: app.playlists)     // never shown: events are sent straight to its window
         wc.setSession(s, fromPlaylist: false)
         app.adopt(wc)
@@ -1077,27 +1164,27 @@ enum SelfTest {
         win.sendEvent(key(",", code: 43, win)); try? await Task.sleep(nanoseconds: 700_000_000)
         check(abs(s.player.currentTime.seconds - t0) < 0.02, ", steps one frame back")
 
-        await s.player.seek(to: MediaTime(seconds: 2)); win.sendEvent(key("i", code: 34, win)); try? await Task.sleep(nanoseconds: 300_000_000)
-        await s.player.seek(to: MediaTime(seconds: 4)); win.sendEvent(key("o", code: 31, win)); try? await Task.sleep(nanoseconds: 300_000_000)
-        check(abs((s.inPoint?.seconds ?? -1) - 2) < 0.05 && abs((s.outPoint?.seconds ?? -1) - 4) < 0.05, "I and O set the In and Out points")
-        win.sendEvent(key("\r", code: 36, win))
-        check(s.project.selections.items.count == 1, "Return turns them into a clip")
+        await s.player.seek(to: MediaTime(seconds: 4)); win.sendEvent(key("s", code: 1, win))
+        await waitFor(3) { s.project.timeline.count == 2 }
+        check(s.project.timeline.count == 2, "S splits the clip at the playhead")
         win.sendEvent(key("m", code: 46, win)); try? await Task.sleep(nanoseconds: 300_000_000)
         check(s.project.markers.count == 1, "M adds a marker")
         let sp = s.player.speed
         win.sendEvent(key("=", code: 24, win)); check(abs(s.player.speed - sp * 1.25) < 0.001, "= speeds up")
         win.sendEvent(key("-", code: 27, win)); check(abs(s.player.speed - sp) < 0.001, "- slows down")
-        s.selectedClipIDs = Set(s.project.selections.items.map(\.id))
+        s.selectedOverlayID = nil
+        s.selectedClipIDs = [s.project.timeline[1].id]
         win.sendEvent(key("\u{7F}", code: 51, win))
-        check(s.project.selections.items.isEmpty, "Delete removes the selected clip")
+        check(s.project.timeline.count == 1, "Delete removes the selected clip")
 
         // The same keys while typing, or with ⌘, must do nothing (they belong to the text field and to the menu).
-        let before = (s.inPoint, s.project.markers.count, s.player.isPlaying)
+        let before = (s.project.timeline.count, s.project.markers.count, s.player.isPlaying)
         let field = NSTextView(frame: NSRect(x: 0, y: 0, width: 100, height: 20))
         win.contentView?.addSubview(field)
         check(win.makeFirstResponder(field), "a text field can take the focus")
-        for (c, code) in [("i", UInt16(34)), ("m", 46), (" ", 49)] { win.sendEvent(key(c, code: code, win)) }
-        check(s.inPoint == before.0 && s.project.markers.count == before.1 && s.player.isPlaying == before.2, "typing i, m or Space in a text field does not trigger shortcuts")
+        for (c, code) in [("s", UInt16(1)), ("m", 46), (" ", 49)] { win.sendEvent(key(c, code: code, win)) }
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        check(s.project.timeline.count == before.0 && s.project.markers.count == before.1 && s.player.isPlaying == before.2, "typing s, m or Space in a text field does not trigger shortcuts")
         field.removeFromSuperview(); _ = win.makeFirstResponder(nil)
         win.sendEvent(key("m", code: 46, win, .command)); try? await Task.sleep(nanoseconds: 200_000_000)
         check(s.project.markers.count == before.1, "⌘M is left to the menu, not taken as the M shortcut")
@@ -1110,7 +1197,7 @@ enum SelfTest {
         for i in items where !i.keyEquivalent.isEmpty { let k = "\(i.keyEquivalentModifierMask.rawValue)-\(i.keyEquivalent)"; if let o = seen[k] { dup.append("\(o) / \(i.title)") } else { seen[k] = i.title } }
         check(dup.isEmpty, "no two menu items share a shortcut (\(dup))")
         func enabled(_ sel: Selector) -> Bool? { items.first { $0.action == sel }.map { app.validateMenuItem($0) } }
-        check(enabled(#selector(AppDelegate.saveDocument(_:))) == true, "Save Project is available with a video open")
+        check(enabled(#selector(AppDelegate.saveDocument(_:))) == true, "Save Now is available with a project open")
         s.edit("test edit", refreshPreview: false) { $0.markers.append(Marker(time: MediaTime(seconds: 1), name: "x")) }
         check(enabled(#selector(AppDelegate.undo(_:))) == true && (items.first { $0.action == #selector(AppDelegate.undo(_:)) }?.title.contains("test edit") == true), "Undo is enabled and names the edit")
         s.undo()
@@ -1129,9 +1216,13 @@ enum SelfTest {
         for limit in [1, 3] {
             env.prefs.maxConcurrentExports = limit
             let dir = work.appendingPathComponent("par\(limit)"); try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-            guard let ps = try? await EditorSession.open(url: demo) else { continue }
-            ps.edit("clips", refreshPreview: false) { p in for i in 0..<6 { _ = p.selections.add(start: MediaTime(seconds: Double(i) * 3), end: MediaTime(seconds: Double(i) * 3 + 2.5), name: "p\(i + 1)") } }
-            guard let (jobs, _) = try? ps.planExport(ExportRequest(scope: .allClips, saveKind: .newCopy, options: ExportOptions(mode: .exact), folder: dir.path, baseName: nil)) else { check(false, "plan parallel"); continue }
+            guard let ps = await editor(demo) else { continue }
+            var jobs: [ExportJob] = []
+            for i in 0..<6 {
+                ps.edit("range", refreshPreview: false) { $0.timeline[0].sourceStart = MediaTime(seconds: Double(i) * 3); $0.timeline[0].sourceEnd = MediaTime(seconds: Double(i) * 3 + 2.5) }
+                if let (j, _) = try? ps.planExport(ExportRequest(options: ExportOptions(mode: .exact), folder: dir.path, baseName: "p\(i + 1)")) { jobs += j }
+            }
+            guard jobs.count == 6 else { check(false, "plan parallel"); continue }
             env.exports.enqueue(jobs)
             var peak = 0
             let end = Date().addingTimeInterval(120)
@@ -1139,18 +1230,22 @@ enum SelfTest {
             let done = env.exports.queue.jobs.filter { j in jobs.contains { $0.id == j.id } }.allSatisfy { if case .succeeded = $0.state { return true }; return false }
             check(done, "all six exports finished (limit \(limit))")
             check(peak <= limit && (limit == 1 ? peak == 1 : peak >= 2), "at most \(limit) ran at once; peak seen \(peak)")
-            ps.close(discardRecovery: true)
+            ps.close()
         }
         env.prefs.maxConcurrentExports = 1
 
         // The interface keeps answering while an export runs (design section 16): how long the main loop was ever held up.
-        if let ps = try? await EditorSession.open(url: demo) {
+        if let ps = await editor(demo) {
             let dir = work.appendingPathComponent("stall"); try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-            ps.edit("clips", refreshPreview: false) { p in
-                p.look.color.brightness = 0.1          // the picture-processing path, the heaviest one
-                for i in 0..<4 { _ = p.selections.add(start: MediaTime(seconds: Double(i) * 4), end: MediaTime(seconds: Double(i) * 4 + 3.5), name: "s\(i + 1)") }
+            var jobs: [ExportJob] = []
+            for i in 0..<4 {
+                ps.edit("clips", refreshPreview: false) { p in
+                    p.timeline[0].look.color.brightness = 0.1          // the picture-processing path, the heaviest one
+                    p.timeline[0].sourceStart = MediaTime(seconds: Double(i) * 4); p.timeline[0].sourceEnd = MediaTime(seconds: Double(i) * 4 + 3.5)
+                }
+                if let (j, _) = try? ps.planExport(ExportRequest(options: ExportOptions(mode: .exact), folder: dir.path, baseName: "s\(i + 1)")) { jobs += j }
             }
-            if let (jobs, _) = try? ps.planExport(ExportRequest(scope: .allClips, saveKind: .newCopy, options: ExportOptions(mode: .exact), folder: dir.path, baseName: nil)) {
+            if !jobs.isEmpty {
                 env.exports.enqueue(jobs)
                 var worst = 0.0, ticks = 0
                 let end = Date().addingTimeInterval(120)
@@ -1162,7 +1257,7 @@ enum SelfTest {
                 check(ticks > 20, "the export ran long enough to measure (\(ticks) ticks)")
                 check(worst < 0.25, "the interface was never held up more than 250 ms during an export (worst \(String(format: "%.0f", worst * 1000)) ms)")
             }
-            ps.close(discardRecovery: true)
+            ps.close()
         }
 
         // Choosing an audio track
@@ -1177,9 +1272,9 @@ enum SelfTest {
                 await ts.player.selectAudio(other)
                 check(item.currentMediaSelection.selectedMediaOption(in: group) == other, "choosing the other track switches the playing sound")
             }
-            ts.close(discardRecovery: true)
+            ts.close()
         }
-        s.close(discardRecovery: true)
+        s.close()
     }
 
     /// Presentation times of every frame a file shows (decoded, so edit lists are respected).
@@ -1223,42 +1318,26 @@ enum SelfTest {
             s.player.step(frames: -1); try? await Task.sleep(nanoseconds: 900_000_000)
             check(abs(s.player.currentTime.seconds - a.time.seconds) < 0.0005, "one frame back")
 
-            // Export a copy of 240 frames
-            s.inPoint = a.time; s.outPoint = b
-            s.addClipFromInOut(name: "Real")
-            let outDir = dir.appendingPathComponent("out"); try? fm.createDirectory(at: outDir, withIntermediateDirectories: true)
-            if let (jobs, _) = try? s.planExport(ExportRequest(scope: .allClips, saveKind: .newCopy, options: ExportOptions(mode: .exact), folder: outDir.path, baseName: nil)) {
-                env.exports.enqueue(jobs); await waitForQueue(env, timeout: 120)
-                let ok: Bool = { if case .succeeded = env.exports.queue.jobs.first(where: { $0.id == jobs[0].id })?.state { return true }; return false }()
-                let t = await decodedTimes(URL(fileURLWithPath: jobs[0].outputPath))
-                check(ok && t.count == 240 && abs(t.first ?? 9) < 0.02, "exported copy: \(t.count) frames from \(String(format: "%.3f", t.first ?? -1)) s")
-            } else { check(false, "plan export") }
-            check((try? Data(contentsOf: url)) == original, "source untouched, byte for byte")
-
-            // Save the work as a project and open it again
-            s.makeProject(fromClips: true)
+            s.close()
+            // A project of 240 frames from it, exported as a new file
             let projPath = dir.appendingPathComponent("real.macplayer").path
-            s.saveProject(to: projPath)
-            if let p = try? await EditorSession.openProject(path: projPath) {
-                check(p.isProject && p.project.timeline.count == 1 && p.duration.seconds > 3.9 && p.duration.seconds < 4.1, "project saved and reopened (\(p.project.timeline.count) clip, \(String(format: "%.2f", p.duration.seconds)) s)")
-                p.close(discardRecovery: true)
-            } else { check(false, "reopen project") }
-            s.close(discardRecovery: true)
-
-            // Replace the original (a copy of it) with the cut, keeping a backup
-            let victim = dir.appendingPathComponent("victim-\(name)"); try? fm.copyItem(at: url, to: victim)
-            if let v = try? await EditorSession.open(url: victim) {
-                v.inPoint = a.time; v.outPoint = b
-                if let (jobs, _) = try? v.planExport(ExportRequest(scope: .inOut, saveKind: .replaceOriginal, options: ExportOptions(mode: .exact), folder: dir.path, baseName: nil)) {
+            if let p = try? await EditorSession.makeProjectFile(kind: .video, media: url, at: projPath), let id = p.project.timeline.first?.id {
+                p.edit("Trim", refreshPreview: false) { TimelineEditor.trim(&$0.timeline, clipID: id, start: a.time, end: b, sourceDuration: p.info?.duration ?? .zero) }
+                let outDir = dir.appendingPathComponent("out"); try? fm.createDirectory(at: outDir, withIntermediateDirectories: true)
+                if let (jobs, _) = try? p.planExport(ExportRequest(options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "Real")) {
                     env.exports.enqueue(jobs); await waitForQueue(env, timeout: 120)
-                    let t = await decodedTimes(victim)
-                    let backups = (try? fm.contentsOfDirectory(atPath: dir.appendingPathComponent("MacPlayer Backups").path)) ?? []
-                    check(t.count == 240, "replaced original now has \(t.count) frames")
-                    check(backups.count == 1 && (try? Data(contentsOf: dir.appendingPathComponent("MacPlayer Backups/\(backups[0])"))) == original, "backup is the untouched original")
-                    check(((try? fm.contentsOfDirectory(atPath: dir.path)) ?? []).allSatisfy { !$0.contains(".macplayer-") }, "no temp files left")
-                } else { check(false, "plan replace") }
-                v.close(discardRecovery: true)
-            } else { check(false, "open victim") }
+                    let ok: Bool = { if case .succeeded = env.exports.queue.jobs.first(where: { $0.id == jobs[0].id })?.state { return true }; return false }()
+                    let t = await decodedTimes(URL(fileURLWithPath: jobs[0].outputPath))
+                    check(ok && t.count == 240 && abs(t.first ?? 9) < 0.02, "exported a new file: \(t.count) frames from \(String(format: "%.3f", t.first ?? -1)) s")
+                } else { check(false, "plan export") }
+                check(p.saveNow(), "project saved")
+                p.close()
+                if let re = try? await EditorSession.openProject(path: projPath) {
+                    check(re.isProject && re.project.timeline.count == 1 && re.duration.seconds > 3.9 && re.duration.seconds < 4.1, "project reopened (\(re.project.timeline.count) clip, \(String(format: "%.2f", re.duration.seconds)) s)")
+                    re.close()
+                } else { check(false, "reopen project") }
+            } else { check(false, "make a project") }
+            check((try? Data(contentsOf: url)) == original, "source untouched, byte for byte")
             try? fm.removeItem(at: dir)      // free the disk: these are big
         }
 
@@ -1275,7 +1354,7 @@ enum SelfTest {
             guard NSApp.isActive else {
                 // macOS does not let a background process take focus, and a window only goes full screen in the active app.
                 print("SKIP  full screen: the app is not the active one (needs a person to click it). Not verified.")
-                wc.window?.orderOut(nil); s.close(discardRecovery: true)      // hide, never close: closing the last window quits the app
+                wc.window?.orderOut(nil); s.close()      // hide, never close: closing the last window quits the app
                 return
             }
             s.player.play()
@@ -1291,7 +1370,7 @@ enum SelfTest {
             try? await Task.sleep(nanoseconds: 800_000_000)
             check(wc.window?.styleMask.contains(.fullScreen) == false, "and came back out of full screen")
             s.player.pause()
-            wc.window?.orderOut(nil); s.close(discardRecovery: true)      // hide, never close: closing the last window quits the app
+            wc.window?.orderOut(nil); s.close()      // hide, never close: closing the last window quits the app
         }
     }
 
@@ -1416,7 +1495,7 @@ final class SelfTestHost: PlaylistHost {
     var hostHasUnsavedEdits: Bool { false }
     func playPlaylistItem(url: URL, startAt: MediaTime?) async -> Bool {
         guard let s = try? await EditorSession.open(url: url) else { return false }
-        current?.close(discardRecovery: true)
+        current?.close()
         current = s
         s.player.onEnded = { MainActor.assumeIsolated { AppEnvironment.shared.playlistsForSelfTest?.advance(auto: true) } }
         s.player.play()
@@ -1426,6 +1505,6 @@ final class SelfTestHost: PlaylistHost {
     func stopPlaylistPlayback(path: String?) {
         guard let s = current else { return }
         if let p = path, s.sourceURL?.standardizedFileURL.path != URL(fileURLWithPath: p).standardizedFileURL.path { return }
-        s.close(discardRecovery: true); current = nil
+        s.close(); current = nil
     }
 }

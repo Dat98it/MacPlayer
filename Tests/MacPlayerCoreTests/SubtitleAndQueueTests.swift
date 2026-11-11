@@ -225,7 +225,7 @@ private func encodeWindows1258(_ s: String) -> Data? {
 
     @Test func safeDefaults() {
         let p = AppPreferences(store: Dict())
-        #expect(p.defaultSave == .newCopy && p.backupBeforeReplace && !p.telemetryEnabled && p.rememberPositions && p.autosaveEnabled)
+        #expect(p.lastProjectFolder == nil && p.projectFilter == .all && !p.telemetryEnabled && p.rememberPositions && p.autosaveEnabled)
         #expect(p.copySuffix == "-edited" && p.skipSeconds == 5)
     }
 

@@ -7,7 +7,7 @@ struct RegressionFixesTests {
     // MARK: One test for "can this be a fast cut" (the Export panel and the export plan used to disagree)
 
     @Test func aFastCutNeedsNothingToChange() {
-        var p = Project(name: "t")
+        var p = Project(name: "t", kind: .video)
         #expect(p.allowsFastCut)
         var sped = p; sped.look.speed = 2
         #expect(!sped.allowsFastCut, "a different speed changes the picture and sound")

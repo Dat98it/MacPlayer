@@ -55,6 +55,7 @@ s = wait(lambda s: len(videos(s)) == 1)
 check(s and len(videos(s)) == 1 and videos(s)[0]["path"].endswith("one.mp4"), "launching with a video opens it")
 check(s and len(s["windows"]) == 1, "and does not leave an empty window beside it")
 check(s and abs(videos(s)[0]["duration"] - 3) < 0.2, "and it is read correctly (3 s)")
+check(s and videos(s)[0].get("route") == "playlist" and not videos(s)[0]["isProject"], "a video from Finder opens to be watched (Playlists), not in the editor")
 
 # 2. app running -> a second video opens in a new window; the first stays
 open_in_running(work + "/two.mov")
@@ -79,11 +80,12 @@ launch_with(work + "/proj.macplayer")
 s = wait(lambda s: len(videos(s)) == 1)
 check(s and len(videos(s)) == 1 and videos(s)[0]["isProject"], "double-clicking a .macplayer file opens it as a project")
 check(s and videos(s)[0]["projectPath"].endswith("proj.macplayer") and videos(s)[0]["clips"] == 1, "with its path and its clip")
+check(s and videos(s)[0].get("route") == "editor" and videos(s)[0].get("kind") == "video", "in the editor, as a video project")
 # 6. a file that is not a video
 open_in_running(work + "/box/report.json" if False else work + "/proj.macplayer")
 time.sleep(1.5)
 s = state()
-check(s and len(videos(s)) >= 1, "opening the same project again does not crash")
+check(s and len([w for w in videos(s) if w["projectPath"].endswith("proj.macplayer")]) == 1, "opening the same project again brings its window forward instead of opening it twice")
 quit_app()
 
 # 7. a damaged file: no crash, a message

@@ -4,7 +4,7 @@ import Testing
 
 struct SoundClipTests {
     @Test func aProjectWithoutSoundsStoresNothingExtra() throws {
-        var p = Project(name: "x")
+        var p = Project(name: "x", kind: .video)
         #expect(p.soundClips.isEmpty && p.soundClipStore == nil)
         let json = String(decoding: try JSONEncoder().encode(p), as: UTF8.self)
         #expect(!json.contains("soundClipStore"), "older readers and files stay unchanged when there are no sounds")

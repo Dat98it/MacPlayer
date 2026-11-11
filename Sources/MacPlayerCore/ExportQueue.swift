@@ -34,12 +34,45 @@ public struct RenderRecipe: Codable, Equatable, Sendable {
     public var needsReencode: Bool { !layers.isEmpty || !soundClips.isEmpty || audio.denoise != nil || audio.fx != nil || look.changesPicture || !overlays.isEmpty || !burnedInCues.isEmpty || audio.gainDB != 0 || audio.muted || audio.fadeIn > 0 || audio.fadeOut > 0 || look.speed != 1 || audio.replacementPath != nil || audio.offsetSeconds != 0 }
 }
 
-/// Where a finished export goes.
+/// Where a finished export goes. MacPlayer only ever writes NEW files.
 public enum SaveTarget: Codable, Equatable, Sendable {
-    /// A new file. Never overwrites unless `overwrite` was confirmed.
+    /// A new file. Never overwrites unless `overwrite` was confirmed (and never the source).
     case newCopy(path: String, overwrite: Bool)
-    /// Replace the source (explicit confirmation happened before this job was queued).
-    case replaceOriginal(path: String, expected: FileFingerprint, backupFolder: String?)
+    /// A "replace the original" job queued by MacPlayer 0.7 or older and still in its saved queue. It is read so the rest of
+    /// the queue survives the update, and it is never run: the queue marks it as failed when it loads.
+    case legacyReplaceOriginal(path: String)
+
+    private enum Keys: String, CodingKey { case newCopy, replaceOriginal }
+    private enum NewCopyKeys: String, CodingKey { case path, overwrite }
+    private enum ReplaceKeys: String, CodingKey { case path }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        if c.contains(.newCopy) {
+            let n = try c.nestedContainer(keyedBy: NewCopyKeys.self, forKey: .newCopy)
+            self = .newCopy(path: try n.decode(String.self, forKey: .path), overwrite: try n.decodeIfPresent(Bool.self, forKey: .overwrite) ?? false)
+        } else if c.contains(.replaceOriginal) {
+            let r = try c.nestedContainer(keyedBy: ReplaceKeys.self, forKey: .replaceOriginal)
+            self = .legacyReplaceOriginal(path: try r.decode(String.self, forKey: .path))
+        } else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "unknown save target"))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: Keys.self)
+        switch self {
+        case .newCopy(let path, let overwrite):
+            var n = c.nestedContainer(keyedBy: NewCopyKeys.self, forKey: .newCopy)
+            try n.encode(path, forKey: .path); try n.encode(overwrite, forKey: .overwrite)
+        case .legacyReplaceOriginal(let path):
+            var r = c.nestedContainer(keyedBy: ReplaceKeys.self, forKey: .replaceOriginal)
+            try r.encode(path, forKey: .path)
+        }
+    }
+
+    /// The message a job of the old "replace the original" kind gets instead of running.
+    public static let legacyReplaceMessage = "Replacing the original is no longer part of MacPlayer, so this job was not run. Export a new copy instead."
 }
 
 public enum JobState: Codable, Equatable, Sendable {
@@ -87,7 +120,7 @@ public struct ExportJob: Codable, Identifiable, Equatable, Sendable {
     }
 
     public var outputPath: String {
-        switch target { case .newCopy(let p, _): return p; case .replaceOriginal(let p, _, _): return p }
+        switch target { case .newCopy(let p, _): return p; case .legacyReplaceOriginal(let p): return p }
     }
 }
 
@@ -147,6 +180,7 @@ public struct ExportQueueModel: Codable, Equatable, Sendable {
 
     public mutating func retry(_ id: UUID) {
         update(id) {
+            if case .legacyReplaceOriginal = $0.target { return }      // never run again
             switch $0.state { case .failed, .cancelled: $0.state = .queued; $0.progress = 0; $0.finished = nil; default: break }
         }
     }
@@ -161,6 +195,10 @@ public struct ExportQueueModel: Codable, Equatable, Sendable {
     public mutating func restoreAfterCrash() {
         for i in jobs.indices where jobs[i].state == .running {
             jobs[i].state = .queued; jobs[i].progress = 0; jobs[i].restoredAfterCrash = true
+        }
+        // An old "replace the original" job never runs again: it fails with a plain reason, the rest of the queue is untouched.
+        for i in jobs.indices where !jobs[i].state.isFinished {
+            if case .legacyReplaceOriginal = jobs[i].target { jobs[i].state = .failed(message: SaveTarget.legacyReplaceMessage); jobs[i].restoredAfterCrash = false }
         }
     }
 

@@ -11,19 +11,72 @@ extension EditorSession {
     /// The longest side of the frames an animation is drawn from.
     static let animationPreviewPixels = 960
 
-    /// The question before an original is replaced; a test answers it without a dialog.
-    nonisolated(unsafe) static var confirmReplace: (NSAlert) -> Bool = { $0.runModal() == .alertFirstButtonReturn }
+    /// The question before the photo of a project is changed; a test answers it without a dialog.
+    nonisolated(unsafe) static var confirmReplacePhoto: (NSAlert) -> Bool = { $0.runModal() == .alertFirstButtonReturn }
 
-    var isPhoto: Bool { sourceURL.map { ImageFiles.isCandidate($0.path) } ?? false }
+    var isPhoto: Bool { project.kind == .photo }
 
+    /// A photo opened to look at (the playlist side).
     static func openPhoto(url: URL) async throws -> EditorSession {
         let info = try PhotoLoader.info(url: url)
         let fs = AppEnvironment.shared.fs
         let src = SourceRef(path: url.path, bookmark: Bookmarks.make(url), fingerprint: try? fs.fingerprint(url.path), info: info)
-        let project = Project(name: url.deletingPathExtension().lastPathComponent, mode: .quick, sources: [src])
-        let s = EditorSession(project: project, projectPath: nil)
+        let project = Project(name: url.deletingPathExtension().lastPathComponent, kind: .photo, sources: [src])
+        let s = EditorSession(project: project, projectPath: nil, role: .viewer)
         try await s.attachPhoto(url: url, info: info)
         return s
+    }
+
+    // MARK: The one photo of a photo project
+
+    /// An empty photo project gets its photo.
+    func choosePhoto(_ url: URL) async {
+        switch ProjectRules.canAdd(paths: [url.path], to: project) {
+        case .ok: break
+        case .photoAlreadyChosen: await replacePhoto(url); return
+        default: flash(Self.ruleText(ProjectRules.canAdd(paths: [url.path], to: project)), error: true); return
+        }
+        do {
+            let info = try PhotoLoader.info(url: url)
+            let ref = SourceRef(path: url.path, bookmark: Bookmarks.make(url), fingerprint: try? env.fs.fingerprint(url.path), info: info)
+            edit("Choose photo", refreshPreview: false) { p in p.sources = [ref]; if p.name.isEmpty { p.name = url.deletingPathExtension().lastPathComponent } }
+            try await attachPhoto(url: url, info: info)
+            notice = nil
+        } catch { flash(LF("“%@” cannot be opened.", url.lastPathComponent) + " " + ((error as? CustomStringConvertible)?.description ?? error.localizedDescription), error: true) }
+    }
+
+    /// Puts another photo in the project. The edit stays (colour, effects, text, logos); the crop and the turn start again when the new
+    /// photo has another shape. One undo step; the old photo file is not touched.
+    func replacePhoto(_ url: URL, ask: Bool = true) async {
+        guard isPhoto, ImageFiles.isCandidate(url.path) else { flash(L("Choose a photo."), error: true); return }
+        guard let info = try? PhotoLoader.info(url: url), let v = info.primaryVideo else { flash(LF("“%@” cannot be opened.", url.lastPathComponent), error: true); return }
+        if ask, !project.sources.isEmpty {
+            let a = NSAlert()
+            a.messageText = LF("Use “%@” as the photo of this project?", url.lastPathComponent)
+            a.informativeText = L("The colour, effects, text and logos stay. The crop and the turn start again if the new photo has another shape. The old photo file is not changed or removed. You can undo this.")
+            a.addButton(withTitle: L("Change Photo")); a.addButton(withTitle: L("Cancel"))
+            guard Self.confirmReplacePhoto(a) else { return }
+        }
+        let oldShape = project.sources.first?.info?.primaryVideo.map { Double($0.width) / Double(max(1, $0.height)) }
+        let newShape = Double(v.width) / Double(max(1, v.height))
+        let ref = SourceRef(path: url.path, bookmark: Bookmarks.make(url), fingerprint: try? env.fs.fingerprint(url.path), info: info)
+        edit("Change photo", refreshPreview: false) { p in
+            p.sources = [ref]
+            if let o = oldShape, abs(o - newShape) > 0.01 { p.look.crop = .full; p.look.rotation = 0; p.look.flipHorizontal = false; p.look.flipVertical = false }
+        }
+        try? await attachPhoto(url: url, info: info)
+        notice = nil
+    }
+
+    /// Why media cannot go into this project, in the person's words.
+    static func ruleText(_ d: ProjectRules.AddDecision) -> String {
+        switch d {
+        case .ok: return ""
+        case .wrongKind(project: .video): return L("This is a video project: only videos go on its timeline. Photos can be added as layers (File ▸ Add Overlay Picture…).")
+        case .wrongKind(project: .photo): return L("This is a photo project: it holds one photo. Make a video project for videos.")
+        case .photoAlreadyChosen, .onePhotoOnly: return L("A photo project holds one photo. Make another photo project for the others.")
+        case .notMedia: return L("Only videos and photos can be added.")
+        }
     }
 
     func attachPhoto(url: URL, info: MediaInfo) async throws {
@@ -64,15 +117,19 @@ extension EditorSession {
         if colorCompare { look.color = ColorAdjust() }
         let overlays = project.overlays
         if photoCropEditing { look.crop = .full; look.canvas = .source }          // the whole picture, so the frame has all of it to sit on
-        final class Job: @unchecked Sendable { let base: PhotoLoader.Loaded; let look: VideoLook; let overlays: [TextOverlay]
-            init(_ b: PhotoLoader.Loaded, _ l: VideoLook, _ o: [TextOverlay]) { base = b; look = l; overlays = o } }
-        let job = Job(base, look, overlays)
+        let logos = PhotoLogo.load(project.overlayClips) { [weak self] path in
+            if let i = self?.photoLogoCache[path] { return i }
+            let i = PhotoLogo.readImage(path); self?.photoLogoCache[path] = i; return i
+        }
+        final class Job: @unchecked Sendable { let base: PhotoLoader.Loaded; let look: VideoLook; let overlays: [TextOverlay]; let logos: [PhotoLogo]
+            init(_ b: PhotoLoader.Loaded, _ l: VideoLook, _ o: [TextOverlay], _ g: [PhotoLogo]) { base = b; look = l; overlays = o; logos = g } }
+        let job = Job(base, look, overlays, photoCropEditing ? [] : logos)
         let frames = photoFrameBases
         if frames.count > 1 { photoFrames = [] }          // the one edited frame shows at once; the animation comes back when all frames are drawn
         final class Frames: @unchecked Sendable { let list: [CIImage]; init(_ l: [CIImage]) { list = l } }
         let box = Frames(frames)
         Task.detached(priority: .userInitiated) { [weak self] in
-            let image = PhotoRenderer.render(base: job.base.image, look: job.look, overlays: job.overlays)
+            let image = PhotoRenderer.render(base: job.base.image, look: job.look, overlays: job.overlays, logos: job.logos)
             let cg = PhotoRenderer.cgImage(image, colorSpace: job.base.colorSpace)
             await MainActor.run { if let self, self.photoRenderGeneration == generation { self.photoImage = cg } }
             guard box.list.count > 1 else { return }
@@ -80,7 +137,7 @@ extension EditorSession {
             var drawn: [CGImage] = []
             for f in box.list {
                 if await MainActor.run(body: { self?.photoRenderGeneration != generation }) { return }
-                if let cg = PhotoRenderer.cgImage(PhotoRenderer.render(base: f, look: job.look, overlays: job.overlays), colorSpace: job.base.colorSpace) { drawn.append(cg) }
+                if let cg = PhotoRenderer.cgImage(PhotoRenderer.render(base: f, look: job.look, overlays: job.overlays, logos: job.logos), colorSpace: job.base.colorSpace) { drawn.append(cg) }
             }
             await MainActor.run { if let self, self.photoRenderGeneration == generation { self.photoFrames = drawn } }
         }
@@ -150,7 +207,6 @@ struct PhotoSaveDraft {
     var options = PhotoExportOptions()
     var name = ""
     var folder: String?
-    var replaceOriginal = false
     /// Where the last save went, for "Show in Finder".
     var lastSaved: URL?
     var saving = false
@@ -164,27 +220,16 @@ extension EditorSession {
         return candidate
     }
 
-    /// Why the original cannot be replaced right now (nil when it can).
-    var photoReplaceProblem: String? {
-        guard let url = sourceURL else { return L("No photo is open.") }
-        if sourceChangedExternally { return L("The original was changed by another app, so it cannot be replaced.") }
-        if project.sources.first?.fingerprint == nil { return L("The original cannot be checked, so it will not be replaced.") }
-        if PhotoFormat.matching(extension: url.pathExtension) != photoDraft.options.format {
-            return LF("Replacing the original keeps its format (.%@). Choose that format, or save a new photo.", url.pathExtension.lowercased())
-        }
-        return nil
-    }
-
-    /// Saves the photo as the Export tool says: a new file next to it (or in the chosen folder), or in place of the original after a question, with
-    /// a backup copy first when that is switched on. Written to a temporary file, checked, and only then moved into place.
+    /// Saves the photo as the Export tool says: always a NEW file, next to the photo or in the chosen folder (never over anything).
+    /// Written to a temporary file, checked, and only then moved into place. The original photo is never changed.
     func savePhoto() {
         guard let url = sourceURL, isPhoto, !photoDraft.saving else { return }
         let draft = photoDraft, options = draft.options
-        let look = project.look, overlays = project.overlays
+        let look = project.look, overlays = project.overlays, layers = project.overlayClips
         let target = photoSavedSize ?? (width: 0, height: 0)
         let estimate = Int64(target.width) * Int64(target.height) * (options.format.isLossy ? 1 : 4) + 200_000
         let produce: SafeSaver.Produce = { temp in
-            _ = try await Task.detached(priority: .userInitiated) { try PhotoExporter.export(source: url, look: look, overlays: overlays, options: options, to: URL(fileURLWithPath: temp)) }.value
+            _ = try await Task.detached(priority: .userInitiated) { try PhotoExporter.export(source: url, look: look, overlays: overlays, layers: layers, options: options, to: URL(fileURLWithPath: temp)) }.value
         }
         let expectedFrames = options.format == .gif ? photoAnimation?.frameCount : nil
         let verify: SafeSaver.Verify = { temp in
@@ -196,28 +241,6 @@ extension EditorSession {
             }
         }
         let saver = env.saver, fs = env.fs
-
-        if draft.replaceOriginal {
-            if let problem = photoReplaceProblem { flash(problem, error: true); return }
-            let a = NSAlert()
-            a.alertStyle = .warning
-            a.messageText = LF("Replace the original photo “%@”?", url.lastPathComponent)
-            a.informativeText = env.prefs.backupBeforeReplace ? L("The original is replaced after the new picture has been checked. A backup copy of the original is kept first.")
-                                                                 : L("The original is replaced and no backup is kept (Settings).")
-            a.addButton(withTitle: L("Replace")); a.addButton(withTitle: L("Cancel"))
-            guard Self.confirmReplace(a), let fp = project.sources.first?.fingerprint else { return }
-            let plan = ReplacePlan(sourcePath: url.path, expected: fp, backupFolder: backupFolder(), newExtension: url.pathExtension)
-            photoDraft.saving = true
-            Task {
-                defer { photoDraft.saving = false }
-                do {
-                    let outcome = try await saver.replaceOriginal(plan: plan, estimatedBytes: estimate, produce: produce, verify: verify)
-                    photoDraft.lastSaved = url
-                    await afterReplacePhoto(backupPath: outcome.backupPath)
-                } catch { flash(ErrorText.localized((error as? CustomStringConvertible)?.description ?? error.localizedDescription), error: true) }
-            }
-            return
-        }
 
         let folder = draft.folder ?? env.prefs.lastExportFolder ?? PathUtil.directory(of: url.path)
         let base = draft.name.trimmingCharacters(in: .whitespaces).isEmpty ? url.deletingPathExtension().lastPathComponent + env.prefs.copySuffix : draft.name
@@ -232,18 +255,5 @@ extension EditorSession {
                 flash(LF("Saved %@", PathUtil.fileName(of: outcome.finalPath)))
             } catch { flash(ErrorText.localized((error as? CustomStringConvertible)?.description ?? error.localizedDescription), error: true) }
         }
-    }
-
-    /// After the original was replaced the file on disk is the edited picture, so the session starts again from it.
-    func afterReplacePhoto(backupPath: String?) async {
-        guard let url = sourceURL, let newInfo = try? PhotoLoader.info(url: url) else { return }
-        let fp = try? env.fs.fingerprint(url.path)
-        var p = Project(name: project.name, mode: .quick, sources: [SourceRef(path: url.path, bookmark: Bookmarks.make(url), fingerprint: fp, info: newInfo, changedAfterReplace: true)])
-        p.id = project.id
-        history = History(p)
-        sourceChangedExternally = false
-        isDirty = false
-        try? await attachPhoto(url: url, info: newInfo)
-        flash(backupPath.map { LF("Original replaced. Undo does not restore the old file; the backup is at %@", $0) } ?? L("Original replaced. No backup was kept."))
     }
 }

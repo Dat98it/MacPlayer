@@ -5,8 +5,31 @@ import ImageIO
 import MacPlayerCore
 import UniformTypeIdentifiers
 
+/// A logo laid over a photo: its picture, and where and how it is drawn (no time: it is always there).
+public struct PhotoLogo: @unchecked Sendable {
+    public var spec: LayerSpec
+    public var image: CIImage
+    public var border: CIColor
+
+    /// The logos of a photo project, read from their files (those that cannot be read are left out). Lowest lane first.
+    public static func load(_ clips: [OverlayClip], image: (String) -> CIImage? = PhotoLogo.readImage) -> [PhotoLogo] {
+        clips.sorted { $0.lane < $1.lane }.compactMap { c in
+            guard case .image(let path, _) = c.kind, let ci = image(path) else { return nil }
+            return PhotoLogo(spec: still(c, path: path), image: ci, border: CompositionBuilder.ciColor(hex: c.transform.borderHex))
+        }
+    }
+
+    public static func readImage(_ path: String) -> CIImage? { CIImage(contentsOf: URL(fileURLWithPath: path), options: [.applyOrientationProperty: true]) }
+
+    /// On a photo a layer is always shown and does not move.
+    static func still(_ c: OverlayClip, path: String) -> LayerSpec {
+        LayerSpec(id: c.id, kind: .image(path: path), lane: c.lane, start: .zero, duration: MediaTime(seconds: 200_000), transform: c.transform, keyframes: [],
+                  audio: AudioSettings(), fadeIn: 0, fadeOut: 0, animationIn: nil, animationOut: nil)
+    }
+}
+
 /// Draws an edited photo with the same code that draws the frames of a video, so a photo looks the same on the screen and in the saved file:
-/// crop, turn, flip, canvas, colour, filters, effects, then text, shapes and stickers over it.
+/// crop, turn, flip, canvas, colour, filters, effects, then logos, then text, shapes and stickers over it.
 public enum PhotoRenderer {
     /// Everything on a photo is "on" all the time; text and shapes are drawn as they stand at this moment of their (endless) life.
     static let stillTime = 50_000.0
@@ -30,7 +53,7 @@ public enum PhotoRenderer {
 
     /// The edited picture. `base` is the upright picture (any size: the edit is in fractions of it). `effects` replaces the look's own filter
     /// settings (used for a live preview while a slider moves).
-    public static func render(base: CIImage, look: VideoLook, overlays: [TextOverlay], effects: LookEffects? = nil) -> CIImage {
+    public static func render(base: CIImage, look: VideoLook, overlays: [TextOverlay], logos: [PhotoLogo] = [], effects: LookEffects? = nil) -> CIImage {
         var l = look
         l.motion = []; l.stabilize = 0; l.speed = 1; l.transitionIn = nil
         if let effects { l.effects = effects }
@@ -39,6 +62,10 @@ public enum PhotoRenderer {
         var plan = PiecePlan(look: l, trackOrientation: .up, storedSize: PixelSize(width: Int(b.extent.width), height: Int(b.extent.height)))
         plan.subjectMode = .photo
         var picture = RecipeCompositor.mainPicture(base: b, plan: plan, time: stillTime, outputSize: out)
+        let frame = CGRect(origin: .zero, size: out)
+        for logo in logos {
+            picture = RecipeCompositor.drawLayer(RecipeCompositor.normalized(logo.image), spec: logo.spec, border: logo.border, time: 1, subjectMode: .photo, over: picture, frame: frame)
+        }
         let layer = OverlayLayer(overlays: stilled(overlays), cues: [], style: SubtitleStyle())
         if !layer.isEmpty {
             for (overlay, alpha) in layer.visible(at: stillTime, size: out) {
@@ -79,7 +106,7 @@ public enum PhotoExporter {
 
     /// An animation, with the same edit on every frame, written as an animated GIF. Frames are drawn and written one at a time.
     @discardableResult
-    static func exportAnimation(source: URL, animation: PhotoLoader.Animation, look: VideoLook, overlays: [TextOverlay], options: PhotoExportOptions, to destination: URL) throws -> (width: Int, height: Int) {
+    static func exportAnimation(source: URL, animation: PhotoLoader.Animation, look: VideoLook, overlays: [TextOverlay], logos: [PhotoLogo], options: PhotoExportOptions, to destination: URL) throws -> (width: Int, height: Int) {
         guard let dest = CGImageDestinationCreateWithURL(destination as CFURL, UTType.gif.identifier as CFString, animation.frameCount, nil) else { throw PhotoError.cannotWrite("GIF cannot be written on this Mac") }
         CGImageDestinationSetProperties(dest, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: animation.loopCount]] as CFDictionary)
         var size = (width: 0, height: 0)
@@ -88,7 +115,7 @@ public enum PhotoExporter {
             var base = CIImage(cgImage: cg)
             let plan = plannedSize(width: Double(base.extent.width), height: Double(base.extent.height), look: look, maxLongEdge: options.maxLongEdge)
             if plan.scale < 1 { base = scaled(base, by: plan.scale) }
-            let edited = PhotoRenderer.render(base: base, look: look, overlays: overlays)
+            let edited = PhotoRenderer.render(base: base, look: look, overlays: overlays, logos: logos)
             guard let out = PhotoRenderer.cgImage(edited, colorSpace: cg.colorSpace) else { throw PhotoError.cannotWrite("a frame could not be drawn") }
             size = (out.width, out.height)
             let delay = animation.delays[i]
@@ -100,14 +127,15 @@ public enum PhotoExporter {
 
     /// Renders `source` with the edit and writes it to `destination` (a temporary file the caller then puts in place). Returns the size written.
     @discardableResult
-    public static func export(source: URL, look: VideoLook, overlays: [TextOverlay], options: PhotoExportOptions, to destination: URL) throws -> (width: Int, height: Int) {
-        if options.format == .gif, let animation = PhotoLoader.animation(url: source) { return try exportAnimation(source: source, animation: animation, look: look, overlays: overlays, options: options, to: destination) }
+    public static func export(source: URL, look: VideoLook, overlays: [TextOverlay], layers: [OverlayClip] = [], options: PhotoExportOptions, to destination: URL) throws -> (width: Int, height: Int) {
+        let logos = PhotoLogo.load(layers)
+        if options.format == .gif, let animation = PhotoLoader.animation(url: source) { return try exportAnimation(source: source, animation: animation, look: look, overlays: overlays, logos: logos, options: options, to: destination) }
         let loaded = try PhotoLoader.full(url: source)
         var base = loaded.image
         // A size limit is applied to the picture first, so the work is done on fewer pixels.
         let plan = plannedSize(width: Double(base.extent.width), height: Double(base.extent.height), look: look, maxLongEdge: options.maxLongEdge)
         if plan.scale < 1 { base = scaled(base, by: plan.scale) }
-        let edited = PhotoRenderer.render(base: base, look: look, overlays: overlays)
+        let edited = PhotoRenderer.render(base: base, look: look, overlays: overlays, logos: logos)
         guard let cg = PhotoRenderer.cgImage(edited, colorSpace: loaded.colorSpace) else { throw PhotoError.cannotWrite("the picture could not be drawn") }
         try ImageWriter.write(cg, to: destination, photo: options, metadata: PhotoLoader.metadata(of: source, removeLocation: options.removeLocation))
         return (cg.width, cg.height)

@@ -13,7 +13,7 @@ MacPlayer là app chỉnh video cho macOS 15 trở lên, chạy hoàn toàn trê
 Kiểm tra file tải về: so mã SHA-256 (`shasum -a 256 MacPlayer-x.y.z.dmg`) với dòng tương ứng trong `SHA256SUMS.txt` đi kèm.
 
 ## An toàn cho video của bạn
-- Mặc định **lưu bản sao**, video gốc không bị đụng tới. Thay bản gốc chỉ khi bạn xác nhận, có sao lưu tự động, ghi ra file tạm rồi kiểm tra trước khi đổi.
+- MacPlayer **không bao giờ sửa, ghi đè hay thay thế** video/ảnh gốc: mọi lần xuất là file mới, ghi ra file tạm rồi kiểm tra trước khi đặt vào chỗ.
 - Nếu app bị tắt giữa chừng, lần mở sau sẽ khôi phục danh sách xuất và không để lại file dở.
 
 ## Đã kiểm thử và chưa kiểm thử

@@ -1,5 +1,8 @@
 # Kiểm thử MacPlayer trên video thật
 
+> Ghi chú 0.8.0: tính năng "thay bản gốc" đã được gỡ khỏi MacPlayer. Các dòng nói về "thay bản gốc" bên dưới là nhật ký kiểm thử của các bản 0.2–0.7, giữ lại để tra cứu.
+
+
 Ngày 05/11/2026. Nguồn video: **Jellyfin test videos** (https://repo.jellyfin.org/test-videos/), giấy phép CC BY-SA 4.0, tải về thư mục tạm (không nằm trong repo), đã đối chiếu md5 với file `.md5sum` của nguồn:
 
 | File dùng | Tên gốc trên nguồn | Dung lượng |

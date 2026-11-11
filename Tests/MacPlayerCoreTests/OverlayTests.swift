@@ -49,7 +49,7 @@ private func pip(start: Double = 2, duration: Double = 6, lane: Int = 0) -> Over
     @Test func layerSpecAnimatesExactlyLikeTheProjectClip() {
         var c = pip(); c.keyframes = [OverlayKeyframe(time: t(0), centerX: 0.1, centerY: 0.1, width: 0.2, opacity: 1), OverlayKeyframe(time: t(6), centerX: 0.9, centerY: 0.9, width: 0.5, opacity: 0.5)]
         c.fadeIn = 0.5
-        var p = Project(name: "P", mode: .project)
+        var p = Project(name: "P", kind: .video)
         p.overlayClips = [c]
         let spec = p.layerSpecs(resolve: { _ in "/v/a.mp4" })[0]
         for x in stride(from: 2.0, to: 8.0, by: 0.37) { #expect(spec.state(at: t(x)) == c.state(at: t(x)), "same values at \(x) s") }
@@ -144,22 +144,23 @@ private func pip(start: Double = 2, duration: Double = 6, lane: Int = 0) -> Over
 
 @Suite struct OverlayPersistenceTests {
     @Test func aProjectWithLayersRoundTrips() throws {
-        var p = Project(name: "P", mode: .project)
+        var p = Project(name: "P", kind: .video)
         let s = p.addSource(SourceRef(path: "/v/a.mp4"))
         var c = OverlayClip(name: "cam", kind: .video(sourceID: s, sourceStart: t(1), sourceEnd: t(9)), lane: 1, start: t(2), duration: t(8))
         c.keyframes = [OverlayKeyframe(time: t(0), centerX: 0.1, centerY: 0.2, width: 0.3, opacity: 0.4)]
         c.transform.borderWidth = 0.01; c.fadeIn = 0.5
         p.overlayClips = [c, OverlayClip(name: "logo", kind: .image(path: "/p.png", bookmark: Data([1])), start: t(0), duration: t(5))]
         let back = try ProjectCodec.decode(ProjectCodec.encode(p))
-        #expect(back == p && back.schemaVersion == 2)
+        #expect(back == p && back.schemaVersion == Project.currentSchema)
     }
 
     @Test func aProjectSavedBeforeLayersExistedStillOpens() throws {
-        var obj = try #require(try JSONSerialization.jsonObject(with: ProjectCodec.encode(Project(name: "Old", mode: .quick))) as? [String: Any])
+        var obj = try #require(try JSONSerialization.jsonObject(with: ProjectCodec.encode(Project(name: "Old", kind: .video))) as? [String: Any])
         obj["schemaVersion"] = 1
+        obj["mode"] = "quick"; obj.removeValue(forKey: "kind")
         obj.removeValue(forKey: "overlayClips")
         let p = try ProjectCodec.decode(JSONSerialization.data(withJSONObject: obj))
-        #expect(p.name == "Old" && p.overlayClips.isEmpty && p.schemaVersion == 2, "migrated one step, with no layers")
+        #expect(p.name == "Old" && p.overlayClips.isEmpty && p.schemaVersion == Project.currentSchema && p.kind == .video, "migrated step by step, with no layers")
     }
 
     @Test func aQueueJobSavedBeforeLayersExistedStillLoads() throws {
@@ -179,7 +180,7 @@ private func pip(start: Double = 2, duration: Double = 6, lane: Int = 0) -> Over
     }
 
     @Test func layersWithAMissingSourceAreLeftOutOfTheSpecs() {
-        var p = Project(name: "P", mode: .project)
+        var p = Project(name: "P", kind: .video)
         let have = UUID(), gone = UUID()
         p.overlayClips = [OverlayClip(name: "a", kind: .video(sourceID: have, sourceStart: .zero, sourceEnd: t(3)), start: .zero, duration: t(3)),
                           OverlayClip(name: "b", kind: .video(sourceID: gone, sourceStart: .zero, sourceEnd: t(3)), start: .zero, duration: t(3)),

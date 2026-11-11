@@ -121,11 +121,11 @@ private func firstOnset(_ u: URL) async throws -> Double? { try await FrameScann
         #expect(size(small)! == (160, 90), "scaled down, shape kept")
     }
 
-    @Test func overwritingKeepsTheOldImageIfTheNewOneFails() async throws {
+    @Test func anExistingImageIsNeverOverwritten() async throws {
         let src = try await Fixtures.shared.source()
         let dest = Fixtures.shared.outputURL("still-keep", ext: "png")
         try Data("old image".utf8).write(to: dest)
-        await #expect(throws: (any Error).self) { try await StillExporter.export(source: src, at: MediaTime(seconds: 999), format: .png, to: dest) } // past the end
+        await #expect(throws: StillExporter.StillError.exists) { try await StillExporter.export(source: src, at: fr30(10), format: .png, to: dest) }
         #expect(try String(contentsOf: dest, encoding: .utf8) == "old image")
         let dir = dest.deletingLastPathComponent().path
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).filter { $0.contains("still-keep") && $0.contains(".macplayer-") }.isEmpty)
@@ -190,7 +190,7 @@ private func rms(_ u: URL, from: Double, to: Double) async throws -> Float {
 @Suite(.serialized) struct FileNameTests {
     private let fs = RealFileSystem()
 
-    @Test func vietnameseNamesWorkInBothUnicodeFormsForCopyAndReplace() async throws {
+    @Test func vietnameseNamesWorkInBothUnicodeFormsForACopy() async throws {
         let master = try await Fixtures.shared.source()
         let dir = Fixtures.shared.root.appendingPathComponent("tên-thư-mục Việt \(UUID().uuidString.prefix(4))", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -206,12 +206,7 @@ private func rms(_ u: URL, from: Double, to: Double) async throws -> Float {
             let r = try await runner.run(job: job)
             #expect(r.outcome.finalPath == dest.path && FileManager.default.fileExists(atPath: dest.path))
             #expect(try await FrameScanner.scanVideo(url: dest).compactMap(\.index) == Array(30..<90))
-            // Replace the original under that name, with a backup kept beside it.
-            let fp = try fs.fingerprint(src.path)
-            let rj = ExportJob(label: "r", pieces: [JobPiece(sourcePath: src.path, span: span30(0, 30))], options: ExportOptions(mode: .exact), target: .replaceOriginal(path: src.path, expected: fp, backupFolder: dir.appendingPathComponent("Bản sao lưu").path))
-            let rr = try await runner.run(job: rj)
-            #expect(try await FrameScanner.scanVideo(url: src).compactMap(\.index) == Array(0..<30))
-            #expect(rr.outcome.backupPath.map { FileManager.default.fileExists(atPath: $0) } == true)
+            #expect(try Data(contentsOf: src) == (try Data(contentsOf: master)), "the source under that name is untouched")
         }
         let leftovers = (try FileManager.default.contentsOfDirectory(atPath: dir.path)).filter { $0.contains(".macplayer-") }
         #expect(leftovers.isEmpty, "no temp files: \(leftovers)")
@@ -290,7 +285,7 @@ private func rms(_ u: URL, from: Double, to: Double) async throws -> Float {
         #expect(((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).filter { $0.contains(".macplayer-") }.isEmpty)
     }
 
-    @Test func aReadOnlySourceCannotBeReplacedButCanBeCopied() async throws {
+    @Test func aReadOnlySourceCanBeCopied() async throws {
         let master = try await Fixtures.shared.source()
         let dir = try folder("readonly-src")
         let src = dir.appendingPathComponent("ro.mp4"); try FileManager.default.copyItem(at: master, to: src)
@@ -298,13 +293,11 @@ private func rms(_ u: URL, from: Double, to: Double) async throws -> Float {
         try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: src.path)
         try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dir.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir.path) }
-        let rj = ExportJob(label: "r", pieces: [JobPiece(sourcePath: src.path, span: span30(0, 30))], options: ExportOptions(mode: .exact), target: .replaceOriginal(path: src.path, expected: fp, backupFolder: nil))
-        await #expect(throws: SaveError.self) { _ = try await runner(dir).run(job: rj) }
-        #expect(try fs.fingerprint(src.path) == fp, "the original is as it was")
         let other = try folder("copy-target")
         let cj = ExportJob(label: "c", pieces: [JobPiece(sourcePath: src.path, span: span30(0, 30))], options: ExportOptions(mode: .exact), target: .newCopy(path: other.appendingPathComponent("c.mp4").path, overwrite: false))
         _ = try await runner(other).run(job: cj)
         #expect(FileManager.default.fileExists(atPath: other.appendingPathComponent("c.mp4").path), "copying from a read-only file is fine")
+        #expect(try fs.fingerprint(src.path) == fp, "the original is as it was")
     }
 }
 

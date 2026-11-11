@@ -10,10 +10,10 @@ enum FileActions {
 /// Renaming a video file and moving it to the Trash from inside the app. Both ask first, never overwrite or delete for good, and keep
 /// the playlists and the open windows in step with what happened on the disk.
 extension AppDelegate {
-    private func standard(_ path: String) -> String { (path as NSString).standardizingPath }
+    private func standard(_ path: String) -> String { PathUtil.key(path) }
 
     func windows(showing path: String) -> [MainWindowController] {
-        controllers.filter { c in c.session?.sourceURL.map { standard($0.path) == standard(path) } ?? false && c.session?.isProject == false }
+        controllers.filter { c in c.session?.role == .viewer && (c.session?.sourceURL.map { standard($0.path) == standard(path) } ?? false) }
     }
 
     private func alert(_ title: String, _ text: String = "", style: NSAlert.Style = .warning) {
@@ -28,9 +28,6 @@ extension AppDelegate {
         if env.exports.queue.jobs.contains(where: { j in
             switch j.state { case .queued, .running: return j.sourcePaths.contains { standard($0) == key }; default: return false }
         }) { return LF("An export is using “%@”. Wait for it to finish, or cancel it, first.", name) }
-        if windows(showing: path).contains(where: { $0.session?.isDirty == true }) {
-            return LF("“%@” is open with unsaved edits. Save the project or close the video first.", name)
-        }
         return nil
     }
 
@@ -196,6 +193,6 @@ extension AppDelegate {
 
     // MARK: Menu commands (the video of the active window)
 
-    @objc func renameCurrentFile(_ sender: Any?) { if let u = activeSession?.sourceURL, activeSession?.isProject == false { renameFile(at: u.path) } }
-    @objc func trashCurrentFile(_ sender: Any?) { if let u = activeSession?.sourceURL, activeSession?.isProject == false { trashFile(at: u.path) } }
+    @objc func renameCurrentFile(_ sender: Any?) { if let s = activeSession, s.role == .viewer, let u = s.sourceURL { renameFile(at: u.path) } }
+    @objc func trashCurrentFile(_ sender: Any?) { if let s = activeSession, s.role == .viewer, let u = s.sourceURL { trashFile(at: u.path) } }
 }

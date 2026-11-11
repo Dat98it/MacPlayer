@@ -8,7 +8,7 @@ struct PhotoBar: View {
     @ObservedObject var playlists: PlaylistModel
     var actualZoom: () -> CGFloat
 
-    private var inPlaylist: Bool { playlists.playingID != nil }
+    private var inPlaylist: Bool { session.role == .viewer && playlists.playingID != nil }
 
     private func button(_ icon: String, _ help: String, big: Bool = false, selected: Bool = false, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: icon).font(.system(size: big ? 16 : 13)).frame(width: big ? 30 : 24, height: 24).foregroundColor(selected ? .accentColor : .primary) }

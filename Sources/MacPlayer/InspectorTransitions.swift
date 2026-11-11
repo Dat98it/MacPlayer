@@ -35,10 +35,7 @@ struct TransitionsPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if !session.isProject {
-                Text(L("Transitions go between the clips of a timeline. Add a second video to make a project.")).font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-                Button(L("Make a Project from the Whole Video")) { session.makeProject(fromClips: false) }
-            } else if let i = index, i > 0 {
+            if let i = index, i > 0 {
                 let clips = session.project.timeline
                 let current = clips[i].look.transitionIn
                 ToolCard(title: LF("Transition into clip %d", i + 1), icon: "rectangle.2.swap", onReset: current == nil ? nil : { session.edit("Remove transition") { $0.activeLook.transitionIn = nil } }) {

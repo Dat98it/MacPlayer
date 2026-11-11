@@ -72,7 +72,7 @@ extension SelfTest {
             let label = "#\(n) \(f.ext) \(f.w)×\(f.h)\(f.orientation != 1 ? " turned" : "")\(f.gps ? " +position" : "")"
             let url = URL(fileURLWithPath: f.path)
             let tOpen = Date()
-            guard let s = try? await EditorSession.open(url: url) else { check(false, "\(label): opens"); continue }
+            guard let s = await SelfTest.editor(url, kind: .photo) else { check(false, "\(label): opens"); continue }
             await waitFor(30) { s.photoImage != nil }
             openMs.append(Date().timeIntervalSince(tOpen) * 1000)
             check(s.isPhoto && s.photoImage != nil && s.info?.primaryVideo?.width == f.w && s.info?.primaryVideo?.height == f.h, "\(label): opens and is drawn")
@@ -120,38 +120,17 @@ extension SelfTest {
             }
             // A project of the edit: saved, opened again, same crop and same picture.
             if n % 6 == 1 {
-                let proj = out.appendingPathComponent("edit-\(n).macplayer").path
-                s.saveProject(to: proj)
+                _ = s.saveNow()
+                let proj = s.projectPath ?? ""
                 if let re = try? await EditorSession.openProject(path: proj) {
                     await waitFor(30) { re.photoImage != nil }
                     check(re.isPhoto && re.project.look.crop == s.project.look.crop && re.project.overlays.count == 1 && !re.isDirty, "\(label): the edit is saved as a project and opens again")
-                    re.close(discardRecovery: true)
+                    re.close()
                 } else { check(false, "\(label): the project opens again") }
             }
-            s.close(discardRecovery: true)
+            s.close()
         }
         if !openMs.isEmpty { print(String(format: "   opening: average %.0f ms, slowest %.0f ms · saving: average %.0f ms, slowest %.0f ms", openMs.reduce(0, +) / Double(openMs.count), openMs.max() ?? 0, saveMs.reduce(0, +) / Double(max(1, saveMs.count)), saveMs.max() ?? 0)) }
-
-        // 3. Replacing an original, on COPIES only: the backup is the old file, the copy is the new picture.
-        let copies = work.appendingPathComponent("real-copies"); try? fm.createDirectory(at: copies, withIntermediateDirectories: true)
-        EditorSession.confirmReplace = { _ in true }
-        for f in [sample.first { $0.ext == "jpg" || $0.ext == "jpeg" }, sample.first { $0.ext == "heic" }].compactMap({ $0 }) {
-            let copy = copies.appendingPathComponent("copy.\(f.ext)")
-            try? fm.removeItem(at: copy); try? fm.copyItem(at: URL(fileURLWithPath: f.path), to: copy)
-            let oldHash = sha(copy)
-            guard let s = try? await EditorSession.open(url: copy) else { check(false, "a copy (\(f.ext)) opens"); continue }
-            await waitFor(30) { s.photoImage != nil }
-            s.setPhotoCropFrame(CropRect(x: 0, y: 0, width: 0.5, height: 0.5), coalesce: nil)
-            let planned = PhotoExporter.plannedSize(width: Double(f.w), height: Double(f.h), look: s.project.look, maxLongEdge: nil)
-            s.photoDraft.replaceOriginal = true; s.photoDraft.options.format = PhotoFormat.matching(extension: f.ext) ?? .jpeg; s.photoDraft.options.maxLongEdge = nil
-            s.savePhoto()
-            await waitFor(120) { s.photoDraft.lastSaved != nil && !s.photoDraft.saving && !s.isDirty }
-            let backups = (try? fm.contentsOfDirectory(atPath: copies.appendingPathComponent("MacPlayer Backups").path)) ?? []
-            check(sha(copy) != oldHash && (try? PhotoLoader.info(url: copy))?.primaryVideo?.width == planned.width && (try? PhotoLoader.info(url: copy))?.primaryVideo?.height == planned.height, "replacing a copy (\(f.ext)): the copy now holds the edited picture")
-            check(backups.contains { sha(copies.appendingPathComponent("MacPlayer Backups").appendingPathComponent($0)) == oldHash }, "replacing a copy (\(f.ext)): the backup is the old file, byte for byte")
-            s.close(discardRecovery: true)
-            try? fm.removeItem(at: copies.appendingPathComponent("MacPlayer Backups"))
-        }
 
         // 4. Thumbnails of the sample, as the playlist makes them.
         var thumbMs: [Double] = [], failed = 0

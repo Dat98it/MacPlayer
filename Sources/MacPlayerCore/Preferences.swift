@@ -7,7 +7,6 @@ public protocol PreferenceStoring: AnyObject {
 }
 
 public enum ResumeBehavior: String, CaseIterable, Sendable { case ask, always, never }
-public enum SaveDefault: String, CaseIterable, Sendable { case newCopy, replaceOriginal }
 
 /// The user's settings, with their defaults (design sections 4, 6, 13, 17).
 public final class AppPreferences {
@@ -58,13 +57,19 @@ public final class AppPreferences {
         set { store.set(newValue.rawValue, forKey: "treeFiles") }
     }
 
-    /// "Save as new copy" is the default and stays so unless the user changes it here (design section 6).
-    public var defaultSave: SaveDefault {
-        get { string("defaultSave").flatMap(SaveDefault.init) ?? .newCopy }
-        set { store.set(newValue.rawValue, forKey: "defaultSave") }
+    /// The folder the last project was saved in: the "where to save" question starts there (it is always asked).
+    public var lastProjectFolder: String? { get { string("lastProjectFolder") } set { store.set(newValue, forKey: "lastProjectFolder") } }
+    /// How the list of projects is filtered and sorted.
+    public var projectFilter: ProjectFilter {
+        get { string("projectFilter").flatMap(ProjectFilter.init) ?? .all }
+        set { store.set(newValue.rawValue, forKey: "projectFilter") }
     }
-    /// Backup before replacing an original. On by default.
-    public var backupBeforeReplace: Bool { get { bool("backupBeforeReplace", true) } set { store.set(newValue, forKey: "backupBeforeReplace") } }
+    public var projectSort: ProjectSort {
+        get { string("projectSort").flatMap(ProjectSort.init) ?? .modified }
+        set { store.set(newValue.rawValue, forKey: "projectSort") }
+    }
+    /// The projects already known from before the list of projects existed were looked for once.
+    public var projectsImported: Bool { get { bool("projectsImported", false) } set { store.set(newValue, forKey: "projectsImported") } }
     public var copySuffix: String { get { string("copySuffix") ?? "-edited" } set { store.set(newValue, forKey: "copySuffix") } }
 
     public var autosaveEnabled: Bool { get { bool("autosaveEnabled", true) } set { store.set(newValue, forKey: "autosaveEnabled") } }

@@ -8,12 +8,9 @@ public struct SourceRef: Codable, Identifiable, Equatable, Sendable {
     public var bookmark: Data?
     public var fingerprint: FileFingerprint?
     public var info: MediaInfo?
-    /// Set when the source was replaced through "Apply changes to the original": other projects using it must
-    /// re-check their timing (design section 6).
-    public var changedAfterReplace: Bool
 
-    public init(id: UUID = UUID(), path: String, bookmark: Data? = nil, fingerprint: FileFingerprint? = nil, info: MediaInfo? = nil, changedAfterReplace: Bool = false) {
-        self.id = id; self.path = path; self.bookmark = bookmark; self.fingerprint = fingerprint; self.info = info; self.changedAfterReplace = changedAfterReplace
+    public init(id: UUID = UUID(), path: String, bookmark: Data? = nil, fingerprint: FileFingerprint? = nil, info: MediaInfo? = nil) {
+        self.id = id; self.path = path; self.bookmark = bookmark; self.fingerprint = fingerprint; self.info = info
     }
 }
 
@@ -266,8 +263,7 @@ public struct ThumbnailChoices: Codable, Equatable, Sendable {
     public init() {}
 }
 
-/// One piece of the timeline: a range of one source, in order. Quick-edit mode has no timeline clips: the whole
-/// source is the video and the selections say what to export.
+/// One piece of the timeline of a video project: a range of one source, in order.
 public struct TimelineClip: Codable, Identifiable, Equatable, Sendable {
     public var id: UUID
     public var sourceID: UUID
@@ -291,22 +287,31 @@ public struct TimelineClip: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+/// How MacPlayer 0.7 and older kept an edit: "quick" (one video or photo, edited directly) or "project" (a timeline).
+/// Only read from old files; `ProjectUpgrade` turns it into a `ProjectKind`.
 public enum WorkMode: String, Codable, Sendable { case quick, project }
 
+/// A project is either a video project (a timeline of videos) or a photo project (exactly one photo).
+public enum ProjectKind: String, Codable, CaseIterable, Sendable { case video, photo }
+
 public struct Project: Codable, Identifiable, Equatable, Sendable {
-    /// 1: first format. 2: adds `overlayClips` (layers over the main timeline).
-    public static let currentSchema = 2
+    /// 1: first format. 2: adds `overlayClips` (layers over the main timeline). 3: `kind` (video or photo) replaces `mode`.
+    public static let currentSchema = 3
 
     public var schemaVersion: Int = Project.currentSchema
     public var id: UUID
     public var name: String
-    public var mode: WorkMode
+    public var kind: ProjectKind
+    /// Only set while an old file (schema 2 or older) is being read; never written again (nil is left out of the JSON).
+    public var mode: WorkMode?
+    /// A photo project: 0 or 1 photo. A video project: the videos its timeline uses.
     public var sources: [SourceRef]
-    /// Project mode: clips in timeline order. Quick mode: empty.
+    /// Video project: clips in timeline order. Photo project: empty.
     public var timeline: [TimelineClip]
+    /// In/Out ranges made by MacPlayer 0.7 and older. Kept in the file so nothing is lost; not shown or used any more.
     public var selections: SelectionList
     public var markers: [Marker]
-    /// Applied to the whole video in quick mode (and to every clip that has no look of its own in project mode).
+    /// Photo project: the edit of the photo. Video project: unused (each clip has its own look).
     public var look: VideoLook
     public var audio: AudioSettings
     public var overlays: [TextOverlay]
@@ -315,27 +320,32 @@ public struct Project: Codable, Identifiable, Equatable, Sendable {
     public var export: ExportOptions
     public var namingTemplate: NamingTemplate
     public var outputFolder: String?
-    /// Videos and pictures laid over the main timeline (project mode).
+    /// Video project: videos and pictures laid over the main timeline. Photo project: logos (pictures only, no time).
     public var overlayClips: [OverlayClip]
-    /// Music, voice-overs and sound effects on the timeline (project mode). Use `soundClips`.
+    /// Music, voice-overs and sound effects on the timeline (video project). Use `soundClips`.
     public var soundClipStore: [SoundClip]?
-    /// The clip the Picture and Audio tools edit in project mode (nil = the whole-video settings of quick mode).
+    /// The clip the Picture and Audio tools edit in a video project.
     public var activeClipID: UUID?
     /// Last playhead, so reopening continues where the user was.
     public var playhead: MediaTime
     public var created: Date
     public var modified: Date
+    /// An old one-video edit whose video length was not known when it was upgraded: the app makes its one clip once it has read the video.
+    public var pendingQuickUpgrade: Bool?
 
-    public init(id: UUID = UUID(), name: String, mode: WorkMode = .quick, sources: [SourceRef] = [], now: Date = Date()) {
-        self.id = id; self.name = name; self.mode = mode; self.sources = sources
+    public init(id: UUID = UUID(), name: String, kind: ProjectKind, sources: [SourceRef] = [], now: Date = Date()) {
+        self.id = id; self.name = name; self.kind = kind; self.mode = nil; self.sources = sources
         timeline = []; overlayClips = []; selections = SelectionList(); markers = []; look = VideoLook(); audio = AudioSettings(); overlays = []
         subtitles = SubtitleDocument(); thumbnails = ThumbnailChoices(); export = ExportOptions(); namingTemplate = .default
-        outputFolder = nil; activeClipID = nil; playhead = .zero; created = now; modified = now
+        outputFolder = nil; activeClipID = nil; playhead = .zero; created = now; modified = now; pendingQuickUpgrade = nil
     }
+
+    public var isPhoto: Bool { kind == .photo }
+    public var isVideo: Bool { kind == .video }
 
     public func source(_ id: UUID) -> SourceRef? { sources.first { $0.id == id } }
 
-    /// The look the Picture tool edits: the selected clip's in project mode, the whole video's in quick mode.
+    /// The look the Picture tool edits: the photo's own in a photo project, the selected clip's in a video project.
     public var activeLook: VideoLook {
         get { activeClipIndex.map { timeline[$0].look } ?? look }
         set { if let i = activeClipIndex { timeline[i].look = newValue } else { look = newValue } }
@@ -347,15 +357,14 @@ public struct Project: Codable, Identifiable, Equatable, Sendable {
     }
 
     private var activeClipIndex: Int? {
-        guard mode == .project, let id = activeClipID else { return nil }
+        guard kind == .video, let id = activeClipID else { return nil }
         return timeline.firstIndex { $0.id == id }
     }
 
     /// Adds a source (or returns the one already there for the same file).
     @discardableResult
     public mutating func addSource(_ ref: SourceRef) -> UUID {
-        let key = (ref.path as NSString).standardizingPath
-        if let existing = sources.first(where: { ($0.path as NSString).standardizingPath == key }) { return existing.id }
+        if let existing = sources.first(where: { PathUtil.same($0.path, ref.path) }) { return existing.id }
         sources.append(ref)
         return ref.id
     }
@@ -385,14 +394,7 @@ public struct Project: Codable, Identifiable, Equatable, Sendable {
     /// Export panel (to say so) and by the export plan (to refuse), so they can never disagree.
     public var allowsFastCut: Bool {
         look.isNeutral && overlays.isEmpty && audio.isNeutral && soundClips.isEmpty && !(subtitles.burnIn && !subtitles.cues.isEmpty)
-    }
-
-    /// Applying changes to the original is only possible when exactly one source is involved (design section 6).
-    public var canReplaceOriginal: Bool {
-        switch mode {
-        case .quick: return sources.count == 1
-        case .project: return Set(timeline.map(\.sourceID)).count == 1 && sources.count == 1
-        }
+            && timeline.allSatisfy { $0.look.isNeutral && $0.audio.isNeutral } && overlayClips.isEmpty
     }
 
     public var timelineDuration: MediaTime { timeline.reduce(.zero) { $0 + $1.duration } }

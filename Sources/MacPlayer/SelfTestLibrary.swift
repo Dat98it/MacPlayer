@@ -118,8 +118,8 @@ extension SelfTest {
             print("-- \(name)")
             let dir = work.appendingPathComponent("lib-\(UUID().uuidString.prefix(6))"); try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
             let before = sha256(url)
-            guard let s = try? await EditorSession.open(url: url) else { check(false, "open \(name)"); continue }
-            guard let v = s.info?.primaryVideo else { check(false, "\(name) has a video track"); s.close(discardRecovery: true); continue }
+            guard let s = await SelfTest.editor(url, kind: .video) else { check(false, "open \(name)"); continue }
+            guard let v = s.info?.primaryVideo else { check(false, "\(name) has a video track"); s.close(); continue }
             infos.append((url, s.info!))
             let hasAudio = !(s.info?.audio.isEmpty ?? true)
             let table = await RealCheckLite.frameTimes(url)
@@ -139,7 +139,7 @@ extension SelfTest {
             s.player.pause()
 
             // Exact seek and single steps, by the file's own frame table
-            guard table.count > 40, let a = try? await FrameLocator.frame(url: url, at: MediaTime(seconds: s.duration.seconds * 0.3)) else { check(false, "frame table"); s.close(discardRecovery: true); continue }
+            guard table.count > 40, let a = try? await FrameLocator.frame(url: url, at: MediaTime(seconds: s.duration.seconds * 0.3)) else { check(false, "frame table"); s.close(); continue }
             await s.player.seek(to: a.time)
             check(abs(s.player.currentTime.seconds - a.time.seconds) < 0.0005, "exact seek lands on the frame time (\(s.player.currentTime.seconds) vs \(a.time.seconds))")
             let shown = await windowTimes(url, around: a.time.seconds, radius: 0.4)       // the frames as the player shows them
@@ -160,18 +160,19 @@ extension SelfTest {
 
             // A cut of up to 120 frames, exact and fast
             let count = min(120, max(10, Int(Double(table.count) * 0.3)))
-            guard let b = try? await FrameLocator.step(url: url, from: a.time, by: count) else { check(false, "end of span"); s.close(discardRecovery: true); continue }
+            guard let b = try? await FrameLocator.step(url: url, from: a.time, by: count) else { check(false, "end of span"); s.close(); continue }
             let spanSeconds = b.seconds - a.time.seconds
-            s.inPoint = a.time; s.outPoint = b
-            s.addClipFromInOut(name: "Cut")
+            if let id = s.project.timeline.first?.id {
+                s.edit("Cut", refreshPreview: false) { p in if let i = p.timeline.firstIndex(where: { $0.id == id }) { p.timeline[i].sourceStart = a.time; p.timeline[i].sourceEnd = b } }
+            }
             let srcSound = hasAudio ? await AudioEnvelope.read(url, from: a.time.cmTime, duration: spanSeconds) : nil
             let srcWave = hasAudio ? await AudioEnvelope.loadSamples(url, from: a.time.cmTime, duration: spanSeconds) : nil
-            for (mode, edited) in [(CutMode.exact, false), (.fast, false), (.exact, true)] {
-                if edited { s.edit("mirror") { $0.look.flipHorizontal = true } }          // a mirrored picture goes through the compositor, which has its own frame grid; the pixels are only moved, so frames can still be told apart
+            for (mode, edited) in [(CutMode.exact, false), (.exact, true)] {
+                if edited { s.edit("mirror") { $0.activeLook.flipHorizontal = true } }          // a mirrored picture goes through the compositor, which has its own frame grid; the pixels are only moved, so frames can still be told apart
                 defer { if edited { s.undo() } }
                 let label = edited ? "\(mode) cut of a mirrored picture" : "\(mode) cut"
                 let outDir = dir.appendingPathComponent("out-\(mode)"); try? fm.createDirectory(at: outDir, withIntermediateDirectories: true)
-                let res = await runExport(s, env: env, ExportRequest(scope: .allClips, saveKind: .newCopy, options: ExportOptions(mode: mode), folder: outDir.path, baseName: nil))
+                let res = await runExport(s, env: env, ExportRequest(options: ExportOptions(mode: mode), folder: outDir.path, baseName: "Cut"))
                 guard let path = res.path else { check(false, "\(label) export of \(name): \(res.message)"); continue }
                 let out = URL(fileURLWithPath: path)
                 let times = await decodedTimes(out)
@@ -218,38 +219,15 @@ extension SelfTest {
             }
             check(sha256(url) == before, "source untouched, byte for byte")
 
-            // Project: save and reopen
-            s.makeProject(fromClips: true)
-            let projPath = dir.appendingPathComponent("real.macplayer").path
-            s.saveProject(to: projPath)
-            if let p = try? await EditorSession.openProject(path: projPath) {
+            // Project: saved into its file and reopened
+            let saved = s.saveNow()
+            let projPath = s.projectPath ?? ""
+            s.close()
+            if saved, let p = try? await EditorSession.openProject(path: projPath) {
                 check(p.isProject && p.project.timeline.count == 1 && abs(p.duration.seconds - spanSeconds) < 0.1, "project saved and reopened (\(p.project.timeline.count) clip, \(String(format: "%.2f", p.duration.seconds)) s)")
-                p.close(discardRecovery: true)
+                p.close()
             } else { check(false, "reopen project") }
-            s.close(discardRecovery: true)
-
-            // Replace the original (a copy of it) with the cut, keeping a backup
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            if size < 120_000_000 {
-                let victim = dir.appendingPathComponent("victim-\(name)"); try? fm.copyItem(at: url, to: victim)
-                if let r = try? await EditorSession.open(url: victim) {
-                    r.inPoint = a.time; r.outPoint = b
-                    if let (jobs, _) = try? r.planExport(ExportRequest(scope: .inOut, saveKind: .replaceOriginal, options: ExportOptions(mode: .exact, container: url.pathExtension.lowercased() == "mov" ? .mov : .mp4), folder: dir.path, baseName: nil)) {
-                        env.exports.enqueue(jobs); await waitForQueue(env, timeout: 300)
-                        let t = await decodedTimes(victim)
-                        let vi = try? await MediaProbe.probe(url: victim)
-                        let rfps = vi?.primaryVideo?.frameRate?.framesPerSecond ?? 30
-                        let wanted = v.isVariableFrameRate ? Int((spanSeconds * rfps).rounded()) : count
-                        let backups = (try? fm.contentsOfDirectory(atPath: dir.appendingPathComponent("MacPlayer Backups").path)) ?? []
-                        check(abs(t.count - wanted) <= (v.isVariableFrameRate ? 1 : 0), "replaced original now has \(t.count) frames (wanted \(wanted))")
-                        check(backups.count == 1 && sha256(dir.appendingPathComponent("MacPlayer Backups/\(backups[0])")) == before, "backup is the untouched original")
-                        check(((try? fm.contentsOfDirectory(atPath: dir.path)) ?? []).allSatisfy { !$0.contains(".macplayer-") }, "no temp files left")
-                        let vd = await displaySize(victim)
-                        check(vd == disp, "replaced original is still upright and the same size (\(Int(vd.width))×\(Int(vd.height)))")
-                    } else { check(false, "plan replace (\((try? r.planExport(ExportRequest(scope: .inOut, saveKind: .replaceOriginal, options: ExportOptions(mode: .exact, container: url.pathExtension.lowercased() == "mov" ? .mov : .mp4), folder: dir.path, baseName: nil))) == nil ? "refused" : "?"))") }
-                    r.close(discardRecovery: true)
-                } else { check(false, "open victim") }
-            }
+            check(sha256(url) == before, "source untouched after the project was saved")
             try? fm.removeItem(at: dir)
         }
 
@@ -278,7 +256,7 @@ extension SelfTest {
             if let s = host.current, s.player.duration.seconds > 0, s.player.currentTime.seconds < s.player.duration.seconds - 0.8, s.player.isPlaying { await s.player.seek(to: s.player.duration - MediaTime(seconds: 0.4)) }
         }
         check(seen == Array(files.prefix(3)).map { $0.deletingPathExtension().lastPathComponent }, "plays the first three in order and moves on by itself: \(seen)")
-        host.current?.close(discardRecovery: true); host.current = nil
+        host.current?.close(); host.current = nil
         model.delete(pid)
     }
 
@@ -298,7 +276,7 @@ extension SelfTest {
                              ("4K", { (i: MediaInfo, v: MediaInfo.VideoTrack) in max(v.width, v.height) > 2500 })] as [(String, (MediaInfo, MediaInfo.VideoTrack) -> Bool)] {
             if let u = pick(what, pred, excluding: chosen) { chosen.append(u); print("   \(what): \(u.lastPathComponent)") }
         }
-        guard chosen.count >= 3, let s = try? await EditorSession.open(url: chosen[0]) else { check(false, "enough different videos to join"); return }
+        guard chosen.count >= 3, let s = await SelfTest.editor(chosen[0], kind: .video) else { check(false, "enough different videos to join"); return }
         await s.addVideos(Array(chosen.dropFirst()))
         check(s.project.timeline.count == chosen.count, "all \(chosen.count) added as clips (notice: \(s.notice?.text ?? "none"))")
         let order = s.project.timeline.map { c in s.sourceURLs[c.sourceID]?.lastPathComponent ?? "?" }
@@ -315,8 +293,8 @@ extension SelfTest {
         check(abs(s.player.duration.seconds - total) < 0.3, "the preview is built for the whole timeline (\(String(format: "%.2f", s.player.duration.seconds)) s)")
 
         let outDir = work.appendingPathComponent("mixed"); try? fm.createDirectory(at: outDir, withIntermediateDirectories: true)
-        let res = await runExport(s, env: env, ExportRequest(scope: .whole, saveKind: .newCopy, options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "joined"))
-        guard let path = res.path else { check(false, "joined export: \(res.message)"); s.close(discardRecovery: true); return }
+        let res = await runExport(s, env: env, ExportRequest(options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "joined"))
+        guard let path = res.path else { check(false, "joined export: \(res.message)"); s.close(); return }
         let out = URL(fileURLWithPath: path)
         let times = await decodedTimes(out)
         let oi = try? await MediaProbe.probe(url: out)
@@ -355,7 +333,7 @@ extension SelfTest {
             await s.player.seek(to: MediaTime(seconds: 1))
             await s.addOverlayVideos([layerURL])
             check(s.project.overlayClips.count == 1, "a real video added as a layer")
-            let res2 = await runExport(s, env: env, ExportRequest(scope: .whole, saveKind: .newCopy, options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "layered"))
+            let res2 = await runExport(s, env: env, ExportRequest(options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "layered"))
             if let p2 = res2.path {
                 let o2 = URL(fileURLWithPath: p2)
                 let i2 = try? await MediaProbe.probe(url: o2)
@@ -363,7 +341,7 @@ extension SelfTest {
                 if let a = await thumb(out, at: 2.0), let b = await thumb(o2, at: 2.0) { check(mad(a, b) > 0.8, "the layer shows in the picture (difference \(String(format: "%.1f", mad(a, b))))") }
             } else { check(false, "export with a layer: \(res2.message)") }
         }
-        s.close(discardRecovery: true)
+        s.close()
         if ProcessInfo.processInfo.environment["MACPLAYER_KEEP_OUTPUT"] == nil { try? fm.removeItem(at: outDir) } else { print("   kept \(outDir.path)") }
     }
 }

@@ -27,6 +27,7 @@ final class AppEnvironment {
     let playlistStore: PlaylistStore
     let positions: PositionStore
     let exports: ExportController
+    let projects: ProjectsController
     let isSandbox: Bool
 
     /// `sandbox`: a throwaway data folder (used by `--sandbox <dir>` for testing), so nothing touches the user's real settings.
@@ -48,12 +49,11 @@ final class AppEnvironment {
         playlistStore = PlaylistStore(fs: fs, folder: base.appendingPathComponent("Playlists").path)
         positions = PositionStore(fs: fs, path: base.appendingPathComponent("positions.json").path)
         exports = ExportController(fs: fs, saver: saver, queuePath: base.appendingPathComponent("queue.json").path, prefs: prefs)
+        projects = ProjectsController(fs: fs, folder: base.appendingPathComponent("Projects", isDirectory: true), prefs: prefs)
     }
 
     /// Set by the self-test so its stand-in window can reach the playlist model.
     weak var playlistsForSelfTest: PlaylistModel?
-
-    var backupsFolderDefault: String { support.appendingPathComponent("Backups").path }
 }
 
 final class MemoryStore: PreferenceStoring {
@@ -103,5 +103,24 @@ enum Format {
     static func duration(_ t: MediaTime) -> String {
         let s = Int(t.seconds.rounded())
         return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, (s % 3600) / 60, s % 60) : String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+/// The promise "MacPlayer never changes an original": every file MacPlayer writes on its own (lists, subtitles, frames, sound) is
+/// checked here first. A video or photo, or a file any open project uses, is never a target.
+@MainActor
+enum OriginalGuard {
+    static func problem(writing path: String) -> String? {
+        let ext = PathUtil.ext(of: path).lowercased()
+        // Only plain text lists may replace a file of the same kind (the save panel asked). Anything else (a video, a photo,
+        // a sound) is never written over.
+        if FileManager.default.fileExists(atPath: path), !["csv", "json", "srt", "vtt", "txt"].contains(ext) {
+            return L("MacPlayer does not write over videos, photos or sounds. Choose another name.")
+        }
+        if VideoFiles.isCandidate(path) { return L("MacPlayer does not write over videos, photos or sounds. Choose another name.") }
+        let app = NSApp.delegate as? AppDelegate
+        let used = (app?.controllers ?? []).compactMap(\.session).flatMap { s in s.project.sources.map(\.path) + s.sourceURLs.values.map(\.path) }
+        if used.contains(where: { PathUtil.same($0, path) }) { return L("That file is used by an open project. Choose another name.") }
+        return nil
     }
 }

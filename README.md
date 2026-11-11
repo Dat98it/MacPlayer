@@ -2,7 +2,7 @@
 
 Xem và chỉnh sửa **video lẫn ảnh**: cắt đoạn, ghép nhiều video, chỉnh màu chuyên nghiệp (đường cong, bánh xe màu, HSL, LUT), tách nền và mặt nạ, chuyển cảnh và keyframe, hiệu ứng giọng, chữ và hình dán, rồi xuất ngay trên Mac. Mọi xử lý diễn ra trên máy; không có tài khoản, không thu thập dữ liệu, không có tính năng trực tuyến.
 
-> **Trạng thái: bản 0.7.1 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
+> **Trạng thái: bản 0.8.1 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
 
 ## Yêu cầu
 
@@ -31,11 +31,11 @@ swift Scripts/make_icon.swift   # vẽ lại Resources/AppIcon.icns
 ### Kiểm thử
 
 - `Scripts/test.sh` chạy `swift test` kèm đường dẫn plugin Swift Testing, vì với Command Line Tools thì plugin `TestingMacros` không tự được tìm thấy.
-- **Test Core** (360 test): thời gian hữu tỉ, lưu an toàn (kể cả máy chết ở mọi bước), vùng chọn, playlist, dự án, phụ đề, hàng đợi, cài đặt.
-- **Test Media** (214 test; có test điểm ảnh/mẫu âm thật cho màu, mặt nạ, chuyển cảnh, hiệu ứng giọng): cắt đúng khung, đồng bộ tiếng/hình, hiệu ứng bằng pixel thật, khớp preview/xuất, hủy, thay thế bản gốc trên đĩa thật, nhúng ảnh bìa; nguồn HDR 10-bit; nhiều track âm thanh; file hỏng/cụt; tên file tiếng Việt; **ổ đĩa thật** tạo bằng `hdiutil` (đầy ổ, hết chỗ giữa chừng, chỉ-đọc, gỡ ổ khi đang xuất). Media thử được **sinh tự động** (mã vạch số khung hình + tiếng bíp), không dùng video cá nhân.
-- **Tự kiểm thử trong app thật:** `MacPlayer.app/Contents/MacOS/MacPlayer --sandbox <thư-mục-tạm> --selftest <thư-mục-chứa-demo.mp4>` chạy các luồng A–J bằng đúng `EditorSession`, hàng đợi xuất và playlist của app, rồi in PASS/FAIL. Gồm cả phím tắt (bơm sự kiện phím thật, kể cả khi đang gõ trong ô văn bản), trạng thái menu, "luôn nổi", ba lượt xuất song song, chọn track âm thanh. `--sandbox` đưa dữ liệu vào thư mục tạm nên không đụng cài đặt thật.
-- **Mở bằng Finder (Open With / bấm đúp):** `python3 -I Scripts/open_with_test.py build/MacPlayer.app .build/release/macplayer-probe <thư-mục-tạm>` mở file bằng `open -a` (cùng đường Launch Services mà Finder dùng) và đọc trạng thái app qua cờ phát triển `--report-session <json>`. Kiểm tra: mở khi app đóng/đang chạy, tên có dấu cách và chữ có dấu, thư mục → playlist, file `.macplayer`, file hỏng.
-- **Giết tiến trình giữa lúc xuất:** `python3 -I Scripts/crash_test.py build/MacPlayer.app .build/release/macplayer-probe <video-dài.mp4> <số-lần> <hạt-giống>` chạy app thật ở chế độ `--crash-export`, `kill -9` ở thời điểm ngẫu nhiên (0,15–3 s) trong ba kiểu lưu (bản sao, thay bản gốc, hàng loạt), rồi mở lại bằng `--recover-check` để xác nhận: bản gốc luôn còn nguyên và đọc được, không còn file dở.
+- **Test Core** (382 test): thời gian hữu tỉ, lưu bản sao an toàn, nâng cấp dự án cũ (kể cả chế độ nhanh), luật dự án video/ảnh, ghi file dự án an toàn, sổ đăng ký dự án, hàng đợi cũ có job "thay bản gốc", playlist, phụ đề, cài đặt.
+- **Test Media** (223 test; có test điểm ảnh/mẫu âm thật cho màu, mặt nạ, chuyển cảnh, hiệu ứng giọng, logo trên ảnh): cắt đúng khung, đồng bộ tiếng/hình, hiệu ứng bằng pixel thật, khớp preview/xuất, hủy, không bao giờ ghi đè file có sẵn, nhúng ảnh bìa; nguồn HDR 10-bit; nhiều track âm thanh; file hỏng/cụt; tên file tiếng Việt; **ổ đĩa thật** tạo bằng `hdiutil` (đầy ổ, hết chỗ giữa chừng, chỉ-đọc, gỡ ổ khi đang xuất). Media thử được **sinh tự động** (mã vạch số khung hình + tiếng bíp), không dùng video cá nhân.
+- **Tự kiểm thử trong app thật:** `MacPlayer.app/Contents/MacOS/MacPlayer --sandbox <thư-mục-tạm> --selftest <thư-mục-chứa-demo.mp4>` chạy các luồng A–N bằng đúng `EditorSession`, hàng đợi xuất và playlist của app, rồi in PASS/FAIL. Gồm cả phím tắt (bơm sự kiện phím thật, kể cả khi đang gõ trong ô văn bản), trạng thái menu, "luôn nổi", ba lượt xuất song song, chọn track âm thanh. `--sandbox` đưa dữ liệu vào thư mục tạm nên không đụng cài đặt thật.
+- **Mở bằng Finder (Open With / bấm đúp):** `python3 -I Scripts/open_with_test.py build/MacPlayer.app .build/release/macplayer-probe <thư-mục-tạm>` mở file bằng `open -a` (cùng đường Launch Services mà Finder dùng) và đọc trạng thái app qua cờ phát triển `--report-session <json>`. Kiểm tra: mở khi app đóng/đang chạy (video mở để xem trong Danh sách phát), tên có dấu cách và chữ có dấu, thư mục → playlist, file `.macplayer` mở vào trình chỉnh sửa (mở lại lần nữa không mở trùng), file hỏng.
+- **Giết tiến trình giữa lúc xuất:** `python3 -I Scripts/crash_test.py build/MacPlayer.app .build/release/macplayer-probe <video-dài.mp4> <số-lần> <hạt-giống>` chạy app thật ở chế độ `--crash-export` / `--crash-autosave`, `kill -9` ở thời điểm ngẫu nhiên (0,15–3 s) khi đang xuất bản sao, xuất hàng loạt, hoặc đang tự lưu dự án liên tục, rồi mở lại bằng `--recover-check` để xác nhận: nguồn không đổi một byte, file dự án luôn đọc được trọn vẹn, không còn file dở.
 - **Video thật:** `macplayer-probe realcheck <thư-mục-video> <thư-mục-tạm> <out.md>` mở/tua/phát/xuất từng file thật rồi đọc lại kết quả (đếm khung, so điểm ảnh với nguồn, nhãn HDR/Dolby Vision, truy cập ngẫu nhiên từng khung). Trong app: thêm `--real-media <thư-mục-video>` vào lệnh `--selftest` (hoặc `--real-only` để chỉ chạy phần này). Kết quả và nguồn video đã dùng ở [docs/kiem-thu-video-that.md](docs/kiem-thu-video-that.md). Video thật không nằm trong repo.
 - **Ma trận định dạng:** `.build/debug/macplayer-probe matrix <thư-mục-tạm> docs/format-matrix.md` chạy lại và sinh [docs/format-matrix.md](docs/format-matrix.md).
 - **Đo hiệu năng (mục 16):** dùng bản **release** (`swift build -c release --product macplayer-probe`), rồi `.build/release/macplayer-probe bench <thư-mục-tạm> docs/benchmark.md` (thêm `--quick` để thử nhanh, số liệu không dùng). Kết quả đã chạy nằm ở [docs/benchmark.md](docs/benchmark.md).
@@ -49,7 +49,8 @@ swift Scripts/make_icon.swift   # vẽ lại Resources/AppIcon.icns
 | `--real-media <thư-mục>` / `--real-only` | Chạy thêm luồng K trên video thật (kèm `--selftest`) |
 | `--fullscreen-check <video>` | Mở video, vào toàn màn hình, phát, thoát, in kích thước từng bước (khởi chạy bằng `open -n --stdout log -a MacPlayer.app --args --sandbox <thư-mục> --fullscreen-check <video>` để app là app đang hoạt động; màn hình sẽ chuyển toàn màn hình vài giây) |
 | `--report-session <json>` | Ghi trạng thái các cửa sổ ra file JSON mỗi 0,4 s (cho `Scripts/open_with_test.py`) |
-| `--crash-export <nguồn> <thư-mục-ra> <copy\|replace\|batch>` / `--recover-check` | Dành cho `Scripts/crash_test.py` |
+| `--crash-export <nguồn> <thư-mục-ra> <copy\|batch>` / `--crash-autosave <nguồn> <thư-mục>` / `--recover-check` | Dành cho `Scripts/crash_test.py` |
+| `MACPLAYER_START_ROUTE=home\|playlist\|projects` | (sandbox) mở cửa sổ ở màn hình đó, để chụp giao diện |
 | `--snapshot <thư-mục>`, `--project-demo <video-2>` | Chụp giao diện (không chụp được lớp video) |
 
 ## Cấu trúc
@@ -64,15 +65,26 @@ swift Scripts/make_icon.swift   # vẽ lại Resources/AppIcon.icns
 | `docs` | Ma trận định dạng và báo cáo bàn giao. |
 | `CLAUDE.md` | Hướng dẫn cho AI agent / người mới: công nghệ, cấu trúc, quy tắc, cách thêm tính năng, cách phát hành. Đọc file này trước khi sửa code. |
 
-## Chế độ Dự án (timeline nhiều nguồn)
+## Hai khu: Danh sách phát và Chỉnh sửa (0.8.0)
 
-Từ một video đang mở, chọn **Đoạn ▸ Dự án ▸ Từ các đoạn này / Từ toàn bộ video**, hoặc **Tệp ▸ Thêm video vào dự án…** (⌥⌘A, hoặc kéo video thả vào cửa sổ). Timeline một track gồm các đoạn lấy từ nhiều video.
+Mở app là màn hình **Trang chủ** với hai nút lớn: **Danh sách phát** (⌘1) và **Chỉnh sửa** (⌘2). Mỗi cửa sổ có màn hình riêng (một cửa sổ xem danh sách phát, cửa sổ khác sửa dự án). ⇧⌘H về Trang chủ.
+
+- **Danh sách phát:** giao diện danh sách phát như trước, nhưng **chỉ để xem**: phát, xem ảnh/trình chiếu, đổi tên, chuyển file vào Thùng rác. Không có bảng công cụ chỉnh sửa. Video/ảnh mở từ Finder ("Mở bằng", bấm đúp, kéo thả, dòng lệnh) mở ở đây, không cần tạo dự án.
+- Đang xem mà muốn sửa: nút **Chỉnh sửa** (⌘E) → hỏi xác nhận → chọn nơi lưu → tạo **dự án mới có sẵn file đang xem** (video → dự án video, ảnh → dự án ảnh) và mở trình chỉnh sửa. Hủy ở bất kỳ bước nào thì không tạo gì, file vẫn đang phát như cũ.
+- **Chỉnh sửa:** danh sách mọi dự án (thẻ có ảnh đại diện, nhãn **Video/Ảnh**, lọc, sắp xếp, tìm không dấu), nút **Dự án mới** (⌘N) chọn loại rồi **luôn hỏi nơi lưu** (không có thư mục mặc định; hộp thoại mở sẵn ở thư mục dùng lần trước). Chuột phải: Mở, **Đổi tên…** (đổi cả tên file `.macplayer`, không ghi đè, hoàn tác nếu lỗi), Hiện trong Finder, **Chuyển vào Thùng rác…** (hỏi trước, Hủy là mặc định; chỉ file dự án vào Thùng rác, video/ảnh không bị đụng; dữ liệu khôi phục của dự án cũng được dọn để dự án không "sống lại"), Bỏ khỏi danh sách.
+- Danh sách dự án (sổ đăng ký trong `~/Library/Application Support/MacPlayer/Projects/registry.json`) theo dõi file dự án ở bất cứ đâu: file bị đổi tên/di chuyển ngoài app được tìm lại qua bookmark; ổ chưa cắm hiện "Ổ chưa kết nối" chứ không coi là mất; file bị xóa hiện "Không tìm thấy file" với **Tìm lại…** / **Bỏ khỏi danh sách**; file trong Thùng rác được ẩn. Lần đầu chạy, dự án cũ được nhập từ danh sách file gần đây và dữ liệu khôi phục (không quét ổ đĩa).
+- **Tự lưu thẳng vào file dự án** vài giây sau mỗi chỉnh sửa (thanh trên hiện "Đã lưu 14:02" / "Đang lưu…" / "Chưa lưu được"). ⌘S = lưu ngay. Ghi theo thứ tự, một lần một, qua file tạm rồi đổi tên, đọc lại để kiểm tra; một bản khôi phục cũng được ghi trên máy trước. File dự án bị app khác sửa thì **không ghi đè**: thanh trên cho chọn giữ chỉnh sửa của bạn hay dùng file trên đĩa. Không ghi được (ổ bị gỡ, chỉ đọc) thì giữ bản khôi phục và thử lại; đóng cửa sổ khi đó sẽ hỏi Thử lại / Lưu vào chỗ khác / Vẫn đóng.
+- **Hai loại dự án:** *dự án video* (timeline nhiều video, lớp phủ video/ảnh, âm thanh, phụ đề) và *dự án ảnh* (**đúng một ảnh**, cộng chữ/hình và **logo**). Thả sai loại bị chặn với lời giải thích; thả ảnh vào dự án video thì hỏi "Thêm làm lớp phủ?", thả ảnh thứ hai vào dự án ảnh thì hỏi "Thêm làm logo?". **Đổi ảnh…** giữ màu/hiệu ứng/chữ/logo, đặt lại khung cắt nếu ảnh mới khác tỉ lệ, hoàn tác được.
+- **Chế độ nhanh đã bỏ**: dự án `.quick` cũ (`.macplayer`/`.macvideo`) được **nâng cấp khi mở**: video thành dự án video một đoạn mang đúng chỉnh sửa cũ, ảnh thành dự án ảnh; vùng chọn In–Out cũ vẫn giữ trong file. Trước lần ghi đầu, bản cũ của file dự án được chép vào thư mục khôi phục. Bản MacPlayer cũ không mở file định dạng mới (từ chối an toàn, không mất dữ liệu).
+
+## Dự án video (timeline nhiều nguồn)
+
+Trong một dự án video: **Tệp ▸ Thêm video vào dự án…** (⌥⌘A, hoặc kéo video thả vào cửa sổ). Timeline một track gồm các đoạn lấy từ nhiều video.
 
 - **Tách** tại vị trí phát (S, đúng khung), **nhân đôi**, **xóa có dồn khoảng trống**, **kéo đoạn để đổi thứ tự**, **kéo cạnh để cắt gọn**, nút ↑↓ trong panel.
-- Công cụ **Hình ảnh** và **Âm thanh** chỉnh riêng **đoạn đang chọn**; mỗi đoạn có **tốc độ** riêng (0,25–4×). Chữ và phụ đề tính theo thời gian của dự án.
-- **Xuất** cả timeline thành **một file mới** (chế độ chính xác). Không thay được bản gốc khi nhiều nguồn.
-- Video bị mất được cảnh báo, xem trước và xuất chờ cho tới khi **liên kết lại** (Tệp ▸ Liên kết lại video…). File di chuyển/đổi tên được tìm lại qua bookmark.
-- Undo/redo, lưu dự án, tự lưu và phục hồi sau sự cố hoạt động như chế độ nhanh.
+- Công cụ **Hình ảnh** và **Âm thanh** chỉnh riêng **đoạn đang chọn**; mỗi đoạn có **tốc độ** riêng (0,25–4×). Chữ và phụ đề tính theo thời gian của dự án. Phụ đề tự động nghe lời nói của đoạn đang chọn.
+- **Xuất** cả timeline thành **một file mới** (chế độ chính xác).
+- Video bị mất được cảnh báo, xem trước và xuất chờ cho tới khi **liên kết lại** (Tệp ▸ Liên kết lại…). File di chuyển/đổi tên được tìm lại qua bookmark.
 
 ### Lớp phủ (nhiều lớp video)
 
@@ -83,19 +95,20 @@ Trong dự án có **ba dòng lớp** L1–L3 dưới track chính (L3 nằm tr�
 - **Keyframe cơ bản** cho vị trí, kích thước và độ mờ, nội suy tuyến tính. Khi lớp đã có keyframe, đổi một giá trị tại vị trí phát sẽ đặt keyframe ở đó.
 - **Kéo trực tiếp trên khung hình:** lớp đang chọn có khung viền và 4 tay nắm. Kéo thân để di chuyển, kéo góc để đổi kích thước (góc đối diện và tỷ lệ giữ nguyên), bấm vào lớp khác để chọn nó. Lớp hít vào tâm và các lề (đường gióng màu vàng); giữ ⌥ để tắt hít. Một lần kéo là một bước Undo. Khi đang kéo, xem trước đi theo ngay không cần dựng lại; bản xuất không bao giờ bị ảnh hưởng bởi thao tác kéo dở. Cần đưa vị trí phát vào trong khoảng thời gian của lớp.
 - Xem trước và xuất dùng chung một bộ render. Lớp vượt quá cuối timeline chính bị cắt. Dự án có lớp không dùng được cắt nhanh.
-- Dự án cũ (định dạng 1) vẫn mở được: được nâng lên định dạng 2 khi mở.
+- Dự án cũ (định dạng 1, 2) vẫn mở được: được nâng lên định dạng 3 khi mở.
 
-## Nguyên tắc lưu video (đã được test)
+## Nguyên tắc: không bao giờ sửa file gốc (đã được test)
 
-- **Lưu thành bản sao mới** là mặc định; nguồn không đổi một byte.
-- **Áp dụng thay đổi vào bản gốc** luôn hỏi xác nhận file, mặc định có sao lưu, chỉ thay sau khi file mới được xuất **và kiểm tra** (mở được, đúng thời lượng, đủ track, giải mã được khung đầu). Chặn nếu nguồn đã bị ứng dụng khác sửa, nếu đổi phần mở rộng, nếu thiếu dung lượng hoặc dự án nhiều nguồn.
-- Luôn xuất vào file tạm cạnh đích rồi đổi tên; có nhật ký giao dịch để khôi phục khi app hoặc máy bị gián đoạn giữa chừng.
-- Tự lưu chỉ ghi trạng thái chỉnh sửa, không bao giờ chạm vào file video.
-- Undo chỉ hoàn tác chỉnh sửa. Sau khi thay bản gốc, Undo **không** đem file cũ trở lại; hãy dùng bản sao lưu.
+- MacPlayer **không bao giờ sửa, ghi đè hay thay thế** file video/ảnh gốc. Tính năng "thay bản gốc" đã được **gỡ hẳn** (0.8.0). Mọi kết quả xuất luôn là **file mới**; tên đã có thì thêm số, không ghi đè.
+- Xuất vào file tạm cạnh đích rồi đổi tên, sau khi kiểm tra (mở được, đúng thời lượng, đủ track, giải mã được khung đầu).
+- Lưu khung hình, xuất âm thanh, xuất phụ đề/mốc: không bao giờ ghi đè video, ảnh hay âm thanh có sẵn, kể cả khi hộp thoại hỏi "Thay thế?".
+- Tự lưu chỉ ghi file dự án (`.macplayer`/`.macvideo`) và dữ liệu khôi phục của app.
+- Nếu bản 0.7 cũ bị tắt ngang giữa lúc thay bản gốc, bản mới vẫn đặt bản gốc về chỗ cũ khi khởi động. Job "thay bản gốc" còn sót trong hàng đợi cũ được đánh dấu thất bại, không bao giờ chạy; các job khác giữ nguyên.
+- Ngoại lệ duy nhất có chủ ý: trong **Danh sách phát**, khi bạn yêu cầu, file được **đổi tên** hoặc chuyển vào **Thùng rác** (có hỏi trước, đặt lại được).
 
 ## Phím tắt
 
-Space phát/dừng · ← → tua · ⇧← ⇧→ tua dài · `,` `.` lùi/tiến một khung · I / O điểm vào/ra · Return thêm đoạn · M marker · `{` `}` marker trước/sau · `-` `=` chậm/nhanh · F toàn màn hình · Delete xóa đoạn · ⌘Z / ⇧⌘Z · ⌘S · ⌥⌘S lưu video · ⌥⌘E hàng đợi. Các phím một chữ chỉ hoạt động khi bạn không đang gõ trong ô nhập. **Chưa cho tùy chỉnh phím tắt.**
+⌘1 Danh sách phát · ⌘2 Dự án · ⇧⌘H Trang chủ · ⌘N dự án mới (khi ở Chỉnh sửa; ⌥⌘N cửa sổ mới) · ⌘E chỉnh sửa file đang xem · Space phát/dừng · ← → tua · ⇧← ⇧→ tua dài · `,` `.` lùi/tiến một khung · S tách đoạn · M marker · `{` `}` marker trước/sau · `-` `=` chậm/nhanh · F toàn màn hình · Delete xóa đoạn · ⌘Z / ⇧⌘Z · ⌘S lưu ngay · ⌥⌘S xuất video · ⌥⌘E hàng đợi. Các phím một chữ chỉ hoạt động khi bạn không đang gõ trong ô nhập. **Chưa cho tùy chỉnh phím tắt.**
 
 ## Giấy phép và nguồn gốc mã
 
@@ -118,9 +131,9 @@ MacPlayer mở cả ảnh (JPEG, PNG, HEIC, TIFF, GIF, WebP, AVIF, ảnh RAW c�
 - **Xem:** vừa khung, thu phóng (kẹp hai ngón, ⌘ + cuộn, nút), kéo để di chuyển, nhấp đúp để phóng to 100%. Mũi tên trái/phải chuyển ảnh trong danh sách phát; Space bắt đầu/dừng trình chiếu (thời gian mỗi ảnh đặt trong Cài đặt). GIF, PNG động và WebP động được phát (có nút tạm dừng).
 - **Cắt:** khung cắt kéo trực tiếp trên ảnh (góc, cạnh, kéo bên trong để di chuyển, đường chia ba, hiện kích thước ảnh sẽ lưu), giữ tỉ lệ 1:1, 3:2, 4:5, 16:9…; khung luôn vẽ trên ảnh như đang hiển thị, kể cả khi đã xoay hoặc lật. Giá trị chính xác nằm trong mục "Giá trị chính xác".
 - **Chỉnh:** xoay, lật, khung, màu, 11 bộ lọc, làm nét/mờ/tối viền, chữ, hình khối và hình dán. Dùng chung bộ vẽ với video nên ảnh trên màn hình và ảnh lưu ra giống hệt nhau. Ảnh động: cùng một chỉnh sửa áp lên mọi khung.
-- **Lưu:** JPEG / PNG / HEIC / TIFF (và GIF cho ảnh động), chất lượng, giới hạn cạnh dài, tùy chọn bỏ vị trí GPS và thông tin máy ảnh. Mặc định lưu thành ảnh mới, không bao giờ ghi đè file có sẵn. "Thay ảnh gốc" hỏi xác nhận, giữ định dạng cũ và tạo bản sao lưu trước. Ảnh được kiểm tra đọc lại được, đúng kích thước rồi mới đặt vào chỗ cũ. Kích thước hiện trên màn hình đúng từng điểm ảnh với file được ghi.
-- **Dự án và khôi phục:** chỉnh sửa ảnh lưu được thành dự án (⌘S, đuôi `.macplayer`) và được tự động lưu bản khôi phục như video; nếu app tắt đột ngột sẽ được hỏi khôi phục.
-- Ảnh mở bằng ứng dụng không bị sửa cho đến khi bạn bấm lưu/thay. Kiểm thử trên thư mục ảnh thật (2.542 ảnh JPEG/HEIC/PNG/WebP/AVIF): chỉ đọc, kiểm tra từng file và ngày giờ của cả thư mục trước/sau.
+- **Lưu:** JPEG / PNG / HEIC / TIFF (và GIF cho ảnh động), chất lượng, giới hạn cạnh dài, tùy chọn bỏ vị trí GPS và thông tin máy ảnh. Luôn lưu thành ảnh mới, không bao giờ ghi đè file có sẵn và không bao giờ thay ảnh gốc. Ảnh được kiểm tra đọc lại được, đúng kích thước rồi mới đặt vào chỗ. Kích thước hiện trên màn hình đúng từng điểm ảnh với file được ghi.
+- **Dự án ảnh:** mọi chỉnh sửa ảnh nằm trong một dự án ảnh (một ảnh) tự lưu vào file `.macplayer`; có thể thêm **logo** (hình đặt lên ảnh, vẽ giống nhau trên màn hình và file lưu, kể cả mọi khung GIF). Nếu app tắt đột ngột sẽ được hỏi khôi phục.
+- Ảnh gốc không bao giờ bị sửa. Kiểm thử trên thư mục ảnh thật (2.542 ảnh JPEG/HEIC/PNG/WebP/AVIF): chỉ đọc, kiểm tra từng file và ngày giờ của cả thư mục trước/sau.
 
 
 ## Tạo danh sách phát mới

@@ -9,7 +9,7 @@ extension EditorSession {
     var sounds: [SoundClip] { project.soundClips }
     var selectedSound: SoundClip? { project.soundClips.first { $0.id == selectedSoundID } }
     /// Sounds can be laid under a picture; a file that is only sound has no picture to lay them under.
-    var canHaveSounds: Bool { isProject || info?.hasVideo == true }
+    var canHaveSounds: Bool { isProject }
 
     /// The sounds with their files found again where they were moved to (through the bookmark taken when they were added).
     func resolvedSounds() -> [SoundClip] {

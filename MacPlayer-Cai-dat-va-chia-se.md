@@ -1,4 +1,4 @@
-# MacPlayer 0.7.1: cài đặt và chia sẻ
+# MacPlayer 0.8.1: cài đặt và chia sẻ
 
 **MacPlayer** (trước đây tên MacVideo) là app miễn phí cho macOS để xem và chỉnh sửa video lẫn ảnh: cắt, ghép, chỉnh màu chuyên nghiệp, tách nền và mặt nạ, chuyển cảnh, hiệu ứng giọng, chữ, hình dán, rồi xuất ngay trên Mac. Mọi thứ chạy trên máy bạn: không tài khoản, không kết nối mạng, không gửi video đi đâu, không thu thập dữ liệu.
 
@@ -9,7 +9,7 @@ Giấy phép MIT: dùng, sao chép và chia sẻ tự do (xem mục cuối).
 - Đã kiểm thử trên Mac chip Apple (M1 trở đi). **Mac Intel chưa được thử**, không cam kết chạy.
 
 ## Cài đặt
-1. Tải `MacPlayer-0.7.1.dmg` (hoặc `.zip`) từ nơi người chia sẻ cho bạn.
+1. Tải `MacPlayer-0.8.1.dmg` (hoặc `.zip`) từ nơi người chia sẻ cho bạn.
 2. Mở file `.dmg`, kéo **MacPlayer** vào thư mục **Applications**.
 3. Lần đầu mở, macOS báo không xác minh được nhà phát triển. Đây là bình thường: app chưa được Apple công chứng vì việc đó cần tài khoản nhà phát triển trả phí. Chọn một cách:
    - Chuột phải vào MacPlayer trong Applications, chọn **Mở**, rồi bấm **Mở** lần nữa; hoặc
@@ -24,12 +24,12 @@ Giấy phép MIT: dùng, sao chép và chia sẻ tự do (xem mục cuối).
 So mã SHA-256 của file với mã dưới đây. Khác nhau nghĩa là file đã bị đổi hoặc tải lỗi: đừng cài.
 
 ```bash
-shasum -a 256 MacPlayer-0.7.1.dmg
+shasum -a 256 MacPlayer-0.8.1.dmg
 ```
 
 ```
-7b14c9fcc2091528355846478f3e310288dd538fc158389da40f63beb3039063  MacPlayer-0.7.1.dmg
-bafda59c98d27fdefb28ca4a7173dca645ad99795d2bd4ddaf24a0fc9c384394  MacPlayer-0.7.1.zip
+ab422d8e49e41f29d6cad9f0ab2f79c6df3847041da8d65632366ffb24a5e6e1  MacPlayer-0.8.1.dmg
+75ffa78d336e5ac4b05c68ddac2becb0566042b9adfd689f825601d158ed0f93  MacPlayer-0.8.1.zip
 ```
 
 ## Dùng nhanh
@@ -43,8 +43,8 @@ bafda59c98d27fdefb28ca4a7173dca645ad99795d2bd4ddaf24a0fc9c384394  MacPlayer-0.7.
 - **Vi/En:** giao diện tiếng Việt và tiếng Anh.
 
 ## An toàn cho video của bạn
-- Mặc định **lưu thành bản sao**; video gốc không bị đụng tới.
-- "Thay bản gốc" chỉ khi bạn xác nhận. App ghi ra file tạm, kiểm tra xong mới đổi, và **sao lưu bản gốc** trước.
+- MacPlayer **không bao giờ sửa, ghi đè hay thay thế** video/ảnh gốc: mọi lần xuất là một **file mới**.
+- Chỉnh sửa nằm trong **dự án** (file `.macplayer` bạn chọn nơi lưu), tự lưu khi làm việc. Mở app có hai khu: **Danh sách phát** (chỉ xem, đổi tên, chuyển vào Thùng rác) và **Chỉnh sửa** (danh sách dự án video và dự án ảnh).
 - Nếu app hoặc máy bị tắt giữa lúc xuất, lần mở sau app khôi phục hàng đợi và không để lại file dở. Đã thử bằng cách ngắt đột ngột nhiều lần trên video thật.
 
 ## Đã kiểm thử

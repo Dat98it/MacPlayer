@@ -62,9 +62,8 @@ struct TransportBar: View {
             Menu {
                 Button((player.loop == .off ? "✓ " : "") + L("No repeat")) { player.loop = .off }
                 Button((player.loop == .whole ? "✓ " : "") + L("Repeat video")) { player.loop = .whole }
-                Button(L("Repeat In–Out")) {
-                    let a = session.inPoint ?? .zero, b = session.outPoint ?? session.duration
-                    if b > a { player.loop = .range(TimeSpan(start: a, end: b)) }
+                if session.isProject, let c = session.timingClip, let start = TimelineEditor.starts(session.project.timeline)[c.id] {
+                    Button(L("Repeat the selected clip")) { player.loop = .range(TimeSpan(start: start, end: start + c.duration)) }
                 }
             } label: { Image(systemName: loopIcon) }
             .frame(width: 44).help(L("Repeat")).accessibilityLabel(L("Repeat"))
@@ -73,18 +72,13 @@ struct TransportBar: View {
                 .onTapGesture { player.isMuted.toggle() }.accessibilityLabel(L("Mute")).accessibilityAddTraits(.isButton)
             Slider(value: Binding(get: { Double(player.volume) }, set: { player.volume = Float($0) }), in: 0...1).frame(width: 70).accessibilityLabel(L("Volume"))
 
-            Divider().frame(height: 18)
             if session.isProject {
+                Divider().frame(height: 18)
                 Button { session.splitAtPlayhead() } label: { Image(systemName: "scissors") }.help(L("Split at the playhead (S)")).accessibilityLabel(L("Split at playhead"))
                 Button { (NSApp.delegate as? AppDelegate)?.addVideoToProject(nil) } label: { Image(systemName: "plus.rectangle.on.rectangle") }
                     .help(L("Add a video to the timeline")).accessibilityLabel(L("Add video"))
-            } else {
-                Button { session.markIn() } label: { Text("I").font(.system(.body, design: .monospaced).bold()).frame(minWidth: 16) }.help(L("Set In point (I)")).accessibilityLabel(L("Set In point"))
-                Button { session.markOut() } label: { Text("O").font(.system(.body, design: .monospaced).bold()).frame(minWidth: 16) }.help(L("Set Out point (O)")).accessibilityLabel(L("Set Out point"))
-                Button { session.addClipFromInOut() } label: { Image(systemName: "plus.rectangle.on.rectangle") }
-                    .help(L("Add clip from In to Out (Return)")).accessibilityLabel(L("Add clip"))
+                Button { session.addMarker() } label: { Image(systemName: "flag") }.help(L("Add marker (M)")).accessibilityLabel(L("Add marker"))
             }
-            Button { session.addMarker() } label: { Image(systemName: "flag") }.help(L("Add marker (M)")).accessibilityLabel(L("Add marker"))
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
         .background(Color(NSColor.windowBackgroundColor))

@@ -137,7 +137,9 @@ final class PlayerController: NSObject, ObservableObject {
         isPlaying = true
     }
 
-    func pause() { player.pause(); isPlaying = false; sequence = [] }
+    func pause() {
+        player.pause(); isPlaying = false; sequence = []
+    }
 
     func togglePlay() { isPlaying ? pause() : play() }
 

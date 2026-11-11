@@ -1,6 +1,6 @@
 # Báo cáo bàn giao MacPlayer
 
-Ngày: 05/11/2026 (cập nhật lần cuối 10/11/2026, bản 0.7.1; xem "Bổ sung 0.3.0–0.7.0" và "Bản 0.7.1" ở cuối) · Máy kiểm thử: Apple Silicon, macOS 27.0.1, Swift 6.4, chỉ có Command Line Tools.
+Ngày: 05/11/2026 (cập nhật lần cuối 11/11/2026, bản 0.8.1; xem "Bổ sung 0.3.0–0.7.0", "Bản 0.7.1", "Bản 0.8.0" và "Bản 0.8.1" ở cuối) · Máy kiểm thử: Apple Silicon, macOS 27.0.1, Swift 6.4, chỉ có Command Line Tools.
 Nguồn yêu cầu: `MacPlayer-Thiet-ke-san-pham.md`.
 
 **Tóm tắt trung thực:** đây là một ứng dụng chạy được, với lõi lưu an toàn, cắt, render, playlist, dự án và hàng đợi đã kiểm thử kỹ. Nó **chưa phải bản thương mại hoàn chỉnh**: không có cấp phép, thanh toán, cập nhật, chữ ký phân phối; timeline nhiều nguồn/nhiều lớp và nhiều tính năng giai đoạn 3–4 chưa có giao diện hoặc chưa làm.
@@ -204,3 +204,46 @@ Chạy self-test của app trên 8 video thật (bản sao) và 2.703 ảnh th�
 Test sau đợt này: Core 366 + 6 mới đều đạt; Media 223 (gồm 12 mới), chỉ `StabilizerTests.anExportedVideoIsSteadierThanTheOneItCameFrom` chập chờn như đã ghi.
 
 **Còn mở:** cắt chính xác `cam-nang-san-9.mp4` (88 phút) lệch 2 khung ở khung cuối trong self-test thật (chưa tìm ra nguyên nhân; `cam-nang-san-7.mp4` đạt); các kiểu dữ liệu khác (`SoundClip`, `OverlayClip`, `ExportOptions`…) vẫn giải mã nghiêm ngặt, thêm trường không tùy chọn sẽ làm file cũ không mở được (nên làm như `AudioSettings`); mặt nạ chủ thể trên người thật mới thử qua một ảnh thật.
+
+
+## Bản 0.8.0: tách Danh sách phát và Chỉnh sửa, bỏ chế độ nhanh và "thay bản gốc" (11/11/2026)
+
+**Đã làm**
+
+| Phần | Nội dung |
+|---|---|
+| Điều hướng | Trang chủ 2 nút (Danh sách phát ⌘1, Chỉnh sửa ⌘2, ⇧⌘H về Trang chủ). Mỗi cửa sổ có màn hình riêng (`WindowRoute`). Danh sách phát chỉ xem/đổi tên/Thùng rác, không có bảng công cụ. File từ Finder/kéo thả/dòng lệnh mở để xem; file `.macplayer` mở vào trình chỉnh sửa; mở lại một dự án đang mở thì đưa cửa sổ đó lên. |
+| Chỉnh sửa từ lúc xem | Nút Chỉnh sửa (⌘E) → hỏi → chọn nơi lưu → dự án mới có sẵn file đang xem. Hủy ở mọi bước không tạo gì. |
+| Hai loại dự án | `Project.kind` video/ảnh, schema 3. Dự án ảnh đúng một ảnh (+ chữ, hình, **logo**); thả/thêm sai loại bị chặn bằng `ProjectRules`. Đổi ảnh giữ chỉnh sửa, đặt lại khung cắt nếu khác tỉ lệ, hoàn tác được. |
+| Danh sách dự án | Sổ đăng ký (`Projects/registry.json`): thẻ có ảnh đại diện, nhãn Video/Ảnh, lọc, sắp xếp, tìm không dấu (kể cả "đ"). Theo dấu file bị đổi tên/di chuyển qua bookmark; ổ chưa cắm, file mất, file trong Thùng rác được phân biệt; không bao giờ tự bỏ mục. Đổi tên (đổi file, không ghi đè, hoàn tác nếu ghi sổ lỗi), Thùng rác (hỏi, Hủy mặc định, chỉ file dự án, dọn dữ liệu khôi phục), Bỏ khỏi danh sách, Tìm lại. |
+| Tự lưu | Ghi thẳng file dự án qua `ProjectFileWriter` (tuần tự, bỏ bản cũ hơn, bản khôi phục trước, so dấu vân tay để không đè thay đổi từ nơi khác, đọc lại kiểm tra). ⌘S = lưu ngay; bỏ "Lưu thành"; đóng cửa sổ/thoát app ghi trước, lỗi thì hỏi Thử lại / Lưu vào chỗ khác / Vẫn đóng. Snapshot giờ được cắt tỉa (trước đây `pruneSnapshots` không được gọi). |
+| Bỏ chế độ nhanh | Dự án `.quick` cũ nâng cấp khi mở (video → một đoạn mang chỉnh sửa; âm thanh/mốc theo tốc độ như bản xuất cũ; vùng In–Out giữ trong file; ảnh → dự án ảnh); bản cũ chép vào Recovery trước lần ghi đầu. Bỏ In/Out, xuất từng đoạn, cắt nhanh trong giao diện, tab Ảnh bìa. |
+| Bỏ "thay bản gốc" | Gỡ `replaceOriginal`, `ReplacePlan`, ghi nhật ký, sao lưu, phát hiện nguồn bị đổi, lựa chọn trong bảng Xuất video/ảnh và Cài đặt, test/self-test/script/chuỗi liên quan. Giữ đọc nhật ký cũ (`recoverLegacyReplaceJournals`) và đọc job cũ trong hàng đợi (đánh dấu thất bại, không chạy). |
+| Chặn ghi đè | Lưu khung hình không bao giờ ghi đè file có sẵn; xuất âm thanh/CSV/SRT/VTT qua `OriginalGuard`; so đường dẫn bằng `PathUtil.same` (tên tiếng Việt có hai dạng Unicode). |
+
+**Đã kiểm thử (chạy thật)**
+- `Scripts/test.sh`: Core 378, Media 223 đều đạt (kể cả `StabilizerTests` lần này). Test mới: nâng cấp dự án cũ, luật dự án, ghi file dự án an toàn, sổ đăng ký, hàng đợi cũ có job thay bản gốc, logo trên ảnh (điểm ảnh).
+- Self-test trong app thật (`--selftest`, media tổng hợp): 292 PASS, 1 FAIL là lỗi đã biết trước (menu hệ thống "Emoji & Symbols"/"Enter Full Screen" trùng phím).
+- `open_with_test.py`: 15/15 đạt (video mở để xem, `.macplayer` mở vào trình chỉnh sửa, mở lại không trùng cửa sổ).
+- `crash_test.py`: 18 lần `kill -9` (bản sao, hàng loạt, **đang tự lưu liên tục**) đều đạt: nguồn không đổi, file dự án luôn đọc được.
+- App thật trên bản sao: file `.quick` cũ (schema 2) mở thành dự án video schema 3, giữ góc xoay, có bản cũ trong Recovery; nhật ký thay bản gốc của bản 0.7 (tự tạo) được khôi phục đúng từng byte; SHA của video/ảnh nguồn không đổi sau mọi lần chạy.
+- Ảnh chụp cửa sổ: Trang chủ, Danh sách phát, Danh sách dự án (trống và có thẻ), trình chỉnh sửa video, trình chỉnh sửa ảnh, xem video. Nhờ chạy thật đã sửa: một dự án bị liệt kê 2 lần (tên NFC/NFD), chạy sandbox nhập nhầm danh sách gần đây thật, thẻ dự án ảnh rộng quá cột.
+
+**Chưa kiểm thử / chưa làm**
+- Chưa thao tác chuột thật: hộp chọn loại dự án, hộp chọn nơi lưu, đổi tên/Thùng rác từ danh sách dự án, kéo thả vào từng màn hình (chỉ kiểm qua mã và self-test gọi hàm).
+- Lưu dự án trên ổ mạng/exFAT/iCloud, gỡ ổ khi đang tự lưu: chưa thử thật. Danh sách "gần đây" của macOS có tự theo file đổi tên hay không: chưa kiểm.
+- Hàng đợi cũ (định dạng thật của 0.7) có job thay bản gốc: kiểm bằng test Core, chưa bằng app với file do 0.7 ghi.
+- Logo trên ảnh chỉ đặt bằng nút/thanh trượt (chưa kéo trực tiếp trên ảnh). Danh sách dự án chưa có phím Return/⌘⌫ cho thẻ đang chọn.
+- Ngoài phạm vi (đã chốt): xuất từng đoạn thành file riêng, nhân bản dự án, lớp phủ video trong dự án ảnh.
+
+
+## Bản 0.8.1: timeline đứng yên và nhấp nháy ở dự án video mới (11/11/2026)
+
+**Lỗi người bảo trì gặp:** tạo dự án video rồi thêm 3 video dọc (1080×1918/1920, 14–51 s); bấm phát thì thanh timeline "không chạy" và nhấp nháy, dù nội dung và tổng thời lượng đúng.
+
+**Nguyên nhân (đã tái hiện trong cửa sổ thật, chụp riêng cửa sổ MacPlayer):** thanh timeline tính vùng hiển thị một lần khi mở, lúc dự án còn **trống** (độ dài 0 → vùng nhìn ~0,001 s), và không tính lại khi video được thêm vào. Kết quả: thanh chỉ hiện vài khung quanh đầu phát; khi phát nó cuộn theo ở mỗi khung nên đầu phát trông đứng yên và nội dung bên dưới nhấp nháy. Trình phát vẫn chạy đúng (đã đo: 3 s chạy 3 s, không dựng lại preview). Lỗi lộ ra ở 0.8.0 vì mọi dự án mới đều bắt đầu trống.
+
+**Sửa:** vùng nhìn tách thành `TimelineViewport` (Core, thuần): khi độ dài dự án đổi, nếu đang xem toàn bộ (hoặc chưa có gì) thì xem lại toàn bộ; nếu đang phóng to một đoạn thì giữ đoạn đó trong độ dài mới. Phóng/cuộn/bám đầu phát dùng chung các quy tắc này.
+
+**Kiểm thử:** 4 test Core mới (`TimelineViewportTests`); luồng self-test mới G0 tạo dự án trống trong cửa sổ thật, thêm 3 video khác loại, phát và kiểm: thanh hiện toàn bộ dự án, không cuộn khi đang xem toàn bộ, đầu phát chạy, preview không bị dựng lại, khung hình không bị bố trí lại, giao diện không nghẽn. Chụp cửa sổ thật trước/sau khi sửa với 3 video dọc tổng hợp cùng kích thước và thời lượng của bạn. **Chưa thử trên chính 3 file thật của bạn** (không mở media của bạn khi chưa được phép).
+

@@ -93,5 +93,5 @@ public struct BatchPlan: Equatable, Sendable {
         return BatchPlan(outputs: outputs, issues: issues, renamedForConflict: renamed)
     }
 
-    static func samePath(_ a: String, _ b: String) -> Bool { (a as NSString).standardizingPath == (b as NSString).standardizingPath }
+    static func samePath(_ a: String, _ b: String) -> Bool { PathUtil.same(a, b) }
 }
