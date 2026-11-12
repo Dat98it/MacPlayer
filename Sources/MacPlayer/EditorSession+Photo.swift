@@ -98,7 +98,8 @@ extension EditorSession {
             photoBase = try await Task.detached(priority: .userInitiated) { try PhotoLoader.preview(url: url, maxPixel: max) }.value
         }
         photoZoom = 1; photoOffset = .zero
-        if photoAnimation != nil { photoDraft.options.format = .gif }
+        // An animation is saved as one: an animated PNG stays a PNG (all its colours), the others become a GIF (WebP cannot be written).
+        if photoAnimation != nil { photoDraft.options.format = PhotoFormat.matching(extension: url.pathExtension) == .png || url.pathExtension.lowercased() == "apng" ? .png : .gif }
         else if let own = PhotoFormat.matching(extension: url.pathExtension) { photoDraft.options.format = own }      // saved in the format it came in unless told otherwise
         if ProcessInfo.processInfo.environment["MACPLAYER_START_TAB"] == nil { activeTool = .picture }
         photoCropRatio = nil
@@ -232,7 +233,7 @@ extension EditorSession {
         let produce: SafeSaver.Produce = { temp in
             _ = try await Task.detached(priority: .userInitiated) { try PhotoExporter.export(source: url, look: look, overlays: overlays, layers: layers, options: options, to: URL(fileURLWithPath: temp)) }.value
         }
-        let expectedFrames = options.format == .gif ? photoAnimation?.frameCount : nil
+        let expectedFrames = options.format.keepsAnimation ? photoAnimation?.frameCount : nil
         let verify: SafeSaver.Verify = { temp in
             guard let info = try? PhotoLoader.info(url: URL(fileURLWithPath: temp)), info.primaryVideo?.width == target.width, info.primaryVideo?.height == target.height else {
                 throw SaveError.verificationFailed("the saved picture cannot be read back at the expected size")

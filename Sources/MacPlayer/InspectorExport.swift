@@ -30,6 +30,12 @@ struct ExportPane: View {
             if let est = estimate() { Text(est).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true) }
             Spacer()
             Button(L("Cancel")) { onDone() }.keyboardShortcut(.cancelAction)
+            if session.timelineHasSound {
+                // The sound alone (0.16): a song edited on the timeline, a voice recording…
+                Button { session.exportTimelineSound(folder: folderPath(), name: d.name.isEmpty ? nil : d.name); onDone() } label: { Label(L("Sound Only (.m4a)"), systemImage: "waveform") }
+                    .controlSize(.large).disabled(session.project.timeline.isEmpty)
+                    .help(L("Save only the sound of the whole timeline, with its fades, effects and music, as an .m4a file."))
+            }
             Button { if run() { onDone() } } label: { Label(L("Export Video"), systemImage: "square.and.arrow.up").padding(.horizontal, 6) }
                 .buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
                 .disabled(session.project.timeline.isEmpty)

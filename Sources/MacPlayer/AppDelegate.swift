@@ -441,17 +441,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     /// opens in the editor. Cancelling anywhere leaves the file playing as it was; nothing is made.
     func editViewedFile(in w: MainWindowController) {
         guard let s = w.session, s.role == .viewer, let url = s.localFileURL else { return }
-        let kind: ProjectKind = s.isPhoto ? .photo : .video
+        var kind: ProjectKind = s.isPhoto ? .photo : .video
         let wasPlaying = s.player.isPlaying
         s.player.pause()
+        if s.isPhoto { s.photoPlaying = false }
         let a = NSAlert()
-        a.messageText = kind == .video ? LF("Make a video project from “%@”?", url.lastPathComponent) : LF("Make a photo project from “%@”?", url.lastPathComponent)
-        a.informativeText = L("The project keeps your edits in a file of its own. The original file is never changed. Next you choose where to save the project.")
-        a.addButton(withTitle: L("Make Project…")); a.addButton(withTitle: L("Cancel"))
-        guard a.runModal() == .alertFirstButtonReturn, let path = askWhereToSave(name: url.deletingPathExtension().lastPathComponent, kind: kind, near: url) else {
+        let answer: NSApplication.ModalResponse
+        if s.isPhoto, let animation = s.photoAnimation {
+            // An animation (0.16): a photo project keeps it a picture (GIF or animated PNG); a video project makes a video of it.
+            a.messageText = LF("How do you want to edit “%@”?", url.lastPathComponent)
+            a.informativeText = LF("It is an animation of %d frames (%.1f s). The original file is never changed. Next you choose where to save the project.", animation.frameCount, animation.duration)
+                + "\n\n" + L("Photo project: colour, crop, text and logos on every frame, saved as a GIF or an animated PNG.")
+                + "\n" + L("Video project: a timeline with music, transitions and effects, saved as a video (MP4).")
+            a.addButton(withTitle: L("Photo Project…")); a.addButton(withTitle: L("Video Project…")); a.addButton(withTitle: L("Cancel"))
+            answer = a.runModal()
+            if answer == .alertSecondButtonReturn { kind = .video }
+        } else {
+            let sound = s.isSoundOnly
+            a.messageText = sound ? LF("Make a video project from the sound “%@”?", url.lastPathComponent)
+                : kind == .video ? LF("Make a video project from “%@”?", url.lastPathComponent) : LF("Make a photo project from “%@”?", url.lastPathComponent)
+            a.informativeText = (sound ? L("The sound goes on the timeline with its cover picture: cut it, fade it, add music, text and pictures, then save it as a video or as sound only (.m4a).") + "\n\n" : "")
+                + L("The project keeps your edits in a file of its own. The original file is never changed. Next you choose where to save the project.")
+            a.addButton(withTitle: L("Make Project…")); a.addButton(withTitle: L("Cancel"))
+            answer = a.runModal()
+        }
+        let accepted = answer == .alertFirstButtonReturn || (kind == .video && s.isPhoto && answer == .alertSecondButtonReturn)
+        guard accepted, let path = askWhereToSave(name: url.deletingPathExtension().lastPathComponent, kind: kind, near: url) else {
             if wasPlaying { s.player.play() }
+            if s.isPhoto, s.photoAnimation != nil { s.photoPlaying = true }
             return
         }
+        // A sound's cover video takes a moment to make (longer for a long recording).
+        if s.isSoundOnly || (kind == .video && s.isPhoto) { s.flash(LF("Preparing “%@”…", url.lastPathComponent)) }
         Task { _ = await createProject(kind: kind, from: url, at: path, in: w) }
     }
 
@@ -501,7 +522,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             return
         }
         guard let id = s.project.sources.first(where: { s.missingSourceIDs.contains($0.id) })?.id ?? s.project.sources.first?.id else { return }
-        p.allowedContentTypes = s.project.source(id)?.stillOf != nil ? [.image] : [.movie, .video]
+        p.allowedContentTypes = s.project.source(id)?.stillOf != nil ? [.image] : s.project.source(id)?.soundOf != nil ? [.audio] : [.movie, .video]
         p.message = LF("Choose the video to use for “%@”.", PathUtil.fileName(of: s.project.source(id)?.mediaPath ?? ""))
         guard p.runModal() == .OK, let u = p.url else { return }
         Task { await s.relinkSource(id, to: u) }

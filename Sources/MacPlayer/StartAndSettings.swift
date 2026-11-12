@@ -17,7 +17,7 @@ struct VideoHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: session.isPhoto ? "photo" : "film").foregroundColor(.secondary).accessibilityHidden(true)
+            Image(systemName: session.isPhoto ? "photo" : session.isSoundOnly ? "music.note" : "film").foregroundColor(.secondary).accessibilityHidden(true)
             Text(session.sourceURL?.lastPathComponent ?? session.project.name)
                 .font(.callout.weight(.medium)).lineLimit(1).truncationMode(.middle)
             if session.sourceURL != nil {
@@ -26,12 +26,12 @@ struct VideoHeader: View {
             }
             Spacer(minLength: 8)
             if session.sourceURL != nil {
-                Button(action: onEdit) { Label(L("Edit"), systemImage: "slider.horizontal.below.rectangle") }
-                    .controlSize(.small)
+                Button(action: onEdit) { Label(L("Edit"), systemImage: EditButtonIcon.name(for: session)).labelStyle(.titleAndIcon) }
+                    .buttonStyle(.borderedProminent).controlSize(.small).fixedSize()
                     .help(L("Make a project from this file and edit it (⌘E). The file itself is never changed."))
             }
             Button(action: onClose) { Label(L("Close"), systemImage: "xmark.circle") }
-                .controlSize(.small)
+                .controlSize(.small).fixedSize()
                 .help(L("Close this file and go back to the playlists (⇧⌘W)"))
                 .accessibilityLabel(L("Close"))
         }

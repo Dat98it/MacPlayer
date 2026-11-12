@@ -153,7 +153,7 @@ public enum Timecode {
 
     public static func format(_ t: MediaTime, frameRate: FrameRate) -> String {
         let idx = t.frameIndex(frameRate: frameRate)
-        let fps = Int64((frameRate.framesPerSecond).rounded())
+        let fps = max(1, Int64((frameRate.framesPerSecond).rounded()))      // never 0 (a rate under half a frame a second)
         let f = idx % fps
         let totalSec = idx / fps
         return String(format: "%02d:%02d:%02d:%02d", totalSec / 3600, (totalSec % 3600) / 60, totalSec % 60, f)
@@ -169,7 +169,7 @@ public enum Timecode {
         if parts.count == 4 {
             guard let fr = frameRate, let h = Int64(parts[0]), let m = Int64(parts[1]), let s = Int64(parts[2]), let f = Int64(parts[3]),
                   h >= 0, (0..<60).contains(m), (0..<60).contains(s), f >= 0 else { return nil }
-            let fps = Int64(fr.framesPerSecond.rounded())
+            let fps = max(1, Int64(fr.framesPerSecond.rounded()))
             guard f < fps else { return nil }
             return MediaTime.frameStart(index: (h * 3600 + m * 60 + s) * fps + f, frameRate: fr)
         }

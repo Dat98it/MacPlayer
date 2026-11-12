@@ -1486,3 +1486,26 @@
 
 /* 0.15.1 */
 "Paste or type a link here (⌘V), e.g. https://example.com/video.mp4" = "Dán hoặc gõ link vào đây (⌘V), ví dụ https://example.com/video.mp4";
+
+/* 0.16: sounds and animated pictures */
+"%d sounds" = "%d bản âm thanh";
+"Choose a sound file." = "Hãy chọn một file âm thanh.";
+"How do you want to edit “%@”?" = "Bạn muốn chỉnh sửa “%@” theo cách nào?";
+"It is an animation of %d frames (%.1f s). The original file is never changed. Next you choose where to save the project." = "Đây là ảnh động %d khung hình (%.1f giây). File gốc không bao giờ bị thay đổi. Tiếp theo bạn chọn nơi lưu dự án.";
+"Make a video project from the sound “%@”?" = "Tạo dự án video từ âm thanh “%@”?";
+"Only the first frame is saved in this format. Choose GIF or PNG to keep the animation." = "Định dạng này chỉ lưu khung hình đầu. Chọn GIF hoặc PNG để giữ ảnh động.";
+"Paused" = "Tạm dừng";
+"Photo Project…" = "Dự án ảnh…";
+"Photo project: colour, crop, text and logos on every frame, saved as a GIF or an animated PNG." = "Dự án ảnh: chỉnh màu, cắt khung, thêm chữ và logo trên mọi khung hình, lưu ra GIF hoặc PNG động.";
+"Playing the sound “%@”" = "Đang phát âm thanh “%@”";
+"Preparing “%@”…" = "Đang chuẩn bị “%@”…";
+"Saved as an animated PNG: all %d frames, every colour, see-through edges kept." = "Lưu thành PNG động: đủ %d khung hình, giữ mọi màu và phần trong suốt.";
+"Sound relinked. Check that the timing of your clips is still right." = "Đã liên kết lại âm thanh. Hãy kiểm tra thời gian các clip còn đúng không.";
+"The sound goes on the timeline with its cover picture: cut it, fade it, add music, text and pictures, then save it as a video or as sound only (.m4a)." = "Âm thanh được đặt lên timeline cùng ảnh bìa: cắt, làm nhỏ dần, thêm nhạc, chữ và ảnh, rồi lưu thành video hoặc chỉ âm thanh (.m4a).";
+"Video Project…" = "Dự án video…";
+"Video project: a timeline with music, transitions and effects, saved as a video (MP4)." = "Dự án video: timeline với nhạc, chuyển cảnh và hiệu ứng, lưu thành video (MP4).";
+"Relink sound" = "Liên kết lại âm thanh";
+"Add sound" = "Thêm âm thanh";
+"Sound Only (.m4a)" = "Chỉ âm thanh (.m4a)";
+"Save only the sound of the whole timeline, with its fades, effects and music, as an .m4a file." = "Chỉ lưu âm thanh của cả timeline (kèm làm nhỏ/to dần, hiệu ứng và nhạc) thành file .m4a.";
+"MacPlayer plays and edits the formats macOS supports: MP4 and MOV videos (H.264, HEVC), MP3, M4A, FLAC, WAV and Ogg sounds, and common pictures. MKV, WebM, AVI and WMA are not supported." = "MacPlayer phát và chỉnh sửa các định dạng macOS hỗ trợ: video MP4, MOV (H.264, HEVC), âm thanh MP3, M4A, FLAC, WAV, Ogg và các loại ảnh thông dụng. MKV, WebM, AVI và WMA chưa được hỗ trợ.";

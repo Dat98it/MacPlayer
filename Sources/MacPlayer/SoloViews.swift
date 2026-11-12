@@ -17,10 +17,10 @@ struct SoloHeader: View {
     private var remote: RemoteSource? { session.remote }
     private var icon: String {
         if let r = remote { return r.kind == .stream ? "dot.radiowaves.left.and.right" : r.kind == .photo ? "photo" : "link" }
-        if session.isPhoto { return "photo" }
-        return session.info?.hasVideo == false ? "waveform" : "film"
+        if session.isPhoto { return session.photoAnimation != nil ? "photo.stack" : "photo" }
+        return session.isSoundOnly ? "music.note" : "film"
     }
-    private var tint: Color { remote != nil ? .teal : session.isPhoto ? .orange : .accentColor }
+    private var tint: Color { remote != nil ? .teal : session.isPhoto ? .orange : session.isSoundOnly ? .pink : .accentColor }
     private var name: String {
         if let r = remote { return r.displayName }
         return session.sourceURL?.lastPathComponent ?? session.project.name
@@ -43,7 +43,8 @@ struct SoloHeader: View {
             }
             .layoutPriority(1)
             Spacer(minLength: 12)
-            if let r = remote { linkActions(r) } else if session.localFileURL != nil { fileActions }
+            // The buttons keep their whole width; a long name is the one that gets shorter (a 120-character song name squeezed "Edit" to "E").
+            Group { if let r = remote { linkActions(r) } else if session.localFileURL != nil { fileActions } }.fixedSize()
             moreMenu
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
@@ -54,8 +55,9 @@ struct SoloHeader: View {
     // MARK: A file of the person's
 
     @ViewBuilder private var fileActions: some View {
-        Button(action: onEdit) { Label(L("Edit"), systemImage: "slider.horizontal.below.rectangle") }
-            .controlSize(.small)
+        // The bar's main action, in the accent colour, with an icon of what editing it means (see `EditButtonIcon`).
+        Button(action: onEdit) { Label(L("Edit"), systemImage: EditButtonIcon.name(for: session)).labelStyle(.titleAndIcon) }
+            .buttonStyle(.borderedProminent).controlSize(.small)
             .help(L("Make a project from this file and edit it (⌘E). The file itself is never changed."))
     }
 
@@ -136,6 +138,14 @@ private struct SummaryLine: View {
             Text(session.mediaSummary).font(.system(size: 11)).foregroundColor(.secondary).lineLimit(1).truncationMode(.tail)
         }
     }
+}
+
+/// The icon of the "Edit" button: scissors for a video or a sound (it goes on a timeline to be cut and put together), a magic wand for a
+/// photo (colour, crop, effects). Only symbols this macOS has: `pencil.and.scissors` does not exist and showed no icon at all (0.16.1).
+@MainActor
+enum EditButtonIcon {
+    static func name(for s: EditorSession) -> String { s.isPhoto ? "wand.and.stars" : "scissors" }
+    static let all = ["scissors", "wand.and.stars"]
 }
 
 struct SoloBadge: View {
@@ -249,7 +259,7 @@ enum LinkActions {
         guard let app = NSApp.delegate as? AppDelegate, let w = app.controllers.first(where: { $0.session === s }) else { return }
         let at = s.player.currentTime, playing = s.player.isPlaying
         Task {
-            guard await w.openSolo(url: file), let fresh = w.session, !fresh.isPhoto else { return }
+            guard await w.openSolo(url: file, autoplay: false), let fresh = w.session, !fresh.isPhoto else { return }
             if at > .zero { await fresh.player.seek(to: at) }
             if playing { fresh.player.play() }
         }

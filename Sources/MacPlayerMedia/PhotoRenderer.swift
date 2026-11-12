@@ -104,11 +104,16 @@ public enum PhotoExporter {
         return base.applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: k, kCIInputAspectRatioKey: 1]).clampedToExtent().cropped(to: CGRect(origin: .zero, size: size))
     }
 
-    /// An animation, with the same edit on every frame, written as an animated GIF. Frames are drawn and written one at a time.
+    /// An animation, with the same edit on every frame, written as an animated GIF or (0.16) an animated PNG, which keeps every colour and
+    /// see-through edges. Frames are drawn and written one at a time.
     @discardableResult
     static func exportAnimation(source: URL, animation: PhotoLoader.Animation, look: VideoLook, overlays: [TextOverlay], logos: [PhotoLogo], options: PhotoExportOptions, to destination: URL) throws -> (width: Int, height: Int) {
-        guard let dest = CGImageDestinationCreateWithURL(destination as CFURL, UTType.gif.identifier as CFString, animation.frameCount, nil) else { throw PhotoError.cannotWrite("GIF cannot be written on this Mac") }
-        CGImageDestinationSetProperties(dest, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: animation.loopCount]] as CFDictionary)
+        let png = options.format == .png
+        guard let dest = CGImageDestinationCreateWithURL(destination as CFURL, (png ? UTType.png : UTType.gif).identifier as CFString, animation.frameCount, nil) else {
+            throw PhotoError.cannotWrite("\(png ? "Animated PNG" : "GIF") cannot be written on this Mac")
+        }
+        if png { CGImageDestinationSetProperties(dest, [kCGImagePropertyPNGDictionary: [kCGImagePropertyAPNGLoopCount: animation.loopCount]] as CFDictionary) }
+        else { CGImageDestinationSetProperties(dest, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: animation.loopCount]] as CFDictionary) }
         var size = (width: 0, height: 0)
         for i in 0..<animation.frameCount {
             let cg = try PhotoLoader.frame(url: source, index: i, maxPixel: nil)
@@ -119,7 +124,8 @@ public enum PhotoExporter {
             guard let out = PhotoRenderer.cgImage(edited, colorSpace: cg.colorSpace) else { throw PhotoError.cannotWrite("a frame could not be drawn") }
             size = (out.width, out.height)
             let delay = animation.delays[i]
-            CGImageDestinationAddImage(dest, out, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay, kCGImagePropertyGIFUnclampedDelayTime: delay]] as CFDictionary)
+            if png { CGImageDestinationAddImage(dest, out, [kCGImagePropertyPNGDictionary: [kCGImagePropertyAPNGDelayTime: delay, kCGImagePropertyAPNGUnclampedDelayTime: delay]] as CFDictionary) }
+            else { CGImageDestinationAddImage(dest, out, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay, kCGImagePropertyGIFUnclampedDelayTime: delay]] as CFDictionary) }
         }
         guard CGImageDestinationFinalize(dest) else { throw PhotoError.cannotWrite("the file could not be completed") }
         return size
@@ -129,7 +135,7 @@ public enum PhotoExporter {
     @discardableResult
     public static func export(source: URL, look: VideoLook, overlays: [TextOverlay], layers: [OverlayClip] = [], options: PhotoExportOptions, to destination: URL) throws -> (width: Int, height: Int) {
         let logos = PhotoLogo.load(layers)
-        if options.format == .gif, let animation = PhotoLoader.animation(url: source) { return try exportAnimation(source: source, animation: animation, look: look, overlays: overlays, logos: logos, options: options, to: destination) }
+        if options.format == .gif || options.format == .png, let animation = PhotoLoader.animation(url: source) { return try exportAnimation(source: source, animation: animation, look: look, overlays: overlays, logos: logos, options: options, to: destination) }
         let loaded = try PhotoLoader.full(url: source)
         var base = loaded.image
         // A size limit is applied to the picture first, so the work is done on fewer pixels.

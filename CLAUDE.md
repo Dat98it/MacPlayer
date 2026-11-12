@@ -5,7 +5,7 @@ It is kept in the repository on purpose, at the maintainer's request. When you c
 
 ## 1. What this is
 
-**MacPlayer** (formerly *MacVideo*; old project files `.macvideo` still open) is a free (MIT) macOS app to **play, organise and edit videos and photos**,
+**MacPlayer** (formerly *MacVideo*; old project files `.macvideo` still open) is a free (MIT) macOS app to **play, organise and edit videos, photos and sounds**,
 all on the Mac: no account, no telemetry, and no network use except opening a web link the person pastes (0.15, File ▸ Open Link…; the only network code is
 `LinkFetcher`/`Download` and AVPlayer playing that link). It is built with **SwiftPM only (no Xcode project, no Xcode installation, only the
 Command Line Tools)**, Swift 6 toolchain with `swiftLanguageVersions: [.v5]`, macOS 15+, arm64 tested (Intel is not tested). No third-party libraries
@@ -79,6 +79,7 @@ Other launch flags: `--selftest <dir with demo.mp4>` (real-app flows A–N, prin
 | `MACPLAYER_ONLY_SWITCH=1`, `MACPLAYER_SWITCH_MEDIA=a\|b\|c`, `MACPLAYER_SWITCH_PROJECT=<copy.macplayer>`, `MACPLAYER_SWITCH_PLAYING=1`, `MACPLAYER_SWITCH_CLICKS=1`, `MACPLAYER_SWITCH_DEBUG=1` | `--selftest`: run only flow G1 (switching between filters, transitions and colour in a window), with these videos or a copy of this project (copied again into the work folder; only its media is read), while playing; CLICKS clicks the tiles through the window (only works when the app is the active one, which a background run is not) |
 | `MACPLAYER_ONLY_DRAG=1`, `MACPLAYER_DRAG_PROJECT=<copy.macplayer>` | `--selftest`: only flow G7 (how smooth a drag on the picture is) |
 | `MACPLAYER_ONLY_LINK=1`, `MACPLAYER_LINK_BASE=http://127.0.0.1:<port>`, `MACPLAYER_LINK_LIVE=1`, `MACPLAYER_SHOTS=<dir>` | `--selftest`: only flow G8 (solo windows, links). Links need `Scripts/link_test_server.py <files> <port>` (Range, HEAD, failing routes); LIVE needs an ffmpeg live HLS in `<files>/live`; SHOTS writes window pictures. Without LINK_BASE only the solo part runs (it is also in the full run) |
+| `MACPLAYER_ONLY_SOUND=1`, `MACPLAYER_SOUND_MEDIA=<dir>` | `--selftest`: only flow G9 (sounds and animated pictures: solo windows, playlists, projects, sound-only export); the dir adds real MP3/M4A/FLAC/APNG/WebP files |
 | `MACPLAYER_ONLY_CANVAS=1` | `--selftest`: only flows G4 (text/shapes/pictures put and moved on the picture) and G5 (several selected, groups, locks, keys) |
 | `MACPLAYER_ONLY_WORKSPACE=1`, `MACPLAYER_LIBRARY_TAB=media\|audio\|text\|filters\|transitions` | `--selftest`: only flows G2 (video editor workspace, drag-and-drop) and G3 (photo project workspace); start the library on that tab (snapshots) |
 | `MACPLAYER_LAYOUT=list\|grid\|tree`, `MACPLAYER_TREE_FILES=list\|grid`, `MACPLAYER_PREVIEW_SCALE=0.75…3` | start with that sidebar setup (sandbox only) |
@@ -122,6 +123,7 @@ macplayer-probe (CLI)            ──►  both
 | Layers / animation | `Core/Overlays.swift` (`OverlayClip`, `OverlayTransform`, `OverlayKeyframe`, animation maths), `Easing.swift`, `Motion.swift`, `Elements.swift` (text/shape/sticker + `ElementAnimator`), `Transition.swift`, `App/InspectorLayers.swift`, `InspectorTransitions.swift`, `InspectorAnimation.swift`, `OverlayManipulator.swift` |
 | Audio | `Core/SoundClips.swift`, `VolumeEnvelope.swift` (+`VolumeCurve`), `SoundFX.swift`, `Media/NoiseReducer.swift`, `SoundFXRenderer.swift`, `AudioAnalysis.swift`, `App/InspectorAudio.swift`, `EditorSession+Sounds.swift`, `VoiceRecorder.swift` |
 | Time tools | `Core/SpeedRamp.swift`, `App/EditorSession+Timing.swift` (speed ramps, freeze frame, reverse via `ReverseRenderer`) |
+| Sounds as media (0.16) | `Media/AudioCover.swift`, `App/NowPlayingView.swift`, `EditorSession.madeSource`, `addSoundsToTimeline`, `exportTimelineSound` |
 | Photos | `Media/PhotoLoader.swift`, `PhotoRenderer.swift`, `App/EditorSession+Photo.swift`, `PhotoHostView.swift`, `PhotoCropOverlay.swift`, `InspectorPhotoExport.swift` |
 | Subtitles / speech | `Core/Subtitles.swift`, `SubtitleBuilder.swift`, `Media/SpeechTranscriber.swift` (on-device) |
 | Localisation | `App/Support.swift` (`L()`, `LF()`), `Resources/{en,vi}.lproj/Localizable.strings`, `Scripts/check_localization.py` |
@@ -221,6 +223,42 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.16.1 Checked on real songs.** `AudioCover` copies MP3 as it is too (AAC/ALAC/MP3; decoded samples identical, checked at 5 points of
+a 79-min mix) and writes the cover once every `pictureEvery` = 5 s with a key picture every `keyEvery` = 15 (79 min: 21 s / 596 MB → 4.3 s /
+113 MB). Such a video is 0.2 fps: `Timecode.format`/`parse` clamp fps to ≥ 1 and `MediaInfo.frameRateForStepping` falls back to 30 under
+1 fps — it divided by zero and **crashed** the editor window (G9 now shows the sound project in a window; the check was shown to crash
+without the fix). Ogg Opus/Vorbis play on macOS 27 (`AudioFiles` + link lists; `OggS` sniff); WMA is refused (`MediaLink` unsupported).
+Animated pictures as layers: `StillClip.makeLayer` = HEVC-with-alpha video (`*.alpha.mov`), added by `addAnimatedLayer` as a video layer
+with `stillOf`; resolve/relink remake it. Solo/viewer Edit buttons: `.fixedSize()` (a long name squeezed "Edit" to "E"),
+`EditButtonIcon` (scissors / wand.and.stars; `pencil.and.scissors` does not exist on macOS 27 and showed no icon). `reopen(at:)` seeks
+before showing. `openSolo(url:autoplay:)` starts videos and sounds at once (Finder/Open/Recent); `LinkActions.openSaved` passes false. `macplayer-probe cover <sound> <dir>` times a cover. G9: `MACPLAYER_REAL_SOUNDS=<dir of copies>`; G8 plays sound links
+(`/song.mp3`, `/voice.opus`, `/soundnoext` = FLAC as octet-stream, in `Scripts/link_test_server.py`).
+
+**0.16.0 Sounds and animated pictures.**
+- *Core:* `MediaKind.audio` (`MediaFiles.kind` → video / image / audio; `AudioFiles.candidateExtensions` in `MediaBin.swift`), so playlists, folder
+  scans and solo windows take sounds; `PlaylistItem.isAudio`. `ProjectRules.canAdd` lets a video project take sounds (they become clips).
+  `SourceRef.soundOf` (optional, like `stillOf`): a sound on the main track; `mediaPath = stillOf ?? soundOf ?? path`, `isMade`.
+  `PhotoFormat.keepsAnimation` (GIF and PNG). `MediaLink.sniff` knows fLaC / WAVE / AIFF / caff / ftypM4A.
+- *Media:* `AudioCover` — `info(of:)` (title/artist/album/artwork from common metadata), `picture(for:)` (1920×1080 cover: artwork on a
+  blurred copy, or a card whose colours come from the title hash, `palette(for:)`), `make(from:)` = H.264 1 fps cover video + the sound
+  (AAC/ALAC copied, anything else decoded and written as **Apple Lossless**), cached in `macplayer-covers` (temp), named by path|size|date.
+  `StillClip.make` now makes an **animated** video for GIF/APNG/WebP animations (`makeAnimated`: frames at their own delays, repeated to ≥60 s,
+  ≤1280 px; cache name includes `|anim`), `defaultLength(for:)` (whole animation, repeated to ~3 s when shorter), `isMade(url)` (inside the
+  stills/covers folders). `CompositionBuilder` treats made videos as fps 1 (never sets the pace; forces the compositor). `PhotoExporter`
+  writes an **animated PNG** when the format is PNG and the source is animated. `AudioExporter.exportTimeline` = whole timeline's sound
+  (CompositionBuilder with `frameAccurate: true`, video tracks removed, AppleM4A preset with the audio mix).
+- *App:* `NowPlayingView.swift` (`EditorSession.isSoundOnly`, `NowPlayingModel`; Core Image–blurred backdrop, not a SwiftUI blur, which
+  window snapshots miss) lies over the picture of a viewer whose file has no picture (`ContentViewController.soundCover`, a
+  `PassThroughHostingView`); the "audio only" notice is gone; solo windows of sounds use `MainWindowController.soundPicture` 800×450.
+  `EditorSession.madeSource(for:)` (sound → `AudioCover`, picture → `StillClip`) is used by `makeProjectFile` and `addSoundsToTimeline`;
+  `place()` puts sounds on the main track only when the timeline is empty (else under it as music). `resolveSources` remakes a missing cover,
+  `relinkSource` handles `soundOf`. `splitAtPlayhead` does not snap to frames on made sources (a cover has one picture a second).
+  `editViewedFile`: an animation asks Photo Project / Video Project. Export window: **Sound Only (.m4a)** (`exportTimelineSound`). Playlist
+  rows show sound artwork; Info.plist declares `public.audio`.
+- Self-test **G9** (`SelfTestSound.swift`, `MACPLAYER_ONLY_SOUND=1`, `MACPLAYER_SOUND_MEDIA=<dir>` with song.mp3 (tags+cover), plain.m4a, hi.flac,
+  long.mp3, anim.gif, anim.png (APNG), anim.webp — made with ffmpeg/gif2webp; without it a WAV and a GIF are made). Media tests
+  `AudioCoverTests`, `AnimationClipTests`; Core `SoundMediaTests`. `PhotoAnimationTests.anOtherFormatKeepsTheFirstFrameOnly` now uses TIFF.
+
 **0.15.2 Edit menu fix.** `buildMenu`'s `add(..., target: nil)` fell back to `self`, so Cut/Copy/Paste/Select All, Close and Minimize went to
 the app delegate (which has none of those): ⌘X ⌘C ⌘V ⌘A ⌘W ⌘M did nothing in any field or window, since long before 0.15. Now
 `add(..., firstResponder: true)` leaves the target nil. The self-test's "every menu item has something to act on" let it through (it only
@@ -347,7 +385,9 @@ for a frame at most once per 1/60 s (`refreshFrameSoon`; a photo re-renders at m
 
 ## 10. Known limits and ideas not done
 
-Not done / not verified: links on real internet servers and CDNs (tested only against a local test server, incl. HLS VOD/live made by ffmpeg); links
+Not done / not verified (0.16): WMA sounds (macOS does not play them); animated WebP cannot be *written* (saved as GIF/APNG instead);
+a sound's cover is fixed at 16:9 1920×1080; real songs with embedded artwork (the maintainer's have none; artwork tested with ffmpeg-made
+MP3s); listening by ear. Earlier: links on real internet servers and CDNs (tested only against a local test server, incl. HLS VOD/live made by ffmpeg); links
 dragged onto a window (only pasting); keyframes for colour and crop; Intel Macs; other players reading fast-cut files; real VoiceOver/Reduce Motion audit; Vision on real people (only stubbed in tests);
 UI flows with a real mouse; notarization and Developer ID (needs a paid account: never fake it); tags/collections for the library; picture-in-picture window; custom shortcuts;
 undo for playlist operations. HDR video: colour changes apply to the stored HDR values without tone mapping (the UI warns). Voice-effect copies are made when an effect is chosen

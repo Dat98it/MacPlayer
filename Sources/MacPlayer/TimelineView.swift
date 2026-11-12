@@ -280,7 +280,7 @@ final class TimelineView: NSView {
             var label = c.name.isEmpty ? PathUtil.fileName(of: s.project.source(c.sourceID)?.mediaPath ?? "") : c.name
             if c.look.speed != 1 { label = String(format: "%g× ", c.look.speed) + label }
             if c.look.effects.filter != .none { label = "✦ " + label }
-            if s.project.source(c.sourceID)?.stillOf != nil { label = "🖼 " + label }
+            if s.project.source(c.sourceID)?.stillOf != nil { label = "🖼 " + label } else if s.project.source(c.sourceID)?.soundOf != nil { label = "♪ " + label }
             if c.audio.muted { label = "🔇 " + label }
             if isMissing { label = "⚠︎ " + L("Missing") + " · " + label }
             let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 10, weight: .semibold), .foregroundColor: NSColor.white]

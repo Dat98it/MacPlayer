@@ -11,13 +11,18 @@ public struct SourceRef: Codable, Identifiable, Equatable, Sendable {
     /// Set when this source is a photo on the main track: the photo's path. `path` is then the short video MacPlayer made of it in its own
     /// folder, which is made again from the photo when it is gone (0.10).
     public var stillOf: String?
+    /// Set when this source is a sound (a song, a recording) on the main track: the sound's path. `path` is then the video MacPlayer made
+    /// of it in its own folder (its cover picture with the sound), which is made again from the sound when it is gone (0.16).
+    public var soundOf: String?
 
-    public init(id: UUID = UUID(), path: String, bookmark: Data? = nil, fingerprint: FileFingerprint? = nil, info: MediaInfo? = nil, stillOf: String? = nil) {
-        self.id = id; self.path = path; self.bookmark = bookmark; self.fingerprint = fingerprint; self.info = info; self.stillOf = stillOf
+    public init(id: UUID = UUID(), path: String, bookmark: Data? = nil, fingerprint: FileFingerprint? = nil, info: MediaInfo? = nil, stillOf: String? = nil, soundOf: String? = nil) {
+        self.id = id; self.path = path; self.bookmark = bookmark; self.fingerprint = fingerprint; self.info = info; self.stillOf = stillOf; self.soundOf = soundOf
     }
 
-    /// The file the person chose: the photo for a photo clip, else the video.
-    public var mediaPath: String { stillOf ?? path }
+    /// The file the person chose: the photo for a photo clip, the sound for a sound clip, else the video.
+    public var mediaPath: String { stillOf ?? soundOf ?? path }
+    /// A source MacPlayer made from another file (a photo or a sound), rather than a video of the person's.
+    public var isMade: Bool { stillOf != nil || soundOf != nil }
 }
 
 /// Normalised crop rectangle (0...1, origin top-left) in the source picture.

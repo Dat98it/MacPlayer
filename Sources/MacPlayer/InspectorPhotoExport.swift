@@ -17,6 +17,11 @@ struct PhotoExportPane: View {
         switch f { case .jpeg: return "JPEG"; case .png: return "PNG"; case .heic: return "HEIC"; case .tiff: return "TIFF"; case .gif: return "GIF" }
     }
 
+    /// PNG reads "Animated PNG" when it will keep the animation.
+    private func label(_ f: PhotoFormat) -> String {
+        f == .png && session.photoAnimation != nil ? "APNG" : Self.formatName(f)
+    }
+
     /// GIF is offered for animations (and for a GIF that is open); the others for every picture.
     private var formats: [PhotoFormat] { PhotoFormat.allCases.filter { $0 != .gif || session.photoAnimation != nil || session.sourceURL?.pathExtension.lowercased() == "gif" } }
 
@@ -37,18 +42,21 @@ struct PhotoExportPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ToolCard(title: L("Format"), icon: "photo") {
-                Picker("", selection: opt({ $0.format }, { $0.format = $1 })) { ForEach(formats, id: \.self) { Text(Self.formatName($0)).tag($0) } }
+                Picker("", selection: opt({ $0.format }, { $0.format = $1 })) { ForEach(formats, id: \.self) { Text(label($0)).tag($0) } }
                     .pickerStyle(.segmented).labelsHidden()
                 if d.options.format.isLossy {
                     SliderRow(title: L("Quality"), value: opt({ $0.quality }, { $0.quality = $1 }), range: 0.3...1, format: "%.2f")
-                } else if d.options.format == .gif {
-                    Text(session.photoAnimation != nil ? LF("The animation is saved with the same edit on all %d frames.", session.photoAnimation?.frameCount ?? 0) : L("GIF keeps at most 256 colours."))
+                } else if let a = session.photoAnimation, d.options.format.keepsAnimation {
+                    Text(d.options.format == .png ? LF("Saved as an animated PNG: all %d frames, every colour, see-through edges kept.", a.frameCount)
+                                                  : LF("The animation is saved with the same edit on all %d frames.", a.frameCount) + " " + L("GIF keeps at most 256 colours."))
                         .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                } else if d.options.format == .gif {
+                    Text(L("GIF keeps at most 256 colours.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text(L("Saved without losing any quality; the file is larger.")).font(.caption).foregroundColor(.secondary)
                 }
-                if session.photoAnimation != nil, d.options.format != .gif {
-                    Label(L("Only the first frame is saved in this format. Choose GIF to keep the animation."), systemImage: "info.circle").font(.caption).foregroundColor(.orange).fixedSize(horizontal: false, vertical: true)
+                if session.photoAnimation != nil, !d.options.format.keepsAnimation {
+                    Label(L("Only the first frame is saved in this format. Choose GIF or PNG to keep the animation."), systemImage: "info.circle").font(.caption).foregroundColor(.orange).fixedSize(horizontal: false, vertical: true)
                 }
                 Picker(L("Longest side"), selection: opt({ $0.maxLongEdge }, { $0.maxLongEdge = $1 })) { ForEach(sizes, id: \.1) { Text($0.1).tag($0.0) } }
                 if let r = resultSize { Text(r).font(.caption).foregroundColor(.secondary) }

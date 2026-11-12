@@ -17,7 +17,16 @@ extension EditorSession {
                 // A photo clip: its little video is made again from the photo when it is gone (another Mac, a cleaned folder, a moved photo).
                 var p = URL(fileURLWithPath: photo)
                 if !env.fs.exists(p.path), let moved = Bookmarks.resolve(src.bookmark), env.fs.exists(moved.path) { p = moved }
-                if !env.fs.exists(url.path), env.fs.exists(p.path), let made = try? await StillClip.make(from: p) { url = made }
+                if !env.fs.exists(url.path), env.fs.exists(p.path) {
+                    // A moving sticker on a layer has a see-through video of its own (0.16).
+                    let made = url.path.hasSuffix(".alpha.mov") ? try? await StillClip.makeLayer(from: p) : try? await StillClip.make(from: p)
+                    if let made { url = made }
+                }
+            } else if let sound = src.soundOf {
+                // A sound clip (0.16): its video is made again from the sound in the same way.
+                var p = URL(fileURLWithPath: sound)
+                if !env.fs.exists(p.path), let moved = Bookmarks.resolve(src.bookmark), env.fs.exists(moved.path) { p = moved }
+                if !env.fs.exists(url.path), env.fs.exists(p.path), let made = try? await AudioCover.make(from: p) { url = made }
             } else if !env.fs.exists(url.path), let moved = Bookmarks.resolve(src.bookmark), env.fs.exists(moved.path) { url = moved }
             if env.fs.exists(url.path), let info = try? await MediaProbe.probe(url: url) { urls[src.id] = url; infs[src.id] = info }
         }
@@ -46,7 +55,9 @@ extension EditorSession {
         if project.source(id)?.stillOf != nil {
             guard ImageFiles.isCandidate(url.path) else { flash(L("Choose a photo."), error: true); return }
             do {
-                let video = try await StillClip.make(from: url)
+                let layer = project.source(id)?.path.hasSuffix(".alpha.mov") == true
+                var video = try await StillClip.make(from: url)
+                if layer, let moving = try await StillClip.makeLayer(from: url) { video = moving }
                 let new = try await MediaProbe.probe(url: video)
                 edit("Relink photo", refreshPreview: false) { p in
                     guard let i = p.sources.firstIndex(where: { $0.id == id }) else { return }
@@ -55,6 +66,24 @@ extension EditorSession {
                 sourceURLs[id] = video; infos[id] = new
                 await loadPlayer(at: player.effectiveTime)
                 flash(L("Photo relinked."))
+            } catch { flash((error as? CustomStringConvertible)?.description ?? error.localizedDescription, error: true) }
+            return
+        }
+        // A sound clip whose sound moved (0.16).
+        if project.source(id)?.soundOf != nil {
+            guard AudioFiles.isCandidate(url.path) || VideoFiles.isCandidate(url.path) else { flash(L("Choose a sound file."), error: true); return }
+            do {
+                let video = try await AudioCover.make(from: url)
+                let new = try await MediaProbe.probe(url: video)
+                edit("Relink sound", refreshPreview: false) { p in
+                    guard let i = p.sources.firstIndex(where: { $0.id == id }) else { return }
+                    p.sources[i].path = video.path; p.sources[i].soundOf = url.path; p.sources[i].bookmark = Bookmarks.make(url); p.sources[i].info = new
+                }
+                sourceURLs[id] = video; infos[id] = new; peaksBySource[id] = nil
+                if project.sources.first?.id == id { sourceURL = video; info = new }
+                loadWaveforms()
+                await loadPlayer(at: player.effectiveTime)
+                flash(L("Sound relinked. Check that the timing of your clips is still right."))
             } catch { flash((error as? CustomStringConvertible)?.description ?? error.localizedDescription, error: true) }
             return
         }
@@ -107,6 +136,36 @@ extension EditorSession {
         await loadPlayer(at: player.effectiveTime)
     }
 
+    /// Puts sounds (songs, recordings) on the main track as clips of their own (0.16), each played from a video MacPlayer makes of it: its
+    /// cover picture with the sound. The sound file is only read. Used when a sound starts a project (an empty timeline).
+    func addSoundsToTimeline(_ urls: [URL], at index: Int? = nil) async {
+        guard isProject, canEdit else { return }
+        var insertAt: Int? = index ?? project.timeline.lastIndex { selectedClipIDs.contains($0.id) }.map { $0 + 1 }
+        var lastAdded: UUID?
+        for url in urls {
+            flash(LF("Preparing “%@”…", url.lastPathComponent))
+            do {
+                guard let made = try await Self.madeSource(for: url) else { continue }
+                var newID: UUID?
+                edit("Add sound", refreshPreview: false) { p in
+                    MediaBin.add([url.path], to: &p.mediaBin, bookmark: { _ in made.ref.bookmark })
+                    // The same sound twice uses the same video.
+                    let sid = p.sources.first(where: { $0.soundOf.map { PathUtil.same($0, url.path) } ?? false })?.id ?? { p.sources.append(made.ref); return made.ref.id }()
+                    let c = TimelineClip(sourceID: sid, sourceStart: .zero, sourceEnd: made.length, name: url.deletingPathExtension().lastPathComponent)
+                    p.timeline.insert(c, at: min(insertAt ?? p.timeline.count, p.timeline.count))
+                    newID = c.id
+                }
+                if let sid = project.timeline.first(where: { $0.id == newID })?.sourceID { sourceURLs[sid] = URL(fileURLWithPath: project.source(sid)?.path ?? made.ref.path); infos[sid] = made.info }
+                if let i = insertAt { insertAt = i + 1 }
+                lastAdded = newID
+            } catch { flash(LF("“%@” cannot be opened.", url.lastPathComponent) + " " + ((error as? CustomStringConvertible)?.description ?? error.localizedDescription), error: true) }
+        }
+        if sourceURL == nil, let f = project.sources.first { sourceURL = sourceURLs[f.id]; info = infos[f.id] }
+        loadWaveforms()
+        if let id = lastAdded { selectedClipIDs = [id] }
+        await loadPlayer(at: player.effectiveTime)
+    }
+
     /// Puts photos on the main track at `index` (else after the selected clip, else at the end), each for a few seconds. A photo is played
     /// from a short silent video MacPlayer makes of it in its own folder; the photo itself is only read.
     func addPhotosToTimeline(_ urls: [URL], at index: Int? = nil) async {
@@ -123,7 +182,7 @@ extension EditorSession {
                     MediaBin.add([url.path], to: &p.mediaBin, bookmark: { _ in ref.bookmark })
                     // The same photo twice uses the same little video.
                     let sid = p.sources.first(where: { $0.stillOf.map { PathUtil.same($0, url.path) } ?? false })?.id ?? { p.sources.append(ref); return ref.id }()
-                    let length = MediaTime(seconds: min(StillClip.defaultLength, info.duration.seconds), timescale: 600)
+                    let length = MediaTime(seconds: min(StillClip.defaultLength(for: url), info.duration.seconds), timescale: 600)
                     let c = TimelineClip(sourceID: sid, sourceStart: .zero, sourceEnd: length, name: url.deletingPathExtension().lastPathComponent)
                     p.timeline.insert(c, at: min(insertAt ?? p.timeline.count, p.timeline.count))
                     newID = c.id
@@ -154,7 +213,10 @@ extension EditorSession {
         guard isProject, let loc = TimelineMap.locate(project.timeline, at: player.currentTime) else { return }
         Task {
             var t = loc.sourceTime
-            if let url = sourceURLs[project.timeline[loc.index].sourceID], let f = try? await FrameLocator.frame(url: url, at: t + MediaTime(value: 1, timescale: 6000)) { t = f.time }
+            // On a video, the cut lands on the frame shown. A sound, a photo or an animation is played from a video MacPlayer made with
+            // few pictures (one a second for a sound): snapping to those would move the cut by up to a second, so it stays where it is.
+            let sid = project.timeline[loc.index].sourceID
+            if project.source(sid)?.isMade != true, let url = sourceURLs[sid], let f = try? await FrameLocator.frame(url: url, at: t + MediaTime(value: 1, timescale: 6000)) { t = f.time }
             var ok = false
             edit("Split clip") { p in ok = TimelineEditor.split(&p.timeline, clipID: loc.clipID, atSourceTime: t) }
             if ok, let second = project.timeline.firstIndex(where: { $0.id == loc.clipID }).map({ project.timeline[$0 + 1].id }) { selectedClipIDs = [second] }
@@ -224,6 +286,42 @@ extension EditorSession {
     }
 
     // MARK: Exporting the whole timeline as one new file
+
+    /// Does anything on the timeline make a sound (for "Export Sound Only")?
+    var timelineHasSound: Bool {
+        project.timeline.contains { infos[$0.sourceID]?.hasAudio == true } || !project.soundClips.isEmpty
+            || project.overlayClips.contains { $0.isVideo && $0.sourceID.flatMap { infos[$0] }?.hasAudio == true }
+    }
+
+    /// The sound of the whole timeline as a new .m4a in `folder` (0.16): the clips' sound with their volume, fades and effects, the music
+    /// and voice under them and the layers' sound. Never over an existing file, never over a source; checked before it is put in place.
+    func exportTimelineSound(folder: String, name: String?) {
+        guard isProject, !project.timeline.isEmpty else { return }
+        let p = project
+        let missing = Set(p.timeline.map(\.sourceID)).filter { sourceURLs[$0] == nil }
+        if !missing.isEmpty { reportMissing(); return }
+        let pieces = p.timeline.compactMap { c in sourceURLs[c.sourceID].map { RenderPiece(sourceURL: $0, span: c.sourceSpan, look: c.look, audio: c.audio) } }
+        let layers = p.layerSpecs(resolve: { sourceURLs[$0]?.path })
+        let sounds = resolvedSounds()
+        let base = (name?.trimmingCharacters(in: .whitespaces)).flatMap { $0.isEmpty ? nil : $0 } ?? p.name
+        var dest = PathUtil.join(folder, base + ".m4a"), n = 2
+        while env.fs.exists(dest) { dest = PathUtil.join(folder, "\(base) \(n).m4a"); n += 1 }
+        if let why = OriginalGuard.problem(writing: dest) { flash(why, error: true); return }
+        let seconds = p.timelineDuration.seconds, saver = env.saver
+        flash(L("Exporting audio…"))
+        Task {
+            do {
+                let outcome = try await saver.saveCopy(sourcePath: pieces.first?.sourceURL.path ?? "", destination: dest, overwrite: false, estimatedBytes: Int64(seconds * 32_000) + 100_000,
+                    produce: { temp in try await AudioExporter.exportTimeline(pieces: pieces, layers: layers, soundClips: sounds, to: URL(fileURLWithPath: temp)) },
+                    verify: { temp in
+                        let info = try await MediaProbe.probe(url: URL(fileURLWithPath: temp))
+                        guard info.hasAudio, info.duration.seconds > 0 else { throw SaveError.verificationFailed("no audio track") }
+                    })
+                lastSoundExport = URL(fileURLWithPath: outcome.finalPath)
+                flash(LF("Saved %@", PathUtil.fileName(of: outcome.finalPath)))
+            } catch { flash((error as? CustomStringConvertible)?.description ?? error.localizedDescription, error: true) }
+        }
+    }
 
     func planProjectExport(_ r: ExportRequest) throws -> (jobs: [ExportJob], batch: BatchPlan) {
         let p = project

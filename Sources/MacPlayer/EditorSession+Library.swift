@@ -171,7 +171,11 @@ extension EditorSession {
                 await addPhotosToTimeline(photos, at: videos.isEmpty ? videoIndex : nil)
             }
         }
-        if !sounds.isEmpty { await addSounds(urls: sounds, kind: .music, at: time) }
+        if !sounds.isEmpty {
+            // Nothing on the main track yet: a sound starts the video there, under its cover picture (0.16). Else it goes under the picture.
+            if project.timeline.isEmpty, videos.isEmpty, photos.isEmpty, lane == nil { await addSoundsToTimeline(sounds) }
+            else { await addSounds(urls: sounds, kind: .music, at: time) }
+        }
     }
 
     // MARK: Looks dropped on a clip

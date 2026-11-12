@@ -88,7 +88,9 @@ public enum CompositionBuilder {
             guard let vSrc = try await a.loadTracks(withMediaType: .video).first else { throw BuildError.noVideoTrack(piece.sourceURL.lastPathComponent) }
             let transform = try await vSrc.load(.preferredTransform)
             let natural = try await vSrc.load(.naturalSize)
-            let fps = Double(try await vSrc.load(.nominalFrameRate))
+            // A video MacPlayer made of a photo, an animation or a sound is paced like a photo: it never sets the frame rate.
+            let made = StillClip.isMade(piece.sourceURL)
+            let fps = made ? 1 : Double(try await vSrc.load(.nominalFrameRate))
             let duration = MediaTime(try await a.load(.duration))
             var span = piece.span
             var gridLength: CMTime?

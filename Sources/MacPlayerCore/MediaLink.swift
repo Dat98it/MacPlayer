@@ -82,10 +82,10 @@ public enum MediaLink {
         public init(url: URL, kind: Kind, notes: [Note] = []) { self.url = url; self.kind = kind; self.notes = notes }
     }
 
-    public static let videoExtensions: Set<String> = ["mp4", "m4v", "mov", "qt", "3gp", "3g2", "m4a", "mp3", "aac", "wav", "aif", "aiff", "caf", "ts"]
+    public static let videoExtensions: Set<String> = ["mp4", "m4v", "mov", "qt", "3gp", "3g2", "m4a", "mp3", "aac", "wav", "aif", "aiff", "caf", "ts", "flac", "m4b", "ogg", "oga", "opus"]
     public static let streamExtensions: Set<String> = ["m3u8", "m3u"]
     public static let photoExtensions: Set<String> = ["jpg", "jpeg", "png", "gif", "heic", "heif", "webp", "tif", "tiff", "bmp", "avif"]
-    public static let unsupportedExtensions: Set<String> = ["mkv", "webm", "avi", "flv", "wmv", "rm", "rmvb", "ogv", "mpd"]
+    public static let unsupportedExtensions: Set<String> = ["mkv", "webm", "avi", "flv", "wmv", "rm", "rmvb", "ogv", "mpd", "wma"]
 
     /// Reads what someone typed or pasted.
     public static func check(_ text: String) -> Verdict {
@@ -155,13 +155,18 @@ public enum MediaLink {
         return nil
     }
 
-    static let unsupportedTypes: Set<String> = ["video/webm", "video/x-matroska", "video/x-msvideo", "video/x-flv", "video/x-ms-wmv", "audio/webm", "audio/ogg", "video/ogg"]
+    static let unsupportedTypes: Set<String> = ["video/webm", "video/x-matroska", "video/x-msvideo", "video/x-flv", "video/x-ms-wmv", "audio/webm", "video/ogg", "audio/x-ms-wma"]
 
     /// What the first bytes of a file say it is, for a server that only says "some bytes" (`application/octet-stream`):
     /// the kind and the type to tell the player.
     public static func sniff(_ b: [UInt8]) -> (kind: Kind, mime: String)? {
         func at(_ i: Int, _ s: String) -> Bool { let u = Array(s.utf8); return b.count >= i + u.count && Array(b[i..<(i + u.count)]) == u }
-        if at(4, "ftyp") { return (.video, at(8, "qt  ") ? "video/quicktime" : "video/mp4") }
+        if at(4, "ftyp") { return (.video, at(8, "qt  ") ? "video/quicktime" : (at(8, "M4A ") || at(8, "M4B ") ? "audio/mp4" : "video/mp4")) }
+        if at(0, "fLaC") { return (.video, "audio/flac") }
+        if at(0, "OggS") { return (.video, "audio/ogg") }
+        if at(0, "RIFF") && at(8, "WAVE") { return (.video, "audio/wav") }
+        if at(0, "FORM") && (at(8, "AIFF") || at(8, "AIFC")) { return (.video, "audio/aiff") }
+        if at(0, "caff") { return (.video, "audio/x-caf") }
         if at(4, "moov") || at(4, "mdat") || at(4, "wide") || at(4, "free") { return (.video, "video/quicktime") }
         if at(0, "#EXTM3U") { return (.stream, "application/vnd.apple.mpegurl") }
         if at(0, "ID3") || (b.count >= 2 && b[0] == 0xFF && (b[1] & 0xE0) == 0xE0) { return (.video, "audio/mpeg") }

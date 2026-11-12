@@ -9,7 +9,8 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 ROOT = sys.argv[1]
 PORT = int(sys.argv[2])
 TYPES = {".mp4": "video/mp4", ".m3u8": "application/vnd.apple.mpegurl", ".ts": "video/mp2t", ".jpg": "image/jpeg",
-         ".png": "image/png", ".html": "text/html; charset=utf-8"}
+         ".png": "image/png", ".html": "text/html; charset=utf-8", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".flac": "audio/flac",
+         ".opus": "audio/ogg", ".ogg": "audio/ogg", ".wav": "audio/wav", ".gif": "image/gif", ".webp": "image/webp"}
 
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -23,6 +24,7 @@ class H(BaseHTTPRequestHandler):
         if path == "/headless.mp4": return ("nohead", os.path.join(ROOT, "clip.mp4"))
         if path == "/noext": return ("file", os.path.join(ROOT, "noext"), "video/mp4")
         if path == "/octet": return ("file", os.path.join(ROOT, "noext"), "application/octet-stream")
+        if path == "/soundnoext": return ("file", os.path.join(ROOT, "hi.flac"), "application/octet-stream")
         if path == "/watch": return ("file", os.path.join(ROOT, "page.html"), "text/html; charset=utf-8")
         if path == "/fake.mp4": return ("file", os.path.join(ROOT, "page.html"), "text/html; charset=utf-8")
         if path == "/slow.mp4": return ("slow", os.path.join(ROOT, "clip.mp4"))

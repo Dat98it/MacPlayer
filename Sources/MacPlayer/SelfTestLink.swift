@@ -45,8 +45,9 @@ extension SelfTest {
         if let item = app.allMenuItems.first(where: { $0.action == #selector(AppDelegate.toggleSidebar(_:)) }) {
             check(!app.validateMenuItem(item) || app.active !== w, "View ▸ Show / Hide Playlists does nothing here")
         }
-        s.player.play(); try? await Task.sleep(nanoseconds: 1_200_000_000)
-        check(s.player.currentTime.seconds > 0.4, "it plays (\(String(format: "%.2f", s.player.currentTime.seconds)) s)")
+        // As from Finder: it starts playing by itself (0.16.1), without a click on Play.
+        await waitFor(4) { s.player.currentTime.seconds > 0.4 }
+        check(s.player.isPlaying && s.player.currentTime.seconds > 0.4, "it starts playing by itself (\(String(format: "%.2f", s.player.currentTime.seconds)) s)")
         s.player.pause()
         shoot(w, "solo-video")
 
@@ -153,6 +154,20 @@ extension SelfTest {
             await waitFor(timeout) { !m.opening && (m.error != nil || soloWindows().contains { w in !before.contains { $0 === w } }) }
             if let e = m.error { return (nil, e) }
             return (await newSolo(after: before, 2), nil)
+        }
+
+        // Sounds (0.16): an MP3 and an Opus by name, a FLAC the server only calls "some bytes" (known from its first bytes). They play
+        // with their cover in the picture's place. Run only when the server has them (`song.mp3`, `voice.opus`, `hi.flac` in its folder).
+        for (path, name) in [("/song.mp3", "an MP3 link"), ("/voice.opus", "an Opus link"), ("/soundnoext", "a sound link without a name")] {
+            let (sw, serr) = await openLink(path)
+            if serr?.contains("404") == true || serr?.lowercased().contains("not found") == true { print("SKIP  \(name): not on the test server"); continue }
+            guard let sw, let ss = sw.session else { check(false, "\(name) opens (\(serr ?? "no window"))"); continue }
+            await waitFor(10) { ss.player.isReady && ss.player.duration > .zero }
+            ss.player.play(); await waitFor(5) { ss.player.currentTime.seconds > 0.5 }
+            check(ss.isSoundOnly && sw.contentController.soundCover != nil && ss.player.currentTime.seconds > 0.5 && ss.player.failure == nil,
+                  "\(name) plays with its cover (\(String(format: "%.2f", ss.player.currentTime.seconds)) s)")
+            ss.player.pause()
+            _ = sw.closeVideo()
         }
 
         // A video file.

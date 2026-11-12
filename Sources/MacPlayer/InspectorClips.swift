@@ -148,7 +148,7 @@ struct TimelinePane: View {
 
     private func relink(_ id: UUID) {
         let p = NSOpenPanel(); p.allowsMultipleSelection = false
-        p.allowedContentTypes = session.project.source(id)?.stillOf != nil ? [.image] : [.movie, .video]
+        p.allowedContentTypes = session.project.source(id)?.stillOf != nil ? [.image] : session.project.source(id)?.soundOf != nil ? [.audio] : [.movie, .video]
         if p.runModal() == .OK, let u = p.url { Task { await session.relinkSource(id, to: u) } }
     }
 }

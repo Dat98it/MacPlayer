@@ -296,10 +296,11 @@ enum TestPhoto {
         #expect((0..<4).allSatisfy { TestPhoto.pixel(try! PhotoLoader.frame(url: out, index: $0, maxPixel: nil), 20, 20).r < 30 }, "and none shows the red half that was cut away")
     }
 
+    /// (PNG kept the first frame only until 0.16; it is now saved as an animated PNG, see `AnimationClipTests`.)
     @Test func anOtherFormatKeepsTheFirstFrameOnly() throws {
         let url = try gif("still", delays: [0.1, 0.1, 0.1, 0.1])
-        var o = PhotoExportOptions(); o.format = .png
-        let out = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("macplayer-anim-still-\(UUID().uuidString.prefix(6)).png")
+        var o = PhotoExportOptions(); o.format = .tiff
+        let out = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("macplayer-anim-still-\(UUID().uuidString.prefix(6)).tiff")
         defer { try? FileManager.default.removeItem(at: out) }
         try PhotoExporter.export(source: url, look: VideoLook(), overlays: [], options: o, to: out)
         #expect(PhotoLoader.animation(url: out) == nil)

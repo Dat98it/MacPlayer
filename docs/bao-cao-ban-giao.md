@@ -589,6 +589,56 @@ Với dự án ảnh, mỗi sự kiện còn vẽ lại cả tấm ảnh.
 - Chưa có số đo "trước khi sửa" bằng chính G7: nó được viết cùng lúc với phần sửa. Nhận định "mỗi lần dời một lần ghi dự án" ở trên lấy từ đọc mã.
 
 
+## Bản 0.16.1: kiểm chứng tiếp trên nhạc thật, sửa lỗi, tự phát khi mở từ Finder (12/11/2026)
+
+**Yêu cầu:** làm tiếp các mục "chưa kiểm chứng" của 0.16.0; nút "Sửa" bị cắt khi tên file dài và cần biểu tượng hợp hơn; file mở từ Finder phải tự phát.
+
+**Nhạc thật:** chép (không đụng bản gốc) 3 bài từ `/Volumes/Lexar 256GB/Nhạc` (3:42, 3:35 và bản nonstop 79 phút, 107 MB) và `_mau.m4a` từ thư mục Nhạc; so từng byte trước/sau: không đổi.
+- Phát lẻ, phát gần cuối bài, tạo dự án, phát dự án gần cuối: đạt cả 4 file. Các file này không có ảnh bìa và thẻ tên, nên app dùng tên file (dài, có dấu) trên thẻ màu.
+- **Vấn đề tìm thấy:** bài 79 phút tạo dự án mất 21 giây và tạo file tạm 596 MB, vì MP3 bị giải mã thành Apple Lossless và ảnh bìa ghi mỗi giây một hình.
+- **Sửa:** MP3 được chép nguyên vẹn như AAC; ảnh bìa ghi 5 giây một hình. Kết quả còn 4,3 giây và 113 MB. Âm thanh giải mã từ video phụ được so với bản gốc ở 5 vị trí: lệch 0 mẫu, sai khác 0.
+- **Lỗi sập tìm thấy khi chụp cửa sổ thật:** dự án nhạc mở trong cửa sổ bị sập ngay (đồng hồ thời gian chia cho 0, vì video bìa chỉ 0,2 hình/giây). Self-test trước đó không mở dự án trong cửa sổ nên không thấy. Đã sửa ở gốc (tốc độ khung dưới 1 hình/giây không còn làm tròn về 0), G9 giờ mở dự án trong cửa sổ, và đã xác nhận bước test mới **sập** khi tạm bỏ phần sửa.
+
+**Ogg/Opus/WMA:** thử thật trên macOS 27: Ogg Opus và Ogg Vorbis **phát được** (trước đó tôi ghi nhầm là không), nên đã thêm vào danh sách; WMA và WebM không đọc được, app báo rõ.
+
+**Ảnh động làm lớp phủ:** trước đây đứng yên. Nay app làm video có nền trong suốt (HEVC kèm kênh alpha). Test pixel: khung 1 đỏ, khung 2 xanh đúng thời điểm; quanh hình vẫn thấy video bên dưới.
+
+**Link nhạc** qua máy chủ thử: MP3, Opus, và FLAC không đuôi (máy chủ báo "dữ liệu nhị phân", app nhận ra từ vài byte đầu) đều phát kèm thẻ bìa.
+
+**Nút "Sửa":** trước đây bị cắt còn "E" khi tên file dài; nay giữ đủ chiều rộng. Biểu tượng: kéo (video, nhạc), đũa phép (ảnh), nền màu nhấn. Lần đầu tôi dùng biểu tượng `pencil.and.scissors` không có trên macOS này nên nút không có hình; đã thay và thêm kiểm tra biểu tượng có tồn tại.
+
+**Tự phát khi mở lẻ:** video và nhạc mở từ Finder, Tệp ▸ Mở…, Mở gần đây tự phát ngay (ảnh động và link vốn đã tự chạy). "Mở" bản đã tải từ link vẫn giữ trạng thái như lúc xem link.
+
+**Khác:** đổi tên video đang xem: cửa sổ mở lại đúng thời điểm trước khi hiện (trước đó hiện ở 0:00 một chút rồi mới tua; self-test bắt được một lần).
+
+**Kiểm thử:** Core 416, Media 242 đạt. G9 (nhạc, ảnh động, nhạc thật): 60 đạt. G8 với máy chủ thử (gồm link nhạc): 77 đạt. Self-test đầy đủ: 505 đạt, 1 lỗi đã biết (phím tắt hệ thống trùng). Chụp cửa sổ thật (`screencapture -l`, bản sandbox, tiếng Việt): nút Sửa đủ chữ với tên file dài, video tự phát (00:00:03:09 sau 4 giây), dự án nhạc 79 phút phát và hiện ảnh bìa.
+
+**Chưa kiểm chứng:** nghe bằng tai; nhạc thật có ảnh bìa nhúng (nhạc của bạn không có); mở bằng Finder thật (`open_with_test.py`) chưa chạy vì MacPlayer thật của bạn đang mở; nhấp chuột thật.
+
+## Bản 0.16.0: phát nhạc, ảnh động; dự án từ nhạc và ảnh động (12/11/2026)
+
+**Yêu cầu:** phát được file nhạc (mp3, m4a…) và tạo dự án chỉnh sửa từ chúng; phát được ảnh động (.gif, .apng, .webp…) và tạo dự án chỉnh sửa.
+
+**Hiện trạng trước khi làm:**
+- File nhạc không nằm trong danh sách đuôi file của app: không mở, không vào danh sách phát được. Phần dựng hình bắt buộc mọi clip phải có hình nên không tạo được dự án từ nhạc.
+- Ảnh động đã phát được và có dự án ảnh (lưu GIF), nhưng: lưu PNG chỉ ra khung đầu; đặt GIF lên timeline video thì đứng hình ở khung đầu.
+
+**Đã làm:**
+- *Phát âm thanh:* loại media mới "âm thanh" (mp3, m4a, m4b, aac, wav, aiff, caf, flac, ac3…). Mở lẻ có cửa sổ riêng (800 × 450) hiện ảnh bìa, tên bài, nghệ sĩ, album đọc từ thẻ; file không bìa thì có thẻ màu cố định theo tên bài. Vào danh sách phát cùng video và ảnh, ô danh sách hiện ảnh bìa. Link âm thanh (kể cả link không đuôi: nhận biết FLAC/WAV/AIFF/CAF/M4A từ vài byte đầu) cũng hiện như vậy.
+- *Dự án từ âm thanh:* app làm một video phụ trong thư mục tạm riêng: ảnh bìa 1920 × 1080, mỗi giây một hình, kèm **nguyên âm thanh** (AAC/Apple Lossless chép thẳng; MP3, FLAC, WAV… giải mã rồi ghi Apple Lossless, không mất dữ liệu; đã kiểm bằng so mẫu âm thanh). Clip trên timeline là cả bài, dùng được mọi công cụ clip. Tách clip không bị làm tròn về giây (đã sửa: trước đó lệnh tách dò khung hình của video phụ, mỗi giây chỉ một khung). Video phụ mất thì tự làm lại khi mở dự án. Cửa sổ Xuất có thêm **Chỉ âm thanh (.m4a)**: lưu âm thanh cả timeline kèm fade, hiệu ứng, nhạc nền, theo đúng quy tắc lưu an toàn.
+- *Ảnh động:* đặt lên timeline dự án video thì chạy thật (video phụ giữ đúng thời gian từng khung, lặp đủ 60 giây; clip mặc định dài một vòng, vòng ngắn thì lặp tới khoảng 3 giây). Nút Chỉnh sửa hỏi **Dự án ảnh** hay **Dự án video**. Dự án ảnh lưu PNG thì ra **PNG động** (mặc định cho nguồn APNG). WebP động lưu ra GIF hoặc PNG động vì macOS không ghi được WebP.
+
+**Kiểm thử:**
+- Test Media mới: video bìa từ WAV (lossless, 2 kênh riêng, dài đúng, file gốc không đổi), từ AAC (chép thẳng), file không có tiếng bị từ chối, ảnh bìa (có ảnh và không có ảnh), xuất timeline có clip âm thanh (30 fps, không bị 1 fps), xuất riêng âm thanh cả timeline (có fade, không ghi đè), GIF/APNG thành video chuyển động đúng thời gian, APNG lưu ra APNG.
+- Test Core mới `SoundMediaTests`. Toàn bộ: Core 414, Media 241 đạt.
+- Self-test G9 trong app thật (sandbox) với MP3 có thẻ và bìa, M4A, FLAC 96 kHz, MP3 3 phút, GIF, APNG, WebP do ffmpeg/gif2webp tạo: 34 mục đạt (gồm cả G8 phần cửa sổ riêng: 25 đạt). Self-test đầy đủ: 495 đạt, 1 lỗi đã biết (phím tắt hệ thống trùng). File âm thanh và ảnh dùng trong test được so từng byte trước/sau: không đổi.
+
+**Chưa kiểm chứng:**
+- Nhạc thật của người dùng (thẻ lạ, bìa lớn, file rất dài như podcast 2–3 giờ: video phụ khi đó chiếm chỗ bằng bản Apple Lossless).
+- OGG, Opus, WMA: macOS không phát được nên app báo không mở được.
+- Ảnh động đặt làm *lớp phủ* (không phải dải chính) vẫn là ảnh tĩnh.
+- Nghe bằng tai và nhìn trên màn hình thật: chỉ kiểm qua ảnh chụp cửa sổ và số liệu.
+
 ## Bản 0.15.2: sửa ⌘V/⌘C/⌘X/⌘A không hoạt động (12/11/2026)
 
 **Người bảo trì báo:** copy link `.mp4`, bấm vào ô nhập rồi ấn ⌘V nhưng không dán được (bản 0.15.1).

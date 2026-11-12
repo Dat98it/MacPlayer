@@ -90,6 +90,8 @@ extension EditorSession {
               let w = props[kCGImagePropertyPixelWidth] as? Double, let h = props[kCGImagePropertyPixelHeight] as? Double, w > 0, h > 0 else {
             flash(LF("“%@” cannot be opened.", url.lastPathComponent), error: true); return
         }
+        // An animation (a moving sticker, 0.16) is played from a see-through video MacPlayer makes of it, as a video layer.
+        if PhotoLoader.animation(url: url) != nil { await addAnimatedLayer(url, at: start0, lane: wanted, center: center, aspect: w / h); return }
         let total = project.timelineDuration
         let start = min(start0 ?? player.currentTime, max(.zero, total - MediaTime(seconds: 0.5)))
         let length = min(MediaTime(seconds: 5), total - start)
@@ -107,6 +109,35 @@ extension EditorSession {
         }
         if let made { select(.layer(made)) }; activeTool = .layers
         await loadPlayer(at: player.effectiveTime)
+    }
+
+    /// An animated picture as a layer: at least 5 seconds (the animation repeats), at least once through, top right like a picture layer.
+    func addAnimatedLayer(_ url: URL, at start0: MediaTime?, lane wanted: Int?, center: CGPoint?, aspect: Double) async {
+        do {
+            guard let video = try await StillClip.makeLayer(from: url), let anim = PhotoLoader.animation(url: url) else { return }
+            let info = try await MediaProbe.probe(url: video)
+            let total = project.timelineDuration
+            let start = min(start0 ?? player.currentTime, max(.zero, total - MediaTime(seconds: 0.5)))
+            let want = MediaTime(seconds: min(info.duration.seconds, max(5, anim.duration)), timescale: 600)
+            let length = min(want, total - start)
+            guard let lane = freeLane(wanted, start: start, duration: length) else {
+                flash(L("All three layers are busy at this point. Move the playhead or remove a layer."), error: true); return
+            }
+            let ref = SourceRef(path: video.path, bookmark: Bookmarks.make(url), fingerprint: nil, info: info, stillOf: url.path)
+            var made: OverlayClip?
+            edit("Add layer", refreshPreview: false) { p in
+                MediaBin.add([url.path], to: &p.mediaBin, bookmark: { _ in ref.bookmark })
+                let sid = p.sources.first(where: { $0.stillOf.map { PathUtil.same($0, url.path) } ?? false && $0.path == video.path })?.id ?? p.addSource(ref)
+                var t = OverlayTransform(); t.width = 0.18
+                OverlayEditor.apply(.topRight, to: &t, outputAspect: outputAspect, layerAspect: aspect)
+                if let center { t.centerX = Double(center.x); t.centerY = Double(center.y) }
+                let c = OverlayClip(name: url.deletingPathExtension().lastPathComponent, kind: .video(sourceID: sid, sourceStart: .zero, sourceEnd: length), lane: lane, start: start, duration: length, transform: t)
+                p.overlayClips.append(c); made = c
+            }
+            if let c = made, let sid = c.sourceID { sourceURLs[sid] = video; infos[sid] = info; select(.layer(c.id)) }
+            activeTool = .layers
+            await loadPlayer(at: player.effectiveTime)
+        } catch { flash(LF("“%@” cannot be opened.", url.lastPathComponent) + " " + ((error as? CustomStringConvertible)?.description ?? error.localizedDescription), error: true) }
     }
 
     /// A logo on a photo project: a picture laid over the photo, always shown. The photo itself stays the only photo of the project.

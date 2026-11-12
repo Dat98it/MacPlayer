@@ -12,7 +12,7 @@ public enum ProjectRules {
         case photoAlreadyChosen
         /// Several photos for a photo project at once.
         case onePhotoOnly
-        /// Neither a video nor a picture.
+        /// Neither a video, a picture nor a sound.
         case notMedia
     }
 
@@ -23,7 +23,8 @@ public enum ProjectRules {
         if kinds.contains(where: { $0 == nil }) { return .notMedia }
         switch p.kind {
         case .video:
-            return kinds.allSatisfy { $0 == .video } ? .ok : .wrongKind(project: .video)
+            // A sound on its own becomes a clip with a cover picture (0.16).
+            return kinds.allSatisfy { $0 == .video || $0 == .audio } ? .ok : .wrongKind(project: .video)
         case .photo:
             guard kinds.allSatisfy({ $0 == .image }) else { return .wrongKind(project: .photo) }
             if paths.count > 1 { return .onePhotoOnly }

@@ -23,6 +23,13 @@ final class RowThumbs {
         let size = large ? CGSize(width: 480, height: 270) : CGSize(width: 120, height: 68)
         let still: CGImage?
         if ImageFiles.isCandidate(path) { still = await Task.detached(priority: .utility) { PhotoLoader.thumbnail(url: URL(fileURLWithPath: path), maxSize: size) }.value }
+        else if AudioFiles.isCandidate(path) {
+            // A sound: its cover, when it has one (0.16).
+            still = await Task.detached(priority: .utility) { () -> CGImage? in
+                guard let d = await AudioCover.info(of: URL(fileURLWithPath: path)).artwork else { return nil }
+                return AudioCover.artworkImage(d, maxPixel: Int(max(size.width, size.height) * 2))
+            }.value
+        }
         else { still = try? await FrameGrabber.representativeImage(url: URL(fileURLWithPath: path), maxSize: size) }
         guard let cg = still else { return nil }
         let img = NSImage(cgImage: cg, size: .zero)
@@ -78,8 +85,8 @@ struct PlaylistSidebar: View {
     /// "Date created · Newest first", or nil for a list in the order the person arranged.
     /// "12 videos · 1:03:20", "40 photos", or "52 items · 1:03:20" for a mix.
     static func summary(_ p: Playlist) -> String {
-        let n = p.items.count, photos = p.items.filter(\.isImage).count
-        let what = photos == 0 ? LF("%d videos", n) : (photos == n ? LF("%d photos", n) : LF("%d items", n))
+        let n = p.items.count, photos = p.items.filter(\.isImage).count, sounds = p.items.filter(\.isAudio).count
+        let what = photos == 0 && sounds == 0 ? LF("%d videos", n) : (photos == n ? LF("%d photos", n) : (sounds == n ? LF("%d sounds", n) : LF("%d items", n)))
         return p.totalDuration > .zero ? what + " · " + Format.duration(p.totalDuration) : what
     }
 
@@ -119,7 +126,7 @@ struct PlaylistSidebar: View {
                 if all.isEmpty { Text(L("Nothing opened yet.")).foregroundColor(.secondary) }
                 else if urls.isEmpty { Text(LF("No recent file matches “%@”.", recentQuery.value)).foregroundColor(.secondary) }
                 ForEach(urls, id: \.self) { u in
-                    Label(u.lastPathComponent, systemImage: ProjectFile.isProject(u) ? "doc.text" : "film").lineLimit(1)
+                    Label(u.lastPathComponent, systemImage: ProjectFile.isProject(u) ? "doc.text" : AudioFiles.isCandidate(u.path) ? "music.note" : ImageFiles.isCandidate(u.path) ? "photo" : "film").lineLimit(1)
                         .help(u.path)
                         .onTapGesture(count: 2) { openURL(u) }.clickable()
                         .accessibilityAddTraits(.isButton)
@@ -808,7 +815,7 @@ struct PlaylistSidebar: View {
     }
 
     private func addFiles() {
-        let p = NSOpenPanel(); p.allowsMultipleSelection = true; p.canChooseDirectories = false; p.allowedContentTypes = [.movie, .video, .mpeg4Movie, .quickTimeMovie, .image]
+        let p = NSOpenPanel(); p.allowsMultipleSelection = true; p.canChooseDirectories = false; p.allowedContentTypes = [.movie, .video, .mpeg4Movie, .quickTimeMovie, .image, .audio]
         if p.runModal() == .OK { model.add(urls: p.urls) }
     }
 
@@ -856,7 +863,8 @@ struct RowThumb: View {
     var body: some View {
         ZStack {
             Rectangle().fill(Color.secondary.opacity(0.2))
-            if let i = h.image { Image(nsImage: i).resizable().aspectRatio(contentMode: .fill) } else { Image(systemName: "film").foregroundColor(.secondary) }
+            if let i = h.image { Image(nsImage: i).resizable().aspectRatio(contentMode: .fill) }
+            else { Image(systemName: AudioFiles.isCandidate(path) ? "music.note" : "film").foregroundColor(.secondary) }
         }.clipped().cornerRadius(3).task { h.image = await RowThumbs.shared.image(for: path, large: large) }.accessibilityHidden(true)
     }
 }

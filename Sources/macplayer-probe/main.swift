@@ -28,6 +28,19 @@ func run() async throws {
         if args.count > 7 { let wh = args[7].split(separator: "x").compactMap { Int($0) }; if wh.count == 2 { s.width = wh[0]; s.height = wh[1] } }
         try await SyntheticMedia.generate(to: url, spec: s)
         print("wrote \(url.path)")
+    case "cover":
+        // cover <sound> <out-dir>: the video MacPlayer makes of a sound for a project (0.16), timed, with its size. The sound is only read.
+        guard args.count >= 4 else { fail("cover <sound> <out-dir>") }
+        AudioCover.cacheFolder = URL(fileURLWithPath: args[3], isDirectory: true)
+        let src = URL(fileURLWithPath: args[2])
+        let t0 = Date()
+        let out = try await AudioCover.make(from: src)
+        let took = Date().timeIntervalSince(t0)
+        let size = ((try? FileManager.default.attributesOfItem(atPath: out.path))?[.size] as? NSNumber)?.int64Value ?? 0
+        let srcSize = ((try? FileManager.default.attributesOfItem(atPath: src.path))?[.size] as? NSNumber)?.int64Value ?? 0
+        let a = try await MediaProbe.probe(url: src), b = try await MediaProbe.probe(url: out)
+        print(String(format: "made %@ in %.1f s; %.1f MB (source %.1f MB); length %.3f s (source %.3f s); sound %@",
+                     out.lastPathComponent, took, Double(size) / 1e6, Double(srcSize) / 1e6, b.duration.seconds, a.duration.seconds, b.audio.first?.codec ?? "none"))
     case "info":
         guard args.count >= 3 else { fail("info <file>") }
         let info = try await MediaProbe.probe(url: URL(fileURLWithPath: args[2]))

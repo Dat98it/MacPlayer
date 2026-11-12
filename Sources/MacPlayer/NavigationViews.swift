@@ -105,7 +105,7 @@ struct PlaylistStartView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(L("Recent")).font(.headline)
                         ForEach(recents, id: \.self) { u in
-                            Button { openURL(u) } label: { Label(u.lastPathComponent, systemImage: ImageFiles.isCandidate(u.path) ? "photo" : "film").lineLimit(1) }.buttonStyle(.link)
+                            Button { openURL(u) } label: { Label(u.lastPathComponent, systemImage: ImageFiles.isCandidate(u.path) ? "photo" : AudioFiles.isCandidate(u.path) ? "music.note" : "film").lineLimit(1) }.buttonStyle(.link)
                         }
                     }.frame(maxWidth: 360, alignment: .leading).padding(.top, 6)
                 }

@@ -127,6 +127,8 @@ final class EditorSession: NSObject, ObservableObject {
     var photoFrameBases: [CIImage] = []
     @Published var photoFrames: [CGImage] = []
     @Published var photoPlaying = true
+    /// The last file "Export Sound Only" wrote (for the self-test).
+    var lastSoundExport: URL?
     /// Text the user typed in the "clip name" field before pressing add (kept with the session).
     /// MACPLAYER_START_TAB=effects opens the editing panel on that tool (a development aid for looking at a panel).
     @Published var activeTool: InspectorTab = ProcessInfo.processInfo.environment["MACPLAYER_START_TAB"].flatMap(InspectorTab.init(rawValue:)) ?? .clips
@@ -216,6 +218,12 @@ final class EditorSession: NSObject, ObservableObject {
             if kind == .photo {
                 let info = try PhotoLoader.info(url: url)
                 p.sources = [SourceRef(path: url.path, bookmark: Bookmarks.make(url), fingerprint: try? env.fs.fingerprint(url.path), info: info)]
+            } else if let made = try await madeSource(for: url) {
+                // A sound (0.16) or a picture (an animation moves) on the main track, played from a video MacPlayer makes of it.
+                p.sources = [made.ref]
+                MediaBin.add([url.path], to: &p.mediaBin, bookmark: { _ in made.ref.bookmark })
+                let clip = TimelineClip(sourceID: made.ref.id, sourceStart: .zero, sourceEnd: made.length, name: url.deletingPathExtension().lastPathComponent)
+                p.timeline = [clip]; p.activeClipID = clip.id
             } else {
                 let info = try await MediaProbe.probe(url: url)
                 guard info.hasVideo else { throw MediaProbeError.unreadable(L("This file has no picture.")) }
@@ -228,6 +236,25 @@ final class EditorSession: NSObject, ObservableObject {
         try env.projectStore.create(p, at: path)
         env.projects.register(path: path, opened: true)
         return try await openProject(path: path)
+    }
+
+    /// For a sound or a picture going on a video project's main track: the video MacPlayer makes of it (a cover with the sound; the photo,
+    /// or the animation repeated), as a source, with how long its clip is at first (the whole sound; a few seconds of a photo; an animation
+    /// played through). nil for a video, which is used as it is. A file that is only sound under a video's extension counts as a sound.
+    static func madeSource(for url: URL) async throws -> (ref: SourceRef, info: MediaInfo, length: MediaTime)? {
+        if ImageFiles.isCandidate(url.path) {
+            let video = try await StillClip.make(from: url)
+            let info = try await MediaProbe.probe(url: video)
+            let ref = SourceRef(path: video.path, bookmark: Bookmarks.make(url), fingerprint: nil, info: info, stillOf: url.path)
+            return (ref, info, MediaTime(seconds: min(StillClip.defaultLength(for: url), info.duration.seconds), timescale: 600))
+        }
+        var sound = AudioFiles.isCandidate(url.path)
+        if !sound, let probed = try? await MediaProbe.probe(url: url), !probed.hasVideo, probed.hasAudio { sound = true }
+        guard sound else { return nil }
+        let video = try await AudioCover.make(from: url)
+        let info = try await MediaProbe.probe(url: video)
+        let ref = SourceRef(path: video.path, bookmark: Bookmarks.make(url), fingerprint: nil, info: info, soundOf: url.path)
+        return (ref, info, info.duration)
     }
 
     /// A project rebuilt from its crash copy: the edits are back, and they are written into the project file at once.
@@ -318,7 +345,7 @@ final class EditorSession: NSObject, ObservableObject {
            let s = env.positions.position(for: PositionStore.key(path: url.path, size: info.fileSize)) { start = MediaTime(seconds: s) }
         await loadPlayer(at: start)
         loadWaveform()
-        if !info.hasVideo { notice = Notice(text: L("This file has audio only."), isError: false) }
+        // A sound shows its cover in the picture's place (NowPlayingView); it needs no message.
     }
 
     /// Changes the model without making an undo step or marking the project as edited.

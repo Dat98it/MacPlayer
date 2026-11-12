@@ -2,7 +2,7 @@
 
 Xem và chỉnh sửa **video lẫn ảnh**: cắt đoạn, ghép nhiều video, chỉnh màu chuyên nghiệp (đường cong, bánh xe màu, HSL, LUT), tách nền và mặt nạ, chuyển cảnh và keyframe, hiệu ứng giọng, chữ và hình dán, rồi xuất ngay trên Mac. Mọi xử lý diễn ra trên máy; không có tài khoản, không thu thập dữ liệu. Từ 0.15 app chỉ dùng mạng khi bạn tự dán một link video/ảnh để xem (Tệp ▸ Mở link…), ngoài ra không kết nối đi đâu.
 
-> **Trạng thái: bản 0.15.2 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
+> **Trạng thái: bản 0.16.1 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
 
 ## Yêu cầu
 
@@ -136,6 +136,18 @@ Mở một dự án video là thấy ngay bố cục quen thuộc của các app
     - **một** lựa chọn chất lượng (Tốt nhất, 4K, Full HD, HD, Nhẹ) thay cho "Chất lượng" và "Cỡ".
     - Video dọc 1080p là 1080 × 1920.
   - Ô Thư viện không còn nhấp nháy khi phát video.
+- **0.16.1:**
+  - Thử trên nhạc thật (bản sao từ thư mục Nhạc, có bản nonstop 79 phút): tạo dự án từ một bài 79 phút trước đây mất 21 giây và tạo file tạm 596 MB, nay mất khoảng 4 giây và 113 MB (âm thanh MP3 được chép nguyên vẹn, so mẫu âm thanh giống hệt bản gốc).
+  - Sửa lỗi **sập app** khi mở dự án làm từ nhạc trong cửa sổ (đồng hồ thời gian chia cho 0).
+  - Nút **Sửa** khi mở file lẻ không còn bị cắt khi tên file dài; biểu tượng mới: **kéo** cho video và nhạc, **đũa phép** cho ảnh; nút nổi bật bằng màu nhấn.
+  - Phát được nhạc **Ogg (Opus, Vorbis)**; WMA báo rõ là chưa hỗ trợ.
+  - **Ảnh động làm lớp phủ** (nhãn dán động GIF/APNG/WebP trên video) giờ chuyển động và giữ phần nền trong suốt.
+  - Đổi tên video đang mở: cửa sổ mở lại đúng chỗ đang xem, không còn nháy về 0:00.
+  - Video và nhạc mở lẻ (bấm đúp trong Finder, Tệp ▸ Mở…, Mở gần đây) **tự phát ngay**, không cần bấm Play.
+- **0.16.0:**
+  - **Phát nhạc và âm thanh** (MP3, M4A/AAC, FLAC, WAV, AIFF, CAF…): mở lẻ thì có cửa sổ riêng, hiện **ảnh bìa** của bài (hoặc thẻ màu có nốt nhạc nếu file không có bìa), tên bài, nghệ sĩ, album trên nền mờ lấy từ chính ảnh bìa. Âm thanh cũng vào được danh sách phát cùng video và ảnh (ô danh sách hiện ảnh bìa), và mở được từ link.
+  - **Dự án từ file âm thanh:** nút **Chỉnh sửa** (⌘E) tạo dự án video với bài hát là clip trên timeline, đi kèm ảnh bìa. Từ đó cắt, tách (đúng chỗ đầu phát, không bị làm tròn giây), làm nhỏ/to dần, chỉnh âm lượng, lọc ồn, hiệu ứng giọng, thêm nhạc, chữ, ảnh, chuyển cảnh rồi xuất **video** hoặc **chỉ âm thanh (.m4a)**. Thả một file âm thanh vào dự án video còn trống cũng tạo clip như vậy. Âm thanh được giữ nguyên chất lượng (AAC/Apple Lossless chép thẳng, định dạng khác ghi thành Apple Lossless không mất dữ liệu); file gốc chỉ được đọc.
+  - **Ảnh động** (GIF, PNG động/APNG, WebP động): **Chỉnh sửa** cho chọn **Dự án ảnh** (chỉnh màu, cắt, chữ, logo trên mọi khung, lưu GIF hoặc **PNG động**) hoặc **Dự án video** (ảnh động chạy trên timeline, xuất MP4). Ảnh động đặt lên timeline của dự án video giờ chuyển động thật (trước đây đứng yên ở khung đầu). Ảnh động PNG lưu ra mặc định vẫn là PNG động.
 - **0.15.2:** sửa lỗi **⌘V, ⌘C, ⌘X, ⌘A không hoạt động trong mọi ô nhập** (ô link, đổi tên, mã thời gian, gõ chữ trên khung hình…), và ⌘W (đóng cửa sổ), ⌘M (thu nhỏ) không làm gì: các mục menu này bị gửi nhầm cho phần điều khiển chung của app thay vì ô/cửa sổ đang dùng. Lỗi có từ trước 0.15.
 - **0.15.1:** hộp thoại Mở link bỏ nút "Dán": ô nhập link nhận bàn phím ngay khi mở, dán thẳng bằng ⌘V (hoặc chuột phải ▸ Dán); khi dán, dấu cách thừa và các dòng sau bị bỏ, link đang chọn được thay bằng link mới.
 - **0.15.0:**
@@ -202,13 +214,22 @@ MIT, xem file `LICENSE`. MacPlayer miễn phí, dùng và chia sẻ tự do.
 
 MacPlayer mở cả ảnh (JPEG, PNG, HEIC, TIFF, GIF, WebP, AVIF, ảnh RAW của máy ảnh…): kéo vào cửa sổ, mở từ menu, hoặc thêm vào danh sách phát chung với video.
 
-- **Xem:** vừa khung, thu phóng (kẹp hai ngón, ⌘ + cuộn, nút), kéo để di chuyển, nhấp đúp để phóng to 100%. Mũi tên trái/phải chuyển ảnh trong danh sách phát; Space bắt đầu/dừng trình chiếu (thời gian mỗi ảnh đặt trong Cài đặt). GIF, PNG động và WebP động được phát (có nút tạm dừng).
+- **Xem:** vừa khung, thu phóng (kẹp hai ngón, ⌘ + cuộn, nút), kéo để di chuyển, nhấp đúp để phóng to 100%. Mũi tên trái/phải chuyển ảnh trong danh sách phát; Space bắt đầu/dừng trình chiếu (thời gian mỗi ảnh đặt trong Cài đặt). GIF, PNG động và WebP động được phát (có nút tạm dừng). Từ 0.16 chúng còn làm được dự án video (ảnh động chạy trên timeline).
 - **Cắt:** khung cắt kéo trực tiếp trên ảnh (góc, cạnh, kéo bên trong để di chuyển, đường chia ba, hiện kích thước ảnh sẽ lưu), giữ tỉ lệ 1:1, 3:2, 4:5, 16:9…; khung luôn vẽ trên ảnh như đang hiển thị, kể cả khi đã xoay hoặc lật. Giá trị chính xác nằm trong mục "Giá trị chính xác".
 - **Chỉnh:** xoay, lật, khung, màu, 11 bộ lọc, làm nét/mờ/tối viền, chữ, hình khối và hình dán. Dùng chung bộ vẽ với video nên ảnh trên màn hình và ảnh lưu ra giống hệt nhau. Ảnh động: cùng một chỉnh sửa áp lên mọi khung.
-- **Lưu:** JPEG / PNG / HEIC / TIFF (và GIF cho ảnh động), chất lượng, giới hạn cạnh dài, tùy chọn bỏ vị trí GPS và thông tin máy ảnh. Luôn lưu thành ảnh mới, không bao giờ ghi đè file có sẵn và không bao giờ thay ảnh gốc. Ảnh được kiểm tra đọc lại được, đúng kích thước rồi mới đặt vào chỗ. Kích thước hiện trên màn hình đúng từng điểm ảnh với file được ghi.
+- **Lưu:** JPEG / PNG / HEIC / TIFF (và GIF cho ảnh động; ảnh động lưu PNG thành PNG động, giữ đủ màu và nền trong suốt, từ 0.16), chất lượng, giới hạn cạnh dài, tùy chọn bỏ vị trí GPS và thông tin máy ảnh. Luôn lưu thành ảnh mới, không bao giờ ghi đè file có sẵn và không bao giờ thay ảnh gốc. Ảnh được kiểm tra đọc lại được, đúng kích thước rồi mới đặt vào chỗ. Kích thước hiện trên màn hình đúng từng điểm ảnh với file được ghi.
 - **Dự án ảnh:** mọi chỉnh sửa ảnh nằm trong một dự án ảnh (một ảnh) tự lưu vào file `.macplayer`; có thể thêm **logo** (hình đặt lên ảnh, vẽ giống nhau trên màn hình và file lưu, kể cả mọi khung GIF). Nếu app tắt đột ngột sẽ được hỏi khôi phục.
 - Ảnh gốc không bao giờ bị sửa. Kiểm thử trên thư mục ảnh thật (2.542 ảnh JPEG/HEIC/PNG/WebP/AVIF): chỉ đọc, kiểm tra từng file và ngày giờ của cả thư mục trước/sau.
 
+
+## Nhạc và âm thanh (0.16.0)
+
+MacPlayer phát cả file âm thanh: MP3, M4A/AAC, ALAC, FLAC (kể cả 24-bit/96 kHz), WAV, AIFF, CAF, M4B, Ogg Opus/Vorbis… (định dạng macOS phát được; WMA chưa hỗ trợ).
+
+- **Nghe:** mở lẻ (bấm đúp trong Finder, Mở bằng, Tệp ▸ Mở…, link) là có cửa sổ riêng cỡ vừa phải. Chỗ của hình hiện ảnh bìa trong file, tên bài, nghệ sĩ, album, đọc từ thẻ ID3/iTunes; không có thẻ thì dùng tên file và một thẻ màu cố định theo tên bài. Ảnh bìa hơi thu nhỏ khi tạm dừng. Dưới cùng là dạng sóng để tua.
+- **Danh sách phát:** thả thư mục có nhạc lẫn video và ảnh vào là có đủ; ô danh sách hiện ảnh bìa, dòng tóm tắt ghi "n bản âm thanh" nếu toàn là âm thanh.
+- **Chỉnh sửa:** **Chỉnh sửa** (⌘E) → **Tạo dự án…** → chọn nơi lưu. App làm một video phụ trong thư mục riêng của nó (ảnh bìa 1920 × 1080, 5 giây một hình, + nguyên âm thanh: MP3/AAC/Apple Lossless được chép thẳng, định dạng khác được ghi thành Apple Lossless nên không mất gì). Bài 3 phút mất dưới 1 giây, bản mix 79 phút khoảng 4 giây. Video phụ mất thì app tự làm lại từ file âm thanh khi mở dự án. Trên timeline clip có dấu ♪ và dạng sóng; mọi công cụ của clip video đều dùng được. Xuất ra video (hình bìa + chữ/ảnh bạn thêm) hoặc chỉ âm thanh `.m4a` (Âm thanh ▸ Xuất chỉ âm thanh).
+- File âm thanh gốc không bao giờ bị sửa (self-test so từng byte trước/sau).
 
 ## Tạo danh sách phát mới
 

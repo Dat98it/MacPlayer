@@ -29,4 +29,20 @@ public enum AudioExporter {
         catch is CancellationError { try? FileManager.default.removeItem(at: output); throw ExportError.cancelled }
         catch { try? FileManager.default.removeItem(at: output); throw ExportError.sessionFailed(error.localizedDescription) }
     }
+
+    /// The sound of a whole timeline (0.16): every clip's sound with its volume, fades, noise removal and voice effect, the sounds under the
+    /// picture and the layers' sound, mixed as in the video export, written as an .m4a (AAC). The picture is not made at all.
+    public static func exportTimeline(pieces: [RenderPiece], layers: [LayerSpec] = [], soundClips: [SoundClip] = [], to output: URL) async throws {
+        if FileManager.default.fileExists(atPath: output.path) { throw ExportError.incompatible("The destination already exists.") }
+        let built = try await CompositionBuilder.build(pieces: pieces, includeAudio: true, layers: layers, soundClips: soundClips, frameAccurate: true)
+        let comp = built.composition
+        for t in comp.tracks(withMediaType: .video) { comp.removeTrack(t) }
+        guard comp.tracks(withMediaType: .audio).contains(where: { !$0.segments.isEmpty }) else { throw ExportError.incompatible("The timeline has no sound.") }
+        guard let session = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetAppleM4A) else { throw ExportError.incompatible("AAC export is not available.") }
+        session.audioMix = built.audioMix
+        session.timeRange = CMTimeRange(start: .zero, duration: built.duration)
+        do { try await session.export(to: output, as: .m4a) }
+        catch is CancellationError { try? FileManager.default.removeItem(at: output); throw ExportError.cancelled }
+        catch { try? FileManager.default.removeItem(at: output); throw ExportError.sessionFailed(error.localizedDescription) }
+    }
 }

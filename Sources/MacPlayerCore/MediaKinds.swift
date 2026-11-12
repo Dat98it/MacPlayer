@@ -1,7 +1,8 @@
 import Foundation
 
-/// What a file in a playlist or on disk is for the player: something that plays, or a picture to look at and edit.
-public enum MediaKind: String, Codable, Sendable { case video, image }
+/// What a file in a playlist or on disk is for the player: something that plays, a picture to look at and edit, or a sound (music, a
+/// recording) that plays without a picture (0.16).
+public enum MediaKind: String, Codable, Sendable { case video, image, audio }
 
 public enum ImageFiles {
     /// Extensions treated as "might be a picture". Whether the system can really read one is decided when it is opened; this list only keeps
@@ -14,10 +15,11 @@ public enum ImageFiles {
 }
 
 public enum MediaFiles {
-    /// A video or a picture; nil for anything else.
+    /// A video, a picture or a sound; nil for anything else.
     public static func kind(of path: String) -> MediaKind? {
         if VideoFiles.isCandidate(path) { return .video }
         if ImageFiles.isCandidate(path) { return .image }
+        if AudioFiles.isCandidate(path) { return .audio }
         return nil
     }
     public static func isCandidate(_ path: String) -> Bool { kind(of: path) != nil }
@@ -26,6 +28,7 @@ public enum MediaFiles {
 public extension PlaylistItem {
     var kind: MediaKind { MediaFiles.kind(of: path) ?? .video }
     var isImage: Bool { kind == .image }
+    var isAudio: Bool { kind == .audio }
 }
 
 /// The picture formats a photo can be saved in, and how big the result may be.
@@ -36,6 +39,8 @@ public enum PhotoFormat: String, Codable, CaseIterable, Sendable {
     }
     /// Quality applies to the formats that compress with loss.
     public var isLossy: Bool { self == .jpeg || self == .heic }
+    /// The formats that keep an animation's frames (GIF, and PNG as an animated PNG, 0.16); the others keep its first frame.
+    public var keepsAnimation: Bool { self == .gif || self == .png }
     /// The format a file of this extension is already in, when it is one of ours.
     public static func matching(extension ext: String) -> PhotoFormat? {
         switch ext.lowercased() {

@@ -32,17 +32,19 @@ public struct BinItem: Codable, Identifiable, Equatable, Sendable {
 }
 
 public enum AudioFiles {
-    public static let candidateExtensions: Set<String> = ["mp3", "m4a", "aac", "wav", "aif", "aiff", "caf", "flac", "m4b", "mp2", "ac3"]
+    /// Extensions treated as "might be a sound". Whether the Mac can really play one is decided when it is opened (0.16: they also play
+    /// on their own and make projects). Ogg (Opus, Vorbis) plays on the macOS this was tested on (27); WMA does not and is left out.
+    public static let candidateExtensions: Set<String> = ["mp3", "m4a", "m4b", "m4r", "aac", "adts", "wav", "wave", "aif", "aiff", "aifc", "caf", "flac", "mp2", "ac3", "eac3", "amr", "ogg", "oga", "opus"]
     public static func isCandidate(_ path: String) -> Bool { candidateExtensions.contains(PathUtil.ext(of: path).lowercased()) }
 }
 
 public enum MediaBin {
     /// What kind of library item a file would be; nil for files the library does not take (projects, documents…).
     public static func kind(of path: String) -> BinKind? {
-        if AudioFiles.isCandidate(path) { return .audio }
         switch MediaFiles.kind(of: path) {
         case .video?: return .video
         case .image?: return .photo
+        case .audio?: return .audio
         case nil: return nil
         }
     }

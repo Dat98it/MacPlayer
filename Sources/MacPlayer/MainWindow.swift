@@ -31,6 +31,8 @@ final class ContentViewController: NSViewController {
     var onEditFile: () -> Void = {}
     var onRoute: (WindowRoute) -> Void = { _ in }
     private(set) var timeline: TimelineView?
+    /// The cover shown in place of the picture while a sound plays (0.16), for the self-test.
+    private(set) var soundCover: NSView?
     private(set) var host: PlayerHostView?
     private(set) var photoHost: PhotoHostView?
     /// The bar above the picture (file name and Close while watching; back, name and save state while editing), when one is shown.
@@ -53,7 +55,7 @@ final class ContentViewController: NSViewController {
     private func rebuild() {
         view.subviews.forEach { $0.removeFromSuperview() }
         bag.removeAll()
-        timeline = nil; host = nil; photoHost = nil; header = nil; timelineHeight = nil; headerKind = ""; chromeViews = []
+        timeline = nil; host = nil; photoHost = nil; header = nil; timelineHeight = nil; headerKind = ""; chromeViews = []; soundCover = nil
         if let w = workspace { w.split.view.removeFromSuperview(); w.split.removeFromParent(); workspace = nil }
         guard let s = session else {
             let root: AnyView
@@ -105,6 +107,16 @@ final class ContentViewController: NSViewController {
         let h = tl.heightAnchor.constraint(equalToConstant: s.isProject ? 190 : 70)
         h.isActive = true
         timelineHeight = h
+        if s.isSoundOnly {
+            // A sound: its cover and tags where the picture would be (0.16).
+            let cover = PassThroughHostingView(rootView: NowPlayingView(session: s, player: s.player))
+            cover.sizingOptions = []
+            cover.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(cover)
+            NSLayoutConstraint.activate([cover.topAnchor.constraint(equalTo: ph.topAnchor), cover.bottomAnchor.constraint(equalTo: ph.bottomAnchor),
+                                         cover.leadingAnchor.constraint(equalTo: ph.leadingAnchor), cover.trailingAnchor.constraint(equalTo: ph.trailingAnchor)])
+            soundCover = cover
+        }
         if s.remote != nil {
             // A link: its own overlay says what is happening (connecting, waiting for data, failed, live), and a live stream has no
             // timeline to move along.
@@ -571,8 +583,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
         let time = s.player.currentTime, playing = s.player.isPlaying, wasFromPlaylist = fromPlaylist, wasSolo = route == .solo
         Task {
             guard let fresh = try? await EditorSession.open(url: url) else { return }
-            setSession(fresh, fromPlaylist: wasFromPlaylist, solo: wasSolo)
+            // At the same moment before it is shown (shown first, it sat at 0 until the seek ended; the self-test caught it there once).
             await fresh.player.seek(to: time)
+            setSession(fresh, fromPlaylist: wasFromPlaylist, solo: wasSolo)
             if playing { fresh.player.play() } else { fresh.player.pause() }
         }
     }
@@ -593,10 +606,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
     /// Opens one video or photo in this window on its own (0.15): no playlists, the window fitted to the picture. False when it
     /// cannot be opened (the person was told why).
     @discardableResult
-    func openSolo(url: URL) async -> Bool {
+    /// `autoplay`: a video or a sound opened this way (Finder, File ▸ Open…, Open Recent) starts playing at once (0.16.1); the person
+    /// asked to watch it. Off when the caller decides itself (a downloaded link's file goes on where the link was).
+    func openSolo(url: URL, autoplay: Bool = true) async -> Bool {
         do {
             let s = try await EditorSession.open(url: url)
             showSolo(s)
+            if autoplay, !s.isPhoto, s.remote == nil, s.player.duration > .zero { s.player.play() }
             return true
         } catch {
             Self.cannotOpen(url, error)
@@ -605,6 +621,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
     }
 
     /// Shows a session opened elsewhere (a web link) on its own in this window.
+    /// The size a sound's cover is shown at in a window of its own.
+    static let soundPicture = CGSize(width: 800, height: 450)
+
     func showSolo(_ s: EditorSession) {
         // This window's size is its own: it is not the remembered size of the main window.
         if window?.frameAutosaveName == "MacPlayerMainWindow" { window?.setFrameAutosaveName("") }
@@ -632,7 +651,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
     /// Sizes the window to the picture's shape, as large as fits comfortably on its screen (not in full screen).
     func fitToPicture(_ s: EditorSession, media: CGSize? = nil) {
         guard let w = window, !w.styleMask.contains(.fullScreen), let screen = w.screen ?? NSScreen.main else { return }
-        let size = media ?? s.info?.primaryVideo.map { CGSize(width: $0.width, height: $0.height) }
+        // A sound has no picture: its cover gets a modest wide window.
+        let size = media ?? (s.isSoundOnly ? Self.soundPicture : s.info?.primaryVideo.map { CGSize(width: $0.width, height: $0.height) })
         // The bars around the picture.
         let chrome = max(40, content.chromeHeight())
         let visible = screen.visibleFrame
@@ -651,7 +671,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
         let a = NSAlert()
         a.alertStyle = .warning
         a.messageText = LF("“%@” cannot be opened.", url.lastPathComponent)
-        a.informativeText = ((error as? CustomStringConvertible)?.description ?? error.localizedDescription) + "\n\n" + L("MacPlayer plays and edits the formats macOS supports, such as MP4 and MOV with H.264 or HEVC. MKV and WebM are not supported yet.")
+        a.informativeText = ((error as? CustomStringConvertible)?.description ?? error.localizedDescription) + "\n\n" + L("MacPlayer plays and edits the formats macOS supports: MP4 and MOV videos (H.264, HEVC), MP3, M4A, FLAC, WAV and Ogg sounds, and common pictures. MKV, WebM, AVI and WMA are not supported.")
         a.runModal()
     }
 

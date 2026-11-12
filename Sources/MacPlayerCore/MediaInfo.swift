@@ -75,6 +75,10 @@ public struct MediaInfo: Codable, Equatable, Sendable {
     public var hasVideo: Bool { !video.isEmpty }
     public var hasAudio: Bool { !audio.isEmpty }
 
-    /// Frame rate to use for frame stepping and snapping. Falls back to 30 for audio-only or unknown.
-    public var frameRateForStepping: FrameRate { primaryVideo?.frameRate ?? FrameRate(numerator: 30, denominator: 1) }
+    /// Frame rate to use for frame stepping and snapping. Falls back to 30 for audio-only or unknown, and for a picture slower than one a
+    /// second (the cover video of a sound has one picture every 5 s, 0.2 fps: rounded to 0, it crashed the timecode, 0.16).
+    public var frameRateForStepping: FrameRate {
+        guard let r = primaryVideo?.frameRate, r.framesPerSecond >= 1 else { return FrameRate(numerator: 30, denominator: 1) }
+        return r
+    }
 }

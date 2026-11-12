@@ -45,6 +45,7 @@ enum SelfTest {
 
         if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_SWITCH"] != nil { await toolSwitchFlow(env: env, work: work, app: app); finish(); return }
         if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_LINK"] != nil { await soloAndLinkFlow(env: env, work: work, app: app); finish(); return }
+        if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_SOUND"] != nil { await soundAndAnimationFlow(env: env, work: work, app: app); finish(); return }
         if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_DRAG"] != nil { await dragSmoothnessFlow(env: env, work: work, app: app); finish(); return }
         if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_CANVAS"] != nil { await canvasFlow(env: env, work: work, app: app); await selectionFlow(env: env, work: work, app: app); await centringAndTypingFlow(env: env, work: work, app: app); finish(); return }
         if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_WORKSPACE"] != nil { await workspaceFlow(env: env, work: work, app: app); await photoWorkspaceFlow(env: env, work: work, app: app); await canvasFlow(env: env, work: work, app: app); finish(); return }
@@ -193,6 +194,7 @@ enum SelfTest {
         await centringAndTypingFlow(env: env, work: work, app: app)
         await dragSmoothnessFlow(env: env, work: work, app: app)
         await soloAndLinkFlow(env: env, work: work, app: app)
+        await soundAndAnimationFlow(env: env, work: work, app: app)
         await timelineFlow(env: env, work: work, demo: demo, demoBytes: original)
 
         // H. layers over the timeline
