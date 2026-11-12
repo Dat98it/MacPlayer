@@ -202,14 +202,26 @@ public enum AudioCover {
     }
 
     /// Where the video of this sound is kept: named after the sound's path, size and date, so a changed file gets a new video. ("cover2": since
-    /// 0.16.2 the picture has no words; a project made by 0.16.0/0.16.1 keeps its own older video while it is there.)
-    public static func cachedURL(for sound: URL) -> URL {
+    /// 0.16.2 the picture has no words; "cover3": 0.16.3 adds the picture at the very end; a project made by 0.16.0/0.16.1 keeps its own older video while it is there.)
+    public static func cachedURL(for sound: URL) -> URL { cachedURL(for: sound, version: current) }
+
+    /// The versions of the cover video: 1 = 0.16.0/0.16.1 (words drawn in), 2 = 0.16.2 (no words, no picture at the very end), 3 = now.
+    public static let current = 3
+    public static func cachedURL(for sound: URL, version: Int) -> URL {
         let attrs = try? FileManager.default.attributesOfItem(atPath: sound.path)
         let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
         let date = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
         var h: UInt64 = 0xcbf29ce484222325
-        for b in "cover2|\(sound.standardizedFileURL.path)|\(size)|\(Int(date))".precomposedStringWithCanonicalMapping.utf8 { h = (h ^ UInt64(b)) &* 0x100000001b3 }
+        let key = version == 1 ? "cover" : "cover\(version)"
+        for b in "\(key)|\(sound.standardizedFileURL.path)|\(size)|\(Int(date))".precomposedStringWithCanonicalMapping.utf8 { h = (h ^ UInt64(b)) &* 0x100000001b3 }
         return cacheFolder.appendingPathComponent(String(format: "%016llx.mov", h))
+    }
+
+    /// Which older version a project's cover video `video` of `sound` is (1 or 2), or nil when it is the current one or not one of ours.
+    /// An older one is made again: version 2 has no picture at the end (an export of the song's end failed), version 1 has words drawn in.
+    public static func olderVersion(of video: URL, sound: URL) -> Int? {
+        let p = video.standardizedFileURL.path
+        return [1, 2].first { cachedURL(for: sound, version: $0).standardizedFileURL.path == p }
     }
 
     /// The video of the sound, made now if it is not there yet.
@@ -285,7 +297,12 @@ public enum AudioCover {
         guard writer.startWriting() else { throw CoverError.writer(writer.error?.localizedDescription ?? "start") }
         writer.startSession(atSourceTime: .zero)
         // One picture every `pictureEvery` seconds for the whole length; both tracks are fed as the writer asks, so they interleave.
-        let frames = Int((duration.seconds / Double(pictureEvery)).rounded(.up))
+        // The times of the pictures: every `pictureEvery` seconds, and one more a thirtieth of a second before the end. Without that last one
+        // the end of the song (up to 5 s after the last picture) had no picture at all: an export of it failed with "no frame to compose" (0.16.3).
+        var times = stride(from: 0, to: duration.seconds, by: Double(pictureEvery)).map { CMTime(value: CMTimeValue($0), timescale: 1) }
+        let last = CMTimeSubtract(duration, CMTime(value: 1, timescale: 30))
+        if let t = times.last, CMTimeCompare(last, CMTimeAdd(t, CMTime(value: 1, timescale: 10))) > 0 { times.append(last) }
+        let frames = times.count
         final class Feed: @unchecked Sendable {
             var next = 0, failed = false, left = 2
             var done: CheckedContinuation<Void, Never>?
@@ -298,7 +315,7 @@ public enum AudioCover {
             vInput.requestMediaDataWhenReady(on: DispatchQueue(label: "macplayer.cover.video")) {
                 while vInput.isReadyForMoreMediaData {
                     if feed.next >= frames || feed.failed { vInput.markAsFinished(); feed.finish(); return }
-                    if !adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(feed.next) * CMTimeValue(pictureEvery), timescale: 1)) { feed.failed = true; vInput.markAsFinished(); feed.finish(); return }
+                    if !adaptor.append(buffer, withPresentationTime: times[feed.next]) { feed.failed = true; vInput.markAsFinished(); feed.finish(); return }
                     feed.next += 1
                 }
             }

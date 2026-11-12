@@ -223,6 +223,14 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.16.3 Song texts visible at 0:00; song ends export.** `SoundTitles` texts have `fade: 0` (with 0.3 they were fully see-through at the
+first frame, which is where a new project opens: the maintainer saw only their hover frames). The cover video gets one more picture 1/30 s before
+the end (`times` in `AudioCover.make`): with a picture every 5 s, the end of a song had none and an export of it failed with "no frame to
+compose". Cover versions: `AudioCover.cachedURL(for:version:)` (1 = "cover|" 0.16.0/1 with words, 2 = 0.16.2, 3 = current);
+`resolveSources` remakes an older one (`olderVersion`), adds `SoundTitles` texts to a version-1 project with no texts, sets fade 0 on
+version-2 song texts (`SoundTitles.isSongText`), counts in `upgradedCovers`. G9 on real songs exports the first second (white title pixels at
+0:00) and the last two seconds; `macplayer-probe tags <files>` prints what is read from songs.
+
 **0.16.2 Editable song texts.** A project's cover video has no words any more (`AudioCover.picture(words: false)`: tile centred,
 `centreFromBottom` 0.6; cache key `cover2|`); the title and "artist · album" are added as ordinary `TextOverlay`s by Core `SoundTitles.overlays`
 (y 0.775 / 0.885, Helvetica Neue, shadow) in `makeProjectFile` and `addSoundsToTimeline` (`madeSource` now also returns the tags). The person

@@ -127,6 +127,8 @@ final class EditorSession: NSObject, ObservableObject {
     var photoFrameBases: [CIImage] = []
     @Published var photoFrames: [CGImage] = []
     @Published var photoPlaying = true
+    /// How many older cover videos were made again when the project opened (0.16.3; for the self-test).
+    var upgradedCovers = 0
     /// The last file "Export Sound Only" wrote (for the self-test).
     var lastSoundExport: URL?
     /// Text the user typed in the "clip name" field before pressing add (kept with the session).

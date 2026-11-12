@@ -81,6 +81,9 @@ struct SoundMediaTests {
         #expect(t.count == 2)
         #expect(t[0].text == "Bài hát" && t[0].x == 0.5 && t[0].y == SoundTitles.titleY && t[0].end == MediaTime(seconds: 200) && !t[0].isShape)
         #expect(t[1].text == "Nghệ sĩ · Album 1" && t[1].sizeFraction < t[0].sizeFraction && t[1].y > t[0].y)
+        // Seen from the first frame: no fade in at 0:00 (it left them see-through when the project opened).
+        #expect(t.allSatisfy { $0.fade == 0 && $0.animationIn == nil })
+        #expect(t.allSatisfy(SoundTitles.isSongText) && !SoundTitles.isSongText(TextOverlay(text: "x", start: .zero, end: MediaTime(seconds: 1))))
         // Under the cover tile (which ends at 65% of the height) and inside the picture.
         #expect(t.allSatisfy { $0.y > 0.7 && $0.y < 0.95 })
         // No artist: the title only; no album: the artist alone; an empty title: nothing for it.

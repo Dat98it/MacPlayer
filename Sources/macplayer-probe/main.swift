@@ -28,6 +28,12 @@ func run() async throws {
         if args.count > 7 { let wh = args[7].split(separator: "x").compactMap { Int($0) }; if wh.count == 2 { s.width = wh[0]; s.height = wh[1] } }
         try await SyntheticMedia.generate(to: url, spec: s)
         print("wrote \(url.path)")
+    case "tags":
+        // tags <sound>…: what MacPlayer reads from each sound (title, artist, album, artwork size). Only reads.
+        for a in args.dropFirst(2) {
+            let i = await AudioCover.info(of: URL(fileURLWithPath: a))
+            print("\(URL(fileURLWithPath: a).lastPathComponent.prefix(45)) | title=\(i.title.prefix(60)) | artist=\(i.artist ?? "–") | album=\(i.album ?? "–") | artwork=\(i.artwork?.count ?? 0)")
+        }
     case "cover":
         // cover <sound> <out-dir>: the video MacPlayer makes of a sound for a project (0.16), timed, with its size. The sound is only read.
         guard args.count >= 4 else { fail("cover <sound> <out-dir>") }

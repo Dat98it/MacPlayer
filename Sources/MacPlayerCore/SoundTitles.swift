@@ -7,6 +7,8 @@ public enum SoundTitles {
     public static let titleY = 0.775
     public static let artistY = 0.885
 
+    /// They show from the very first frame (no fade): with a fade starting at 0:00 they were fully see-through when the project opened,
+    /// only their frame showing under the mouse (0.16.3).
     /// The texts for a song shown from `start` to `end` on the timeline. The artist line also names the album when the song has one.
     /// An empty title gives no title text; no artist gives no second text.
     public static func overlays(title: String, artist: String?, album: String?, start: MediaTime, end: MediaTime) -> [TextOverlay] {
@@ -14,7 +16,7 @@ public enum SoundTitles {
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !t.isEmpty {
             var o = TextOverlay(text: t, start: start, end: end, fontName: "HelveticaNeue-Bold", sizeFraction: 0.055, colorHex: "#FFFFFF",
-                                alignment: .center, x: 0.5, y: titleY, fade: 0.3)
+                                alignment: .center, x: 0.5, y: titleY, fade: 0)
             var f = TextFlair(); f.shadow = true; f.shadowHex = "#000000"; f.outlineWidth = 0
             o.flair = f
             out.append(o)
@@ -22,11 +24,16 @@ public enum SoundTitles {
         let a = artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "", b = album?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !a.isEmpty {
             var o = TextOverlay(text: b.isEmpty ? a : a + " · " + b, start: start, end: end, fontName: "HelveticaNeue-Medium", sizeFraction: 0.036,
-                                colorHex: "#E6E6E6", alignment: .center, x: 0.5, y: artistY, fade: 0.3)
+                                colorHex: "#E6E6E6", alignment: .center, x: 0.5, y: artistY, fade: 0)
             var f = TextFlair(); f.shadow = true; f.shadowHex = "#000000"; f.outlineWidth = 0
             o.flair = f
             out.append(o)
         }
         return out
+    }
+
+    /// Is this one of the texts `overlays` made (its place and font), for putting right what 0.16.2 made?
+    public static func isSongText(_ o: TextOverlay) -> Bool {
+        !o.isShape && o.x == 0.5 && ((o.y == titleY && o.fontName == "HelveticaNeue-Bold") || (o.y == artistY && o.fontName == "HelveticaNeue-Medium"))
     }
 }

@@ -589,6 +589,26 @@ Với dự án ảnh, mỗi sự kiện còn vẽ lại cả tấm ảnh.
 - Chưa có số đo "trước khi sửa" bằng chính G7: nó được viết cùng lúc với phần sửa. Nhận định "mỗi lần dời một lần ghi dự án" ở trên lấy từ đọc mã.
 
 
+## Bản 0.16.3: chữ tên bài trong suốt lúc mới tạo dự án; xuất đoạn cuối bài lỗi (12/11/2026)
+
+**Người bảo trì báo:** tạo dự án từ mp3 thì dòng chữ không hiện (rê chuột vào vẫn thấy khung); xác nhận cả tên bài, nghệ sĩ, album đều trong suốt. Yêu cầu test bằng mp3 thật.
+
+**Nguyên nhân (đã tái hiện bằng ảnh chụp cửa sổ thật ở 0:00):** chữ do 0.16.2 thêm có hiệu ứng hiện dần 0,3 giây bắt đầu đúng 0:00; dự án mới mở ở 0:00 nên khung hình đầu vẽ chữ với độ mờ 0 (trong suốt). Self-test 0.16.2 chỉ kiểm chữ có trong dự án và gõ được, không kiểm chữ có được *vẽ* ở 0:00 — lỗ hổng của tôi.
+
+**Lỗi thứ hai tìm thấy khi viết test:** xuất đoạn cuối bài báo "no frame to compose": video bìa 5 giây một hình không có hình nào sau hình cuối cùng (tới 5 giây cuối bài).
+
+**Sửa:**
+- Chữ tên bài/nghệ sĩ không còn hiện dần: thấy ngay từ khung hình đầu.
+- Video bìa có thêm một hình sát cuối bài.
+- Dự án nhạc tạo bằng 0.16.0–0.16.2 được sửa khi mở: làm lại video bìa từ file nhạc; chữ của 0.16.2 bỏ hiện dần; dự án 0.16.0/0.16.1 (chữ vẽ chết trong ảnh) được thêm tên bài thành chữ chỉnh được nếu dự án chưa có chữ nào.
+
+**Kiểm thử với nhạc thật** (bản sao của 3 bài trong `Lexar/Nhạc`, `Nhạc Truyền Động Lực…` — file duy nhất có thẻ tên bài — trong thư mục Nhạc, `_mau.m4a`, và bản 79 phút; 20 file thật được đọc thẻ: không file nào có nghệ sĩ/album/ảnh bìa): với mỗi bài, tạo dự án, xuất 1 giây đầu (đếm điểm ảnh trắng của chữ tên bài trong khung đầu tiên: 526–13.418, đều > 200) và 2 giây cuối (đều 2,00 s). File gốc không đổi (so từng byte).
+- Media test mới `aSongsTitleIsDrawnFromTheVeryFirstFrame`: chữ có trong khung đầu; với hiện dần như 0.16.2 thì không có (test bắt được đúng lỗi). Test này cũng là thứ làm lộ lỗi xuất đoạn cuối.
+- G9: dự án giả lập 0.16.2 mở ra được làm lại video bìa và chữ hết trong suốt. G9: 85 đạt. Core 417, Media 244 đạt. Self-test đầy đủ: 511 đạt, 1 lỗi đã biết.
+- Chụp cửa sổ thật ở 00:00:00:00 (tiếng Việt): chữ hiện với bài thử và bài thật.
+
+**Chưa kiểm chứng:** nhạc thật có nghệ sĩ/album/ảnh bìa (nhạc của bạn không có thẻ đó; dùng file tự tạo); xuất trọn một bài dài ra video (chỉ xuất 1 giây đầu và 2 giây cuối).
+
 ## Bản 0.16.2: tên bài trong dự án nhạc chỉnh sửa được (12/11/2026)
 
 **Người bảo trì báo:** mở mp3, bấm "Sửa" tạo dự án video thì không chỉnh được chữ ở khung giữa; chữ là tên lấy từ file.

@@ -27,6 +27,26 @@ extension EditorSession {
                 var p = URL(fileURLWithPath: sound)
                 if !env.fs.exists(p.path), let moved = Bookmarks.resolve(src.bookmark), env.fs.exists(moved.path) { p = moved }
                 if !env.fs.exists(url.path), env.fs.exists(p.path), let made = try? await AudioCover.make(from: p) { url = made }
+                // A cover made by an older version (0.16.0–0.16.2) is made again (0.16.3): it had no picture at the very end, so exporting
+                // the end of the song failed. 0.16.0/0.16.1 drew the words into it; the project gets them as texts it can change.
+                if env.fs.exists(p.path), let old = AudioCover.olderVersion(of: url, sound: p), let made = try? await AudioCover.make(from: p) {
+                    url = made
+                    let id = src.id, sid = src.id
+                    var texts: [TextOverlay] = []
+                    if old == 1, project.overlays.isEmpty, let start = project.timeline.firstIndex(where: { $0.sourceID == sid }).flatMap({ TimelineEditor.starts(project.timeline)[project.timeline[$0].id] }),
+                       let clip = project.timeline.first(where: { $0.sourceID == sid }) {
+                        let tags = await AudioCover.info(of: p)
+                        texts = SoundTitles.overlays(title: tags.title, artist: tags.artist, album: tags.album, start: start, end: start + clip.duration)
+                    }
+                    mutateQuietly { pr in
+                        if let i = pr.sources.firstIndex(where: { $0.id == id }) { pr.sources[i].path = made.path }
+                        pr.overlays += texts
+                        // 0.16.2 made the song's texts fade in from 0:00: they were see-through when the project opened. Shown at once now.
+                        if old == 2 { for i in pr.overlays.indices where SoundTitles.isSongText(pr.overlays[i]) { pr.overlays[i].fade = 0 } }
+                    }
+                    upgradedCovers += 1
+                    noteUnsaved()
+                }
             } else if !env.fs.exists(url.path), let moved = Bookmarks.resolve(src.bookmark), env.fs.exists(moved.path) { url = moved }
             if env.fs.exists(url.path), let info = try? await MediaProbe.probe(url: url) { urls[src.id] = url; infs[src.id] = info }
         }

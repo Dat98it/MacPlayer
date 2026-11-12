@@ -176,6 +176,32 @@ import MacPlayerCore
         await #expect(throws: ExportError.self) { try await AudioExporter.exportTimeline(pieces: [RenderPiece(sourceURL: cover, span: TimeSpan(start: .zero, end: MediaTime(seconds: 1)))], to: out) }
     }
 
+    @Test func aSongsTitleIsDrawnFromTheVeryFirstFrame() async throws {
+        AudioCover.cacheFolder = Fixtures.shared.root.appendingPathComponent("covers-\(UUID().uuidString.prefix(6))")
+        let cover = try await AudioCover.make(from: try sound("first-frame", ext: "wav", seconds: 3))
+        // A song without tags, as most downloaded MP3s: its long file name is the only text.
+        let title = "Chắc Chắn Một Người Remix (Style Thazh x Đông) - Tlong - Ngày Em Đến Con Tim Anh Không Còn Mong Manh"
+        func whiteAtStart(_ texts: [TextOverlay]) async throws -> Int {
+            let out = Fixtures.shared.outputURL("first-frame-out")
+            try await RenderExporter().export(pieces: [RenderPiece(sourceURL: cover, span: TimeSpan(start: .zero, end: MediaTime(seconds: 1)))],
+                                              recipe: RenderRecipe(overlays: texts), to: out, options: ExportOptions(mode: .exact))
+            let px = try await frame(out, at: 0)
+            var n = 0
+            // The band where the title is (around 77% of the height).
+            for y in stride(from: Int(Double(px.height) * 0.70), to: Int(Double(px.height) * 0.85), by: 2) {
+                for x in stride(from: 0, to: px.width, by: 2) { let c = px.rgb(x, y); if c.r > 235 && c.g > 235 && c.b > 235 { n += 1 } }
+            }
+            return n
+        }
+        let texts = SoundTitles.overlays(title: title, artist: nil, album: nil, start: .zero, end: MediaTime(seconds: 3))
+        #expect(texts.count == 1)
+        let shown = try await whiteAtStart(texts)
+        #expect(shown > 200, "the title's letters are in the first frame (\(shown) white points)")
+        // What 0.16.2 did (a fade in from 0:00): nothing at the first frame. This is the bug the person saw.
+        var faded = texts; faded[0].fade = 0.3
+        #expect(try await whiteAtStart(faded) < shown / 10)
+    }
+
     @Test func aSoundClipInATimelineExportsWithItsSoundAndCover() async throws {
         AudioCover.cacheFolder = Fixtures.shared.root.appendingPathComponent("covers-\(UUID().uuidString.prefix(6))")
         let cover = try await AudioCover.make(from: try sound("cover-export", ext: "wav", seconds: 12))

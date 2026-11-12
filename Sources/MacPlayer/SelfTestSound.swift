@@ -188,6 +188,21 @@ extension SelfTest {
             e.close()
         } else { check(false, "a video project can be made from a sound") }
 
+        // A project made from the song and left as it is (its path is printed, to look at it in a real window).
+        if let fresh = await editor(first, kind: .video) { print("INFO  FRESH_PROJECT \(fresh.projectPath ?? "")"); fresh.close() }
+        // A project as 0.16.2 left it (its cover of that version, texts that fade in from 0:00): put right when it opens (0.16.3).
+        if let old = await editor(first, kind: .video), let path = old.projectPath, let src = old.project.sources.first, let cur = old.sourceURLs[src.id] {
+            let v2 = AudioCover.cachedURL(for: first, version: 2)
+            try? fm.removeItem(at: v2); try? fm.copyItem(at: cur, to: v2)
+            old.edit("as 0.16.2") { p in p.sources[0].path = v2.path; for i in p.overlays.indices { p.overlays[i].fade = 0.3 } }
+            _ = old.saveNow(); old.close()
+            if let again = try? await EditorSession.openProject(path: path) {
+                check(again.upgradedCovers == 1 && again.project.sources.first?.path == AudioCover.cachedURL(for: first).path, "a 0.16.2 song project gets the new cover when it opens")
+                check(!again.project.overlays.isEmpty && again.project.overlays.allSatisfy { $0.fade == 0 }, "and its texts are no longer see-through at 0:00")
+                again.close()
+            } else { check(false, "the 0.16.2 project opens") }
+        }
+
         // An empty video project: the first sound dropped on it starts the timeline; the next goes under the picture as music.
         let dir = env.support.appendingPathComponent("SelfTestProjects", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -273,6 +288,27 @@ extension SelfTest {
                 if let e = await editor(u, kind: .video), let c = e.project.timeline.first {
                     let took = Date().timeIntervalSince(t0)
                     check(abs((c.sourceEnd - c.sourceStart).seconds - length) < 0.2 && took < 30, "real song makes a project in \(String(format: "%.1f", took)) s, clip as long as the song")
+                    let texts = e.project.overlays
+                    let tags = await AudioCover.info(of: u)
+                    check(texts.count == (tags.artist == nil ? 1 : 2) && texts.first?.text == tags.title && texts.allSatisfy { $0.fade == 0 }, "its title is a text, shown from the first frame (\(texts.first?.text.prefix(30) ?? "none"))")
+                    // The first second and the last two, drawn as the export draws them: the title's letters at 0:00, and a picture to the very end.
+                    if let src = e.sourceURLs[c.sourceID] {
+                        for (from, to, name) in [(0.0, 1.0, "start"), (length - 2, length, "end")] {
+                            let out = work.appendingPathComponent("real-\(name)-\(UUID().uuidString.prefix(4)).mp4")
+                            do {
+                                try await RenderExporter().export(pieces: [RenderPiece(sourceURL: src, span: TimeSpan(start: MediaTime(seconds: from, timescale: 600), end: MediaTime(seconds: to, timescale: 600)))],
+                                                                  recipe: RenderRecipe(overlays: from == 0 ? texts : []), to: out, options: ExportOptions(mode: .exact))
+                                if from == 0 {
+                                    let img = try await FrameGrabber.image(url: out, at: .zero, accuracy: .exact)
+                                    check(whitePoints(img, fromY: 0.70, toY: 0.85) > 200, "the title's letters are in the very first frame (\(whitePoints(img, fromY: 0.70, toY: 0.85)))")
+                                } else {
+                                    let d = (try? await MediaProbe.probe(url: out))?.duration.seconds ?? 0
+                                    check(abs(d - 2) < 0.1, "the last two seconds of the song export (\(String(format: "%.2f", d)) s)")
+                                }
+                            } catch { check(false, "export of the song's \(name): \(error)") }
+                            try? FileManager.default.removeItem(at: out)
+                        }
+                    }
                     await e.player.seek(to: MediaTime(seconds: max(0, length - 3), timescale: 600))
                     e.player.play(); try? await Task.sleep(nanoseconds: 800_000_000)
                     check(e.player.currentTime.seconds > length - 2.9 && e.player.failure == nil, "its project plays near the end (\(String(format: "%.1f", e.player.currentTime.seconds)) s)")
@@ -327,5 +363,19 @@ extension SelfTest {
         let x = px(a), y = px(b)
         guard x.count == y.count, !x.isEmpty else { return false }
         return zip(x, y).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) } / x.count < 3
+    }
+
+    /// How many nearly white points a picture has between two heights (fractions from the top): the letters of a white text.
+    static func whitePoints(_ image: CGImage, fromY: Double, toY: Double) -> Int {
+        let w = image.width, h = image.height
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return 0 }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let d = ctx.data?.assumingMemoryBound(to: UInt8.self) else { return 0 }
+        var n = 0
+        for y in stride(from: Int(Double(h) * fromY), to: Int(Double(h) * toY), by: 2) {
+            for x in stride(from: 0, to: w, by: 2) { let o = (y * w + x) * 4; if d[o] > 235 && d[o + 1] > 235 && d[o + 2] > 235 { n += 1 } }
+        }
+        return n
     }
 }
