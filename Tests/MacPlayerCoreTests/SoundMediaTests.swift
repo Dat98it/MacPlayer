@@ -75,4 +75,17 @@ struct SoundMediaTests {
                              video: [.init(trackID: 1, codec: "avc1", width: 1920, height: 1080, frameRate: slow)], audio: [])
         #expect(info.frameRateForStepping.framesPerSecond == 30)
     }
+
+    @Test func aSongsTitleAndArtistAreTextsThatCanBeChanged() {
+        let t = SoundTitles.overlays(title: " Bài hát ", artist: "Nghệ sĩ", album: "Album 1", start: .zero, end: MediaTime(seconds: 200))
+        #expect(t.count == 2)
+        #expect(t[0].text == "Bài hát" && t[0].x == 0.5 && t[0].y == SoundTitles.titleY && t[0].end == MediaTime(seconds: 200) && !t[0].isShape)
+        #expect(t[1].text == "Nghệ sĩ · Album 1" && t[1].sizeFraction < t[0].sizeFraction && t[1].y > t[0].y)
+        // Under the cover tile (which ends at 65% of the height) and inside the picture.
+        #expect(t.allSatisfy { $0.y > 0.7 && $0.y < 0.95 })
+        // No artist: the title only; no album: the artist alone; an empty title: nothing for it.
+        #expect(SoundTitles.overlays(title: "Song", artist: nil, album: "Album", start: .zero, end: MediaTime(seconds: 1)).map(\.text) == ["Song"])
+        #expect(SoundTitles.overlays(title: "Song", artist: "A", album: nil, start: .zero, end: MediaTime(seconds: 1)).map(\.text) == ["Song", "A"])
+        #expect(SoundTitles.overlays(title: "  ", artist: nil, album: nil, start: .zero, end: MediaTime(seconds: 1)).isEmpty)
+    }
 }

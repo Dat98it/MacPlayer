@@ -122,6 +122,31 @@ extension SelfTest {
             ew.window?.orderFront(nil)
             e.player.play(); try? await Task.sleep(nanoseconds: 1_000_000_000)
             check(ew.route == .editor && e.player.currentTime.seconds > 0.4 && e.player.failure == nil, "the project plays in its window (\(String(format: "%.2f", e.player.currentTime.seconds)) s)")
+            // The song's title and artist are texts of the project (0.16.2), not words drawn into the cover: they can be typed over.
+            let texts = e.project.overlays.filter { !$0.isShape }
+            if song != nil {
+                check(texts.map(\.text) == ["Bài hát thử nghiệm của MacPlayer", "Nghệ sĩ Thử · Album 0.16"], "the title and artist are texts of the project (\(texts.map(\.text)))")
+            } else {
+                check(texts.count == 1 && texts.first?.text == first.deletingPathExtension().lastPathComponent, "a song without tags gets its file name as a text")
+            }
+            check(texts.allSatisfy { $0.start == .zero && abs($0.end.seconds - length.seconds) < 0.05 }, "they last as long as the song")
+            ew.window?.makeKeyAndOrderFront(nil)
+            e.player.pause(); await e.player.seek(to: MediaTime(seconds: 1)); try? await Task.sleep(nanoseconds: 400_000_000)
+            if let ev = ew.contentController.host?.elements, let title = texts.first {
+                ev.beginTyping(title.id)
+                if let field = ev.testTypingField, let tv = field.currentEditor() as? NSTextView {
+                    tv.selectAll(nil); tv.insertText("Tên bài mới", replacementRange: tv.selectedRange())
+                    _ = ev.control(field, textView: tv, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+                    check(e.project.overlays.first { $0.id == title.id }?.text == "Tên bài mới", "the title is typed over right on the picture")
+                    e.undo()
+                    check(e.project.overlays.first { $0.id == title.id }?.text == title.text, "and one undo puts it back")
+                } else {
+                    print("INFO  typing on the picture needs the window to have the keyboard (a background run has none); checked through the edit instead")
+                    e.edit("Edit text") { p in if let i = p.overlays.firstIndex(where: { $0.id == title.id }) { p.overlays[i].text = "Tên bài mới" } }
+                    check(e.project.overlays.first { $0.id == title.id }?.text == "Tên bài mới", "the title can be changed")
+                    e.undo()
+                }
+            }
             shoot(ew, "sound-project-window")
             e.player.pause()
             // Cut in two and faded: the tools of a video clip work on it.

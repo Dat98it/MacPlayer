@@ -2,7 +2,7 @@
 
 Xem và chỉnh sửa **video lẫn ảnh**: cắt đoạn, ghép nhiều video, chỉnh màu chuyên nghiệp (đường cong, bánh xe màu, HSL, LUT), tách nền và mặt nạ, chuyển cảnh và keyframe, hiệu ứng giọng, chữ và hình dán, rồi xuất ngay trên Mac. Mọi xử lý diễn ra trên máy; không có tài khoản, không thu thập dữ liệu. Từ 0.15 app chỉ dùng mạng khi bạn tự dán một link video/ảnh để xem (Tệp ▸ Mở link…), ngoài ra không kết nối đi đâu.
 
-> **Trạng thái: bản 0.16.1 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
+> **Trạng thái: bản 0.16.2 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
 
 ## Yêu cầu
 
@@ -136,6 +136,7 @@ Mở một dự án video là thấy ngay bố cục quen thuộc của các app
     - **một** lựa chọn chất lượng (Tốt nhất, 4K, Full HD, HD, Nhẹ) thay cho "Chất lượng" và "Cỡ".
     - Video dọc 1080p là 1080 × 1920.
   - Ô Thư viện không còn nhấp nháy khi phát video.
+- **0.16.2:** dự án tạo từ file nhạc: **tên bài và nghệ sĩ giờ là chữ chỉnh được** (bấm đúp trên khung hình để gõ lại, kéo, đổi kiểu, xoá; có trên dải Chữ của timeline). Trước đây chúng được vẽ chết vào ảnh bìa nên không sửa được. Ảnh bìa nằm giữa khung, chữ ở dưới. Dự án đã tạo bằng 0.16.0/0.16.1 giữ nguyên ảnh bìa cũ (chữ vẽ sẵn).
 - **0.16.1:**
   - Thử trên nhạc thật (bản sao từ thư mục Nhạc, có bản nonstop 79 phút): tạo dự án từ một bài 79 phút trước đây mất 21 giây và tạo file tạm 596 MB, nay mất khoảng 4 giây và 113 MB (âm thanh MP3 được chép nguyên vẹn, so mẫu âm thanh giống hệt bản gốc).
   - Sửa lỗi **sập app** khi mở dự án làm từ nhạc trong cửa sổ (đồng hồ thời gian chia cho 0).

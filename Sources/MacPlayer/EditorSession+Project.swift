@@ -154,6 +154,10 @@ extension EditorSession {
                     let c = TimelineClip(sourceID: sid, sourceStart: .zero, sourceEnd: made.length, name: url.deletingPathExtension().lastPathComponent)
                     p.timeline.insert(c, at: min(insertAt ?? p.timeline.count, p.timeline.count))
                     newID = c.id
+                    // Its title and artist as texts over its own part of the timeline (0.16.2).
+                    if let t = made.tags, let from = TimelineEditor.starts(p.timeline)[c.id] {
+                        p.overlays += SoundTitles.overlays(title: t.title, artist: t.artist, album: t.album, start: from, end: from + made.length)
+                    }
                 }
                 if let sid = project.timeline.first(where: { $0.id == newID })?.sourceID { sourceURLs[sid] = URL(fileURLWithPath: project.source(sid)?.path ?? made.ref.path); infos[sid] = made.info }
                 if let i = insertAt { insertAt = i + 1 }

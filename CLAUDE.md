@@ -223,6 +223,12 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.16.2 Editable song texts.** A project's cover video has no words any more (`AudioCover.picture(words: false)`: tile centred,
+`centreFromBottom` 0.6; cache key `cover2|`); the title and "artist · album" are added as ordinary `TextOverlay`s by Core `SoundTitles.overlays`
+(y 0.775 / 0.885, Helvetica Neue, shadow) in `makeProjectFile` and `addSoundsToTimeline` (`madeSource` now also returns the tags). The person
+reported they could not edit the title in the middle of the editor (it was drawn into the cover). G9 types over the title on the picture.
+Old 0.16.0/0.16.1 projects keep their existing cover file (with words) while it exists.
+
 **0.16.1 Checked on real songs.** `AudioCover` copies MP3 as it is too (AAC/ALAC/MP3; decoded samples identical, checked at 5 points of
 a 79-min mix) and writes the cover once every `pictureEvery` = 5 s with a key picture every `keyEvery` = 15 (79 min: 21 s / 596 MB → 4.3 s /
 113 MB). Such a video is 0.2 fps: `Timecode.format`/`parse` clamp fps to ≥ 1 and `MediaInfo.frameRateForStepping` falls back to 30 under

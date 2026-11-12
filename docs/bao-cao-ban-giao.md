@@ -589,6 +589,25 @@ Với dự án ảnh, mỗi sự kiện còn vẽ lại cả tấm ảnh.
 - Chưa có số đo "trước khi sửa" bằng chính G7: nó được viết cùng lúc với phần sửa. Nhận định "mỗi lần dời một lần ghi dự án" ở trên lấy từ đọc mã.
 
 
+## Bản 0.16.2: tên bài trong dự án nhạc chỉnh sửa được (12/11/2026)
+
+**Người bảo trì báo:** mở mp3, bấm "Sửa" tạo dự án video thì không chỉnh được chữ ở khung giữa; chữ là tên lấy từ file.
+
+**Nguyên nhân:** 0.16.0/0.16.1 vẽ tên bài, nghệ sĩ, album thẳng vào ảnh của video bìa, nên chúng là một phần của hình chứ không phải chữ của dự án.
+
+**Sửa:**
+- Video bìa chỉ còn ảnh bìa (hoặc thẻ màu), đặt giữa khung, hơi cao.
+- Tên bài và "nghệ sĩ · album" được thêm thành **chữ thường của dự án** dưới ảnh bìa, kéo dài suốt bài. Có thể bấm đúp để gõ lại ngay trên khung hình, kéo, đổi kiểu, xoá; hiện trên dải Chữ của timeline.
+- File không có thẻ thì chữ là tên file.
+- Video bìa mới có tên mới trong thư mục tạm, nên không dùng lại bản cũ có chữ. Dự án đã tạo bằng 0.16.0/0.16.1 vẫn giữ video bìa cũ (có chữ vẽ sẵn) chừng nào file tạm đó còn.
+
+**Kiểm thử:**
+- Core thêm `aSongsTitleAndArtistAreTextsThatCanBeChanged`; Media thêm `aProjectsCoverHasNoWordsAndItsTileInTheMiddle` (ảnh bìa ở giữa, vùng dưới không có chữ). Core 417, Media 243 đạt.
+- G9: dự án từ `song.mp3` có đúng 2 chữ (tên bài, "Nghệ sĩ Thử · Album 0.16"), dài bằng bài; **gõ đè tên bài ngay trên khung hình** qua ô nhập thật rồi Hoàn tác: đạt. Bài thật không có thẻ: chữ là tên file. G9: 64 đạt. Self-test đầy đủ: 509 đạt, 1 lỗi đã biết.
+- Chụp cửa sổ thật (tiếng Việt) dự án từ bài nhạc thật tên dài: ảnh bìa giữa khung, tên bài 2 dòng bên dưới, dải Chữ trên timeline.
+
+**Chưa kiểm chứng:** gõ bằng bàn phím thật; chuyển dự án 0.16.0/0.16.1 cũ sang kiểu mới (không làm tự động, để khỏi đổi dự án của bạn mà không hỏi).
+
 ## Bản 0.16.1: kiểm chứng tiếp trên nhạc thật, sửa lỗi, tự phát khi mở từ Finder (12/11/2026)
 
 **Yêu cầu:** làm tiếp các mục "chưa kiểm chứng" của 0.16.0; nút "Sửa" bị cắt khi tên file dài và cần biểu tượng hợp hơn; file mở từ Finder phải tự phát.

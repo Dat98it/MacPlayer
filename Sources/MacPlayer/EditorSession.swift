@@ -224,6 +224,8 @@ final class EditorSession: NSObject, ObservableObject {
                 MediaBin.add([url.path], to: &p.mediaBin, bookmark: { _ in made.ref.bookmark })
                 let clip = TimelineClip(sourceID: made.ref.id, sourceStart: .zero, sourceEnd: made.length, name: url.deletingPathExtension().lastPathComponent)
                 p.timeline = [clip]; p.activeClipID = clip.id
+                // A song's title and artist, as texts that can be changed (0.16.2).
+                if let t = made.tags { p.overlays += SoundTitles.overlays(title: t.title, artist: t.artist, album: t.album, start: .zero, end: made.length) }
             } else {
                 let info = try await MediaProbe.probe(url: url)
                 guard info.hasVideo else { throw MediaProbeError.unreadable(L("This file has no picture.")) }
@@ -241,12 +243,12 @@ final class EditorSession: NSObject, ObservableObject {
     /// For a sound or a picture going on a video project's main track: the video MacPlayer makes of it (a cover with the sound; the photo,
     /// or the animation repeated), as a source, with how long its clip is at first (the whole sound; a few seconds of a photo; an animation
     /// played through). nil for a video, which is used as it is. A file that is only sound under a video's extension counts as a sound.
-    static func madeSource(for url: URL) async throws -> (ref: SourceRef, info: MediaInfo, length: MediaTime)? {
+    static func madeSource(for url: URL) async throws -> (ref: SourceRef, info: MediaInfo, length: MediaTime, tags: AudioCover.Info?)? {
         if ImageFiles.isCandidate(url.path) {
             let video = try await StillClip.make(from: url)
             let info = try await MediaProbe.probe(url: video)
             let ref = SourceRef(path: video.path, bookmark: Bookmarks.make(url), fingerprint: nil, info: info, stillOf: url.path)
-            return (ref, info, MediaTime(seconds: min(StillClip.defaultLength(for: url), info.duration.seconds), timescale: 600))
+            return (ref, info, MediaTime(seconds: min(StillClip.defaultLength(for: url), info.duration.seconds), timescale: 600), nil)
         }
         var sound = AudioFiles.isCandidate(url.path)
         if !sound, let probed = try? await MediaProbe.probe(url: url), !probed.hasVideo, probed.hasAudio { sound = true }
@@ -254,7 +256,7 @@ final class EditorSession: NSObject, ObservableObject {
         let video = try await AudioCover.make(from: url)
         let info = try await MediaProbe.probe(url: video)
         let ref = SourceRef(path: video.path, bookmark: Bookmarks.make(url), fingerprint: nil, info: info, soundOf: url.path)
-        return (ref, info, info.duration)
+        return (ref, info, info.duration, await AudioCover.info(of: url))
     }
 
     /// A project rebuilt from its crash copy: the edits are back, and they are written into the project file at once.

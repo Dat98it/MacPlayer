@@ -132,6 +132,25 @@ import MacPlayerCore
         #expect(card1.meanLuma(in: CGRect(x: 0, y: 0, width: 1920, height: 1080)) > 15, "not black")
     }
 
+    @Test func aProjectsCoverHasNoWordsAndItsTileInTheMiddle() throws {
+        let red = try png(width: 400, height: 400, r: 1, g: 0, b: 0)
+        let info = AudioCover.Info(title: "A long title that would be drawn", artist: "Someone", artwork: red)
+        let plain = Pixels(try #require(AudioCover.picture(for: info, words: false)))
+        // The tile: centred across, 40% from the top.
+        #expect(plain.isRed(960, 432) && plain.isRed(960, 200) && plain.isRed(960, 660))
+        // Where the words were (right of the old tile) and where the texts go (bottom): only the smooth background, no letters.
+        func spread(_ r: CGRect) -> Double {
+            var lo = 255.0, hi = 0.0
+            for y in stride(from: Int(r.minY), to: Int(r.maxY), by: 3) { for x in stride(from: Int(r.minX), to: Int(r.maxX), by: 3) { let l = plain.luma(x, y); lo = min(lo, l); hi = max(hi, l) } }
+            return hi - lo
+        }
+        #expect(spread(CGRect(x: 300, y: 790, width: 1320, height: 200)) < 25, "no words under the tile")
+        let withWords = Pixels(try #require(AudioCover.picture(for: info)))
+        #expect(withWords.meanAbsDiff(plain) > 5, "the other layout still has its words")
+        // A project's cover video uses the plain picture (named anew, so a 0.16.1 cover with words is not reused).
+        #expect(AudioCover.cachedURL(for: URL(fileURLWithPath: "/m/x.mp3")).lastPathComponent.hasSuffix(".mov"))
+    }
+
     @Test func tagsAreReadAndTheTitleFallsBackToTheFileName() async throws {
         let src = try sound("Plain Name", ext: "wav", seconds: 0.5)
         let info = await AudioCover.info(of: src)

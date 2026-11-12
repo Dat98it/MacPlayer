@@ -16,6 +16,8 @@ public enum AudioCover {
     /// How often the (unchanging) cover picture is written, in seconds, and how many pictures go between two full ones. A 79-minute mix
     /// took 21 s and 596 MB with one full picture every 2 s and the sound in Apple Lossless (0.16.0 before release); see `make`.
     public static let pictureEvery = 5
+    /// Without words, where the tile's centre is, from the bottom of the picture (0.6 = 40% from the top), leaving the lower part for the texts.
+    public static let centreFromBottom: CGFloat = 0.6
     public static let keyEvery = 15
     /// The cover's size: a 16:9 HD frame, the shape most videos made from a song end up in.
     public static let width = 1920, height = 1080
@@ -83,8 +85,10 @@ public enum AudioCover {
         return CGColor(srgbRed: r, green: g, blue: b, alpha: 1)
     }
 
-    /// The cover picture: the artwork on a blurred, darkened copy of itself, or a coloured card with a note; the title, artist and album beside it.
-    public static func picture(for info: Info, width: Int = AudioCover.width, height: Int = AudioCover.height) -> CGImage? {
+    /// The cover picture: the artwork on a blurred, darkened copy of itself, or a coloured card with a note. With `words`, the title, artist and
+    /// album are drawn beside it. Without (what a project's cover video uses since 0.16.2), the tile sits in the middle, a little high, and the
+    /// words are left to the project as texts the person can change (`SoundTitles`): drawn into the picture they could not be edited.
+    public static func picture(for info: Info, width: Int = AudioCover.width, height: Int = AudioCover.height, words: Bool = true) -> CGImage? {
         let space = CGColorSpace(name: CGColorSpace.sRGB)!
         guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
                                   bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) else { return nil }
@@ -111,8 +115,9 @@ public enum AudioCover {
         ctx.setFillColor(CGColor(gray: 0, alpha: 0.18)); ctx.fill(CGRect(x: 0, y: 0, width: W, height: H))
 
         // The cover tile on the left.
-        let side = (H * 0.56).rounded()
-        let tile = CGRect(x: (W * 0.13).rounded(), y: ((H - side) / 2).rounded(), width: side, height: side)
+        let side = (H * (words ? 0.56 : 0.5)).rounded()
+        let tile = words ? CGRect(x: (W * 0.13).rounded(), y: ((H - side) / 2).rounded(), width: side, height: side)
+                         : CGRect(x: ((W - side) / 2).rounded(), y: (H * centreFromBottom - side / 2).rounded(), width: side, height: side)
         let path = CGPath(roundedRect: tile, cornerWidth: side * 0.045, cornerHeight: side * 0.045, transform: nil)
         ctx.saveGState()
         ctx.setShadow(offset: CGSize(width: 0, height: -side * 0.025), blur: side * 0.09, color: CGColor(gray: 0, alpha: 0.55))
@@ -136,6 +141,7 @@ public enum AudioCover {
         }
         ctx.restoreGState()
 
+        guard words else { return ctx.makeImage() }
         // The words on the right.
         let x = tile.maxX + W * 0.06, textWidth = W - x - W * 0.08
         var y = tile.maxY - side * 0.08
@@ -195,13 +201,14 @@ public enum AudioCover {
         return used
     }
 
-    /// Where the video of this sound is kept: named after the sound's path, size and date, so a changed file gets a new video.
+    /// Where the video of this sound is kept: named after the sound's path, size and date, so a changed file gets a new video. ("cover2": since
+    /// 0.16.2 the picture has no words; a project made by 0.16.0/0.16.1 keeps its own older video while it is there.)
     public static func cachedURL(for sound: URL) -> URL {
         let attrs = try? FileManager.default.attributesOfItem(atPath: sound.path)
         let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
         let date = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
         var h: UInt64 = 0xcbf29ce484222325
-        for b in "cover|\(sound.standardizedFileURL.path)|\(size)|\(Int(date))".precomposedStringWithCanonicalMapping.utf8 { h = (h ^ UInt64(b)) &* 0x100000001b3 }
+        for b in "cover2|\(sound.standardizedFileURL.path)|\(size)|\(Int(date))".precomposedStringWithCanonicalMapping.utf8 { h = (h ^ UInt64(b)) &* 0x100000001b3 }
         return cacheFolder.appendingPathComponent(String(format: "%016llx.mov", h))
     }
 
@@ -219,7 +226,7 @@ public enum AudioCover {
         let asbd = fmt.flatMap { CMAudioFormatDescriptionGetStreamBasicDescription($0)?.pointee }
         let codec = fmt.map { CMFormatDescriptionGetMediaSubType($0) } ?? 0
         let tags = await info(of: sound)
-        guard let cover = picture(for: tags) else { throw CoverError.writer("no picture") }
+        guard let cover = picture(for: tags, words: false) else { throw CoverError.writer("no picture") }
 
         let temp = cacheFolder.appendingPathComponent(UUID().uuidString + ".mov")
         defer { try? FileManager.default.removeItem(at: temp) }
