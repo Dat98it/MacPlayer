@@ -2,7 +2,7 @@
 
 Xem và chỉnh sửa **video lẫn ảnh**: cắt đoạn, ghép nhiều video, chỉnh màu chuyên nghiệp (đường cong, bánh xe màu, HSL, LUT), tách nền và mặt nạ, chuyển cảnh và keyframe, hiệu ứng giọng, chữ và hình dán, rồi xuất ngay trên Mac. Mọi xử lý diễn ra trên máy; không có tài khoản, không thu thập dữ liệu. Từ 0.15 app chỉ dùng mạng khi bạn tự dán một link video/ảnh để xem (Tệp ▸ Mở link…), ngoài ra không kết nối đi đâu.
 
-> **Trạng thái: bản 0.16.3 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
+> **Trạng thái: bản 0.16.4 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
 
 ## Yêu cầu
 
@@ -136,6 +136,11 @@ Mở một dự án video là thấy ngay bố cục quen thuộc của các app
     - **một** lựa chọn chất lượng (Tốt nhất, 4K, Full HD, HD, Nhẹ) thay cho "Chất lượng" và "Cỡ".
     - Video dọc 1080p là 1080 × 1920.
   - Ô Thư viện không còn nhấp nháy khi phát video.
+- **0.16.4: xuất video nhanh hơn**, cho mọi dự án video:
+  - khung hình giống hệt khung trước (ảnh bìa bài hát, ảnh, khung dừng, đoạn có chữ đứng yên) không bị vẽ lại và mã hoá lại; khung trước được kéo dài, vẫn ghi ít nhất 1 khung mỗi giây;
+  - dự án mà không có gì chuyển động (ảnh tĩnh, ảnh bìa, chữ và logo không hiệu ứng, không chuyển cảnh) được vẽ 4 khung/giây thay vì 30; chữ hiện/ẩn chính xác tới 1/4 giây;
+  - bộ mã hoá phần cứng chạy chế độ ưu tiên tốc độ, cùng tốc độ bit.
+  - Đo trên máy này, qua hàng đợi xuất của app: bài nhạc thật 3:42 **29,4 giây → 1,2 giây**; bản mix 79 phút **~10,5 phút → 20,8 giây**; video thật 1080p 60 fps 84 giây (có chỉnh màu) **25,3 → 16,7 giây**.
 - **0.16.3:** sửa lỗi dự án tạo từ nhạc: tên bài, nghệ sĩ, album **bị trong suốt khi vừa tạo dự án** (đầu phát ở 0:00), chỉ thấy khung khi rê chuột. Chữ giờ hiện ngay từ khung hình đầu. Sửa thêm: xuất **đoạn cuối bài** báo lỗi "no frame to compose" (video bìa thiếu hình ở cuối). Dự án nhạc tạo bằng bản cũ được tự sửa khi mở (làm lại video bìa; dự án 0.16.0/0.16.1 được thêm tên bài thành chữ chỉnh được). Đã kiểm trên nhạc thật của bạn (bản sao).
 - **0.16.2:** dự án tạo từ file nhạc: **tên bài và nghệ sĩ giờ là chữ chỉnh được** (bấm đúp trên khung hình để gõ lại, kéo, đổi kiểu, xoá; có trên dải Chữ của timeline). Trước đây chúng được vẽ chết vào ảnh bìa nên không sửa được. Ảnh bìa nằm giữa khung, chữ ở dưới. Dự án đã tạo bằng 0.16.0/0.16.1 giữ nguyên ảnh bìa cũ (chữ vẽ sẵn).
 - **0.16.1:**

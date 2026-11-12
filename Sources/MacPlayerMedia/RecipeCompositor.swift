@@ -97,6 +97,36 @@ final class OverlayLayer: @unchecked Sendable {
     }
 }
 
+/// Everything a frame of an export is drawn from, when that is a still picture (0.16.4): the same instruction, the very same source buffer,
+/// and the same place, size, turn and opacity of every text, subtitle and picture layer. Two frames with equal keys are the same picture.
+/// nil (draw it) for anything that moves by itself: a transition, a video layer, steadying, zoom-and-move, a preview (live values).
+struct StillFrameKey: Equatable {
+    let instruction: ObjectIdentifier
+    let source: UnsafeMutableRawPointer
+    let size: CGSize
+    let states: [String]
+    /// Frames handed over again instead of drawn (for tests and measurements).
+    nonisolated(unsafe) static var reused = 0
+
+    static func make(inst: RecipeInstruction, source: CVPixelBuffer, layerFrames: [(LayerDraw, CVPixelBuffer?)], second: (CVPixelBuffer, TransitionDraw)?,
+                     time: Double, size: CGSize) -> StillFrameKey? {
+        let plan = inst.plan
+        guard second == nil, plan.liveKey == nil, !inst.layer.live, !(plan.stabilizer.map { !$0.dx.isEmpty } ?? false), plan.look.motion.isEmpty,
+              layerFrames.allSatisfy({ $0.1 == nil && !$0.0.live }) else { return nil }
+        var states: [String] = []
+        for o in inst.layer.overlays {
+            if let st = ElementAnimator.state(of: o, at: time), st.alpha > 0.001 { states.append("t\(o.id)|\(st.x)|\(st.y)|\(st.scale)|\(st.rotation)|\(st.alpha)|\(st.reveal)") }
+        }
+        for c in inst.layer.cues where time >= c.start.seconds && time < c.end.seconds { states.append("c\(c.id)") }
+        for (d, _) in layerFrames {
+            if let st = d.spec.state(at: MediaTime(seconds: time, timescale: 6000)), st.opacity > 0.001 {
+                states.append("l\(d.spec.id)|\(st.centerX)|\(st.centerY)|\(st.width)|\(st.opacity)|\(st.rotation)")
+            }
+        }
+        return StillFrameKey(instruction: ObjectIdentifier(inst), source: Unmanaged.passUnretained(source).toOpaque(), size: size, states: states)
+    }
+}
+
 /// One layer (video or picture) as the compositor draws it.
 struct LayerDraw {
     var spec: LayerSpec
@@ -153,6 +183,8 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
     }()
 
     private let queue = DispatchQueue(label: "macplayer.compositor", qos: .userInitiated)
+    /// The last frame drawn, with what it was drawn from (used only on `queue`).
+    private var lastStill: (key: StillFrameKey, output: CVPixelBuffer, source: CVPixelBuffer)?
 
     var sourcePixelBufferAttributes: [String: any Sendable]? { [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA] }
     var requiredPixelBufferAttributesForRenderContext: [String: any Sendable] { [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA] }
@@ -172,9 +204,20 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
                 let size = request.renderContext.size
                 let frames: [(LayerDraw, CVPixelBuffer?)] = inst.layers.map { d in (d, d.trackID.flatMap { request.sourceFrame(byTrackID: $0) }) }
                 let second: (CVPixelBuffer, TransitionDraw)? = inst.second.flatMap { t in request.sourceFrame(byTrackID: t.trackID).map { ($0, t) } }
-                let image = Self.render(source: src, plan: inst.plan, layer: inst.layer, time: request.compositionTime.seconds, outputSize: size, layerFrames: frames, second: second)
+                let time = request.compositionTime.seconds
+                // The same picture as the frame before (a song's cover, a photo, a freeze frame, a still stretch with a title): handed over
+                // again instead of drawn again (0.16.4). Exports only; see `StillFrameKey`.
+                let key = StillFrameKey.make(inst: inst, source: src, layerFrames: frames, second: second, time: time, size: size)
+                if let key, let last = self.lastStill, last.key == key {
+                    StillFrameKey.reused += 1
+                    request.finish(withComposedVideoFrame: last.output)
+                    return
+                }
+                let image = Self.render(source: src, plan: inst.plan, layer: inst.layer, time: time, outputSize: size, layerFrames: frames, second: second)
                 Self.tagColor(of: out, like: src)          // before drawing: a 10-bit buffer is converted to YCbCr using the tags it carries
                 Self.ciContext.render(image, to: out)
+                // The source is kept with the key: while it is held, its buffer cannot be handed out again with another picture in it.
+                self.lastStill = key.map { (key: $0, output: out, source: src) }
                 request.finish(withComposedVideoFrame: out)
             }
         }

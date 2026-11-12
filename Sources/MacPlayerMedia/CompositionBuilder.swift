@@ -45,6 +45,20 @@ public enum CompositionBuilder {
     /// - Parameters:
     ///   - frameAccurate: shift each piece's boundaries by half a frame so exactly the named frames are kept (export).
     ///     The preview of a whole source passes false.
+    /// Pictures a second for an export where nothing moves (see `nothingMoves`). Things appear and go on a quarter of a second.
+    public static let stillPace = 4
+
+    /// Nothing on the picture changes by itself over time: no zoom-and-move or steadying, no text or layer that fades, animates or has
+    /// keyframes. (Transitions and moving sources are checked by the caller.)
+    public static func nothingMoves(pieces: [RenderPiece], overlays: [TextOverlay], layers: [LayerSpec]) -> Bool {
+        pieces.allSatisfy { $0.look.motion.isEmpty && $0.look.stabilize <= 0 && $0.look.transitionIn == nil }
+            && overlays.allSatisfy { $0.fade <= 0 && ($0.animationIn?.kind ?? .none) == .none && ($0.animationOut?.kind ?? .none) == .none && ($0.keyframes ?? []).isEmpty }
+            && layers.allSatisfy { l in
+                if case .video = l.kind { return false }
+                return l.keyframes.isEmpty && l.fadeIn <= 0 && l.fadeOut <= 0 && (l.animationIn?.kind ?? .none) == .none && (l.animationOut?.kind ?? .none) == .none
+            }
+    }
+
     public static func build(pieces: [RenderPiece], overlays: [TextOverlay] = [], cues: [SubtitleCue] = [], subtitleStyle: SubtitleStyle = SubtitleStyle(),
                              maxHeight: Int? = nil, includeAudio: Bool = true, replacementAudio: URL? = nil, layers: [LayerSpec] = [], soundClips: [SoundClip] = [], frameAccurate: Bool = true, fixedGrid: Bool = false) async throws -> BuiltRender {
         guard !pieces.isEmpty else { throw BuildError.noPieces }
@@ -74,6 +88,8 @@ public enum CompositionBuilder {
         var firstFPS = 30.0
         /// A photo clip (one picture a second) is among the pieces: the picture then always goes through the compositor, at a steady pace.
         var hasStill = false
+        /// Every piece is a still picture (see `stillPace`).
+        var allStillSources = true
         var firstTransform: CGAffineTransform = .identity
 
         // First pass: what each piece needs (the part of the source to use, its size and speed).
@@ -90,7 +106,10 @@ public enum CompositionBuilder {
             let natural = try await vSrc.load(.naturalSize)
             // A video MacPlayer made of a photo, an animation or a sound is paced like a photo: it never sets the frame rate.
             let made = StillClip.isMade(piece.sourceURL)
-            let fps = made ? 1 : Double(try await vSrc.load(.nominalFrameRate))
+            let ownFPS = Double(try await vSrc.load(.nominalFrameRate))
+            let fps = made ? 1 : ownFPS
+            // A picture that never changes: a sound's cover, or a photo's video (one picture a second; an animation has more).
+            if !(made && (AudioCover.isCover(piece.sourceURL) || ownFPS <= 1.5)) { allStillSources = false }
             let duration = MediaTime(try await a.load(.duration))
             var span = piece.span
             var gridLength: CMTime?
@@ -336,6 +355,11 @@ public enum CompositionBuilder {
             let vc = AVMutableVideoComposition()
             vc.renderSize = renderSize
             vc.frameDuration = FrameRate(approximately: firstFPS).frameDuration.cmTime      // exact for 29.97 and 59.94: 1/firstFPS in 6000ths would land on 30 and 60
+            // An export where nothing ever moves (still pictures, texts and layers that only appear and go, no transition): drawn
+            // `stillPace` times a second instead of 30 (0.16.4). The picture is the same; a song's video is made several times faster.
+            if frameAccurate, allStillSources, halves.allSatisfy({ $0 == 0 }), Self.nothingMoves(pieces: pieces, overlays: overlays, layers: layers) {
+                vc.frameDuration = CMTime(value: 1, timescale: CMTimeScale(stillPace))
+            }
             vc.customVideoCompositorClass = outputHDR != nil && frameAccurate ? RecipeCompositor10.self : RecipeCompositor.self
             if let h = outputHDR, frameAccurate {
                 // Without this the system hands the compositor its pictures as BT.709 SDR whatever the source is.

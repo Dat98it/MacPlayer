@@ -48,15 +48,25 @@ import MacPlayerCore
         let asset = AVURLAsset(url: out)
         let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
         let reader = try AVAssetReader(asset: asset)
-        let o = AVAssetReaderTrackOutput(track: track, outputSettings: nil); reader.add(o); reader.startReading()
+        // Decoded frames carry the times they are shown at; stored ones are shifted when the encoder reorders frames.
+        let o = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]); reader.add(o); reader.startReading()
         var times: [Double] = []
         while let sb = o.copyNextSampleBuffer() { if CMSampleBufferGetNumSamples(sb) > 0 { times.append(CMSampleBufferGetPresentationTimeStamp(sb).seconds) } }
         times.sort()
-        let gaps = zip(times.dropFirst(), times).map { $0 - $1 }
-        #expect(abs(Double(times.count) - 150) <= 2, "5 s at 30 fps: \(times.count) frames")
-        #expect((gaps.max() ?? 1) < 0.05, "no long frames where the photo is (largest gap \(gaps.max() ?? -1) s)")
-        let photoPart = try await frame(out, at: 3.5)
-        #expect(photoPart.isBlue(160, 90), "the photo is shown after the video")
+        // The video's part keeps all its frames, at the video's pace. Since 0.16.4 the photo's part, which never changes, is not written
+        // 30 times a second: a frame at least every second, and the last one lasts to the end.
+        let videoPart = times.filter { $0 < 1.99 }, photoPart = times.filter { $0 >= 1.99 }
+        let videoGaps = zip(videoPart.dropFirst(), videoPart).map { $0 - $1 }
+        let photoGaps = zip(photoPart.dropFirst(), photoPart).map { $0 - $1 }
+        #expect(abs(Double(videoPart.count) - 60) <= 1, "2 s of video at 30 fps: \(videoPart.count) frames")
+        #expect((videoGaps.max() ?? 1) < 0.05, "no long frames in the video's part (largest gap \(videoGaps.max() ?? -1) s)")
+        #expect(!photoPart.isEmpty && photoPart.count < 10 && (photoGaps.max() ?? 0) <= RepeatSkipper.maxGap + 0.01, "the photo's part: \(photoPart.count) frames, largest gap \(photoGaps.max() ?? -1) s")
+        let total = try await asset.load(.duration).seconds
+        #expect(abs(total - 5) < 0.05, "5 s long (\(total))")
+        for t in [2.2, 3.5, 4.95] {
+            let px = try await frame(out, at: t)
+            #expect(px.isBlue(160, 90), "the photo is shown after the video, to the end (\(t) s)")
+        }
     }
 
     @Test func aPhotoClipKeepsTextMovingOverIt() async throws {

@@ -309,9 +309,28 @@ extension SelfTest {
                             try? FileManager.default.removeItem(at: out)
                         }
                     }
+                    // The whole song exported as a video, as the Export window does (exact, the project's own settings), timed.
+                    let exportStart = Date()
+                    var req = ExportRequest(options: e.project.export, folder: work.path, baseName: "real-export-\(UUID().uuidString.prefix(4))")
+                    req.options.mode = .exact
+                    if let (jobs, _) = try? e.planExport(req) {
+                        env.exports.enqueue(jobs); await waitForQueue(env, timeout: 300)
+                        let took = Date().timeIntervalSince(exportStart)
+                        if case .succeeded(let path)? = env.exports.queue.jobs.first(where: { $0.id == jobs[0].id })?.state, let out = try? await MediaProbe.probe(url: URL(fileURLWithPath: path)) {
+                            check(abs(out.duration.seconds - length) < 0.2 && out.hasVideo && out.hasAudio,
+                                  "the whole song exports as a video in \(String(format: "%.1f", took)) s (\(String(format: "%.0f", length)) s long, \(String(format: "%.0f", length / max(0.1, took)))× real time)")
+                            if let img = try? await FrameGrabber.image(url: URL(fileURLWithPath: path), at: MediaTime(seconds: length - 0.5, timescale: 600), accuracy: .exact) {
+                                check(whitePoints(img, fromY: 0.70, toY: 0.85) > 100, "its title is still there half a second before the end")
+                            }
+                            try? FileManager.default.removeItem(atPath: path)
+                        } else { check(false, "the whole song exports: \(String(describing: env.exports.queue.jobs.first(where: { $0.id == jobs[0].id })?.state))") }
+                    } else { check(false, "the export of the song can be planned") }
                     await e.player.seek(to: MediaTime(seconds: max(0, length - 3), timescale: 600))
-                    e.player.play(); try? await Task.sleep(nanoseconds: 800_000_000)
-                    check(e.player.currentTime.seconds > length - 2.9 && e.player.failure == nil, "its project plays near the end (\(String(format: "%.1f", e.player.currentTime.seconds)) s)")
+                    let playStart = Date()
+                    e.player.play(); await waitFor(4) { e.player.currentTime.seconds > length - 2.9 }
+                    let startTook = Date().timeIntervalSince(playStart)
+                    check(e.player.currentTime.seconds > length - 2.9 && e.player.failure == nil && startTook < 2,
+                          "its project plays near the end (\(String(format: "%.1f", e.player.currentTime.seconds)) s, moving after \(String(format: "%.2f", startTook)) s)")
                     e.player.pause(); e.close()
                 } else { check(false, "real song makes a project: \(u.lastPathComponent)") }
                 check(bytes(u) == before, "the real song is unchanged")

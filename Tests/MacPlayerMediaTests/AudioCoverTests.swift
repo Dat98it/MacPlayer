@@ -210,13 +210,22 @@ import MacPlayerCore
         try await RenderExporter().export(pieces: [RenderPiece(sourceURL: cover, span: TimeSpan(start: MediaTime(seconds: 6.3), end: MediaTime(seconds: 8.3)))],
                                           to: out, options: ExportOptions(mode: .exact))
         let info = try await MediaProbe.probe(url: out)
-        #expect(abs(info.duration.seconds - 2) < 0.1 && info.hasAudio && info.hasVideo)
+        #expect(abs(info.duration.seconds - 2) < 0.1 && info.hasAudio && info.hasVideo, "length \(info.duration.seconds)")
         for t in [0.05, 1.0, 1.9] {
             let px = try await frame(out, at: t)
             #expect(px.meanLuma(in: CGRect(x: 0, y: 0, width: px.width, height: px.height)) > 8, "the cover at \(t) s")
         }
-        let fps = info.primaryVideo?.frameRate?.framesPerSecond ?? 0
-        #expect(fps >= 24, "a made video never sets a pace of one picture a second (\(fps))")
+        // Nothing moves: few frames are written (0.16.4), never more than a second apart, and the picture lasts to the end.
+        let outAsset = AVURLAsset(url: out)
+        let track = try #require(try await outAsset.loadTracks(withMediaType: .video).first)
+        let reader = try AVAssetReader(asset: outAsset)
+        // Decoded frames carry the times they are shown at; stored ones are shifted when the encoder reorders frames.
+        let o = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]); reader.add(o); reader.startReading()
+        var times: [Double] = []
+        while let sb = o.copyNextSampleBuffer() { if CMSampleBufferGetNumSamples(sb) > 0 { times.append(CMSampleBufferGetPresentationTimeStamp(sb).seconds) } }
+        times.sort()
+        let gaps = zip(times.dropFirst(), times).map { $0 - $1 }
+        #expect(times.count >= 2 && times.count <= 5 && (gaps.max() ?? 0) <= RepeatSkipper.maxGap + 0.01, "\(times.count) frames, largest gap \(gaps.max() ?? -1) s")
         let s = try await pcm(out, channel: 0)
         #expect(abs(crossings(s[4410..<48_510]) - 440) <= 4)
     }

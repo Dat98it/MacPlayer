@@ -589,6 +589,31 @@ Với dự án ảnh, mỗi sự kiện còn vẽ lại cả tấm ảnh.
 - Chưa có số đo "trước khi sửa" bằng chính G7: nó được viết cùng lúc với phần sửa. Nhận định "mỗi lần dời một lần ghi dự án" ở trên lấy từ đọc mã.
 
 
+## Bản 0.16.4: xuất video nhanh hơn cho mọi dự án (12/11/2026)
+
+**Yêu cầu:** xuất video (dự án từ mp3) rất lâu; tối ưu ngắn nhất có thể, cho cả dự án video nói chung.
+
+**Đo trước (bản release, máy này):**
+- Bài thật 3:42 → video 1080p: 29,4 giây. Thời gian tỉ lệ với số khung: 30 khung/giây → 29,4 s; 1 khung/giây → 1,2 s.
+- Video thật 1080p 60 fps HDR 84 giây có chỉnh màu: 25,3 giây.
+- Chỉ đọc và vẽ (không mã hoá): video 9,2 s, bài hát 12,0 s; phần còn lại là **bộ mã hoá**.
+
+**Đã làm (áp dụng cho mọi dự án video):**
+1. Khung giống hệt khung trước (cùng hình nguồn, cùng vị trí, độ mờ của mọi chữ và lớp) **không vẽ lại**.
+2. Khung giống hệt từng byte với khung vừa ghi **không mã hoá lại**; khung trước được kéo dài, vẫn ghi ít nhất 1 khung mỗi giây, khung cuối luôn được ghi để hình kéo tới hết.
+3. Dự án **không có gì chuyển động** (chỉ ảnh/ảnh bìa, chữ và logo không hiệu ứng, không chuyển cảnh): vẽ 4 khung/giây thay vì 30.
+4. Bộ mã hoá phần cứng ở chế độ **ưu tiên tốc độ**, cùng tốc độ bit.
+
+**Kết quả (qua hàng đợi xuất của app, bản release):** bài 3:42 **1,2 s** (trước 29,4 s); 3:35 1,2 s; 5:24 1,6 s; bản 79 phút **20,8 s** (trước ước ~10,5 phút); video thật 84 s **16,7 s** (trước 25,3 s); video dọc thật 32 s có chữ: 5,1 s.
+
+**Lỗi tìm được trong lúc làm:** xuất một đoạn 2 giây ra file 2,5 giây khi có khung bị bỏ (khung cuối mang độ dài cũ) — sửa bằng cách kết thúc file đúng độ dài timeline. Một test đọc thời điểm khung trên dữ liệu nén báo "mất 1 giây đầu" trong khi file đúng (ffprobe xác nhận khung đầu ở 0:00): do khung bị sắp xếp lại (B-frame); test giờ đọc khung đã giải mã.
+
+**Thay đổi về file xuất:** video có khung không đều (đoạn đứng yên chỉ 1 khung/giây; đoạn có chuyển động giữ nguyên tốc độ khung). Điện thoại, QuickTime, trình duyệt, YouTube đều phát loại file này (iPhone cũng quay ra loại này). Chữ/logo đứng yên trên dự án tĩnh xuất hiện/biến mất chính xác tới 1/4 giây.
+
+**Kiểm thử:** Media thêm `FastExportTests` (nhận đúng khung trùng/khác kể cả khác 1 điểm ảnh; chữ hiện đúng 1–2 s trên ảnh tĩnh, không sớm/muộn; video chuyển động giữ đủ 90/90 khung; khi nào coi là "không gì chuyển động"). Cập nhật 3 test cũ đòi 30 khung/giây đều cho cả đoạn ảnh. G9 xuất trọn từng bài thật qua hàng đợi, kiểm độ dài, có hình và tiếng, chữ còn ở 0,5 s trước cuối. Core 417, Media 248 (chạy 2 lần) đạt; G9 95 đạt (2 lần); self-test đầy đủ 511 đạt, 1 lỗi đã biết.
+
+**Chưa kiểm chứng:** tải video xuất ra lên YouTube/Facebook/TikTok thật (không làm vì cần đăng tải ra ngoài); xem bằng mắt chất lượng chế độ ưu tiên tốc độ trên video nhiều chuyển động (chỉ kiểm bằng các test so điểm ảnh sẵn có); dự án dài nhiều chuyển cảnh, hiệu ứng (vẫn phải vẽ và mã hoá từng khung, chỉ nhanh hơn nhờ bộ mã hoá).
+
 ## Bản 0.16.3: chữ tên bài trong suốt lúc mới tạo dự án; xuất đoạn cuối bài lỗi (12/11/2026)
 
 **Người bảo trì báo:** tạo dự án từ mp3 thì dòng chữ không hiện (rê chuột vào vẫn thấy khung); xác nhận cả tên bài, nghệ sĩ, album đều trong suốt. Yêu cầu test bằng mp3 thật.

@@ -223,6 +223,21 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.16.4 Faster exports (all video projects).** Measured first (`macplayer-probe songexport|videoexport`, release build): time is linear in
+frames; the H.264/HEVC encoder is the main cost, drawing second. Three changes:
+- `RecipeCompositor.startRequest` hands over the previous output again when `StillFrameKey` (same instruction, the very same source buffer,
+  kept alive with the key so its pool cannot refill it, same per-time states of texts/cues/picture layers) matches; nil for transitions, video
+  layers, stabiliser, motion, previews (live). `StillFrameKey.reused` counts.
+- `ReencodeExporter`: `RepeatSkipper` leaves out frames byte-identical to the last written (sampled rows first, then full compare, padding
+  ignored), writes one at least every `maxGap` 1 s, appends the last held frame at the end and `endSession(atSourceTime: duration)` (without it
+  a 2 s export came out 2.5 s). VFR output. Encoder: `PrioritizeEncodingSpeedOverQuality` + `RealTime` false (HEVC 1080p60: 25.3 → 16.8 s).
+  `ReencodeJob.skipsRepeatedFrames` (default true).
+- `CompositionBuilder`: an export where every piece is a still (cover, or a made video ≤ 1.5 fps) and `nothingMoves` (no transition, motion,
+  stabiliser; texts with fade 0 and no animation/keyframes; picture layers only, unkeyed, unfaded) uses `stillPace` = 4 fps.
+Tests that read frame *times* must decode (`outputSettings` with a pixel format): stored samples are shifted by the reorder delay (B-frames),
+which made a correct file look like it lost its first second. Results: song 3:42 29.4 → 1.2 s, 79 min ~10.5 min → 20.8 s (via the queue).
+Media `FastExportTests`; `StillClipTests`/`AudioCoverTests`/G2 check pace per part instead of a constant 30 fps.
+
 **0.16.3 Song texts visible at 0:00; song ends export.** `SoundTitles` texts have `fade: 0` (with 0.3 they were fully see-through at the
 first frame, which is where a new project opens: the maintainer saw only their hover frames). The cover video gets one more picture 1/30 s before
 the end (`times` in `AudioCover.make`): with a picture every 5 s, the end of a song had none and an export of it failed with "no frame to

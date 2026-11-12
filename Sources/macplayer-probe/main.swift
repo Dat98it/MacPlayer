@@ -34,6 +34,50 @@ func run() async throws {
             let i = await AudioCover.info(of: URL(fileURLWithPath: a))
             print("\(URL(fileURLWithPath: a).lastPathComponent.prefix(45)) | title=\(i.title.prefix(60)) | artist=\(i.artist ?? "–") | album=\(i.album ?? "–") | artwork=\(i.artwork?.count ?? 0)")
         }
+    case "videoexport":
+        // videoexport <video> <out-dir> [plain|look|text]: a one-clip project exported as the Export window does (exact, 1080p, H.264, high),
+        // timed. "look" adds a colour change (the compositor draws every frame), "text" a title as well. Only reads the video.
+        guard args.count >= 4 else { fail("videoexport <video> <out-dir> [plain|look|text]") }
+        let dir = URL(fileURLWithPath: args[3], isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let src = URL(fileURLWithPath: args[2]), mode = args.count > 4 ? args[4] : "look"
+        let info = try await MediaProbe.probe(url: src)
+        var look = VideoLook()
+        if mode != "plain" { look.color.exposure = 0.05 }
+        let texts = mode == "text" ? [TextOverlay(text: "Tiêu đề thử", start: .zero, end: info.duration, x: 0.5, y: 0.85)] : []
+        var o = ExportOptions(mode: .exact); o.resolution = .p1080; o.quality = .high
+        let out = dir.appendingPathComponent("video-\(UUID().uuidString.prefix(4)).mp4")
+        let t0 = Date()
+        try await RenderExporter().export(pieces: [RenderPiece(sourceURL: src, span: TimeSpan(start: .zero, end: info.duration), look: look)], recipe: RenderRecipe(look: look, overlays: texts), to: out, options: o)
+        let took = Date().timeIntervalSince(t0)
+        let r = try await MediaProbe.probe(url: out)
+        let size = ((try? FileManager.default.attributesOfItem(atPath: out.path))?[.size] as? NSNumber)?.int64Value ?? 0
+        print(String(format: "%@ %@: export %.1f s for %.1f s (%.1fx real time); %dx%d %.2f fps %@, %.1f MB", src.lastPathComponent, mode, took, info.duration.seconds,
+                     info.duration.seconds / max(0.01, took), r.primaryVideo?.width ?? 0, r.primaryVideo?.height ?? 0, r.primaryVideo?.frameRate?.framesPerSecond ?? 0, r.primaryVideo?.codec ?? "", Double(size) / 1e6))
+    case "songexport":
+        // songexport <sound> <out-dir> [seconds]: a video project made of the sound (cover + title texts), exported as the Export window
+        // does by default (exact, 1080p, H.264, high quality), timed. Only reads the sound.
+        guard args.count >= 4 else { fail("songexport <sound> <out-dir> [seconds]") }
+        let dir = URL(fileURLWithPath: args[3], isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        AudioCover.cacheFolder = dir.appendingPathComponent("covers", isDirectory: true)
+        let src = URL(fileURLWithPath: args[2])
+        let t0 = Date()
+        let cover = try await AudioCover.make(from: src)
+        let t1 = Date()
+        let info = try await MediaProbe.probe(url: cover)
+        let length = args.count > 4 ? MediaTime(seconds: Double(args[4]) ?? 30, timescale: 600) : info.duration
+        let tags = await AudioCover.info(of: src)
+        let texts = SoundTitles.overlays(title: tags.title, artist: tags.artist, album: tags.album, start: .zero, end: length)
+        var o = ExportOptions(mode: .exact); o.resolution = .p1080; o.quality = .high
+        let out = dir.appendingPathComponent("song-\(UUID().uuidString.prefix(4)).mp4")
+        try await RenderExporter().export(pieces: [RenderPiece(sourceURL: cover, span: TimeSpan(start: .zero, end: length))], recipe: RenderRecipe(overlays: texts), to: out, options: o)
+        let t2 = Date()
+        let r = try await MediaProbe.probe(url: out)
+        let size = ((try? FileManager.default.attributesOfItem(atPath: out.path))?[.size] as? NSNumber)?.int64Value ?? 0
+        print(String(format: "cover %.1f s; export %.1f s for %.1f s of song (%.1fx real time); %@ %dx%d %.2f fps, %.1f MB, sound %@",
+                     t1.timeIntervalSince(t0), t2.timeIntervalSince(t1), length.seconds, length.seconds / max(0.01, t2.timeIntervalSince(t1)), out.lastPathComponent,
+                     r.primaryVideo?.width ?? 0, r.primaryVideo?.height ?? 0, r.primaryVideo?.frameRate?.framesPerSecond ?? 0, Double(size) / 1e6, r.audio.first?.codec ?? "none"))
     case "cover":
         // cover <sound> <out-dir>: the video MacPlayer makes of a sound for a project (0.16), timed, with its size. The sound is only read.
         guard args.count >= 4 else { fail("cover <sound> <out-dir>") }

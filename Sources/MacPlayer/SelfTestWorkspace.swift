@@ -131,8 +131,20 @@ extension SelfTest {
         let outDir = work.appendingPathComponent("ws-out"); try? fm.createDirectory(at: outDir, withIntermediateDirectories: true)
         let res = await runExport(s, env: env, ExportRequest(options: ExportOptions(mode: .exact), folder: outDir.path, baseName: "with-photo"))
         if let out = res.path, let info = try? await MediaProbe.probe(url: URL(fileURLWithPath: out)) {
-            let fps = info.primaryVideo?.frameRate.map { Double($0.numerator) / Double(max(1, $0.denominator)) } ?? 0
-            check(abs(info.duration.seconds - s.duration.seconds) < 0.3 && fps > 20, "the export has the photo clip and plays at the video's rate (\(String(format: "%.2f", info.duration.seconds)) s, \(Int(fps)) fps)")
+            // The videos keep their pace; since 0.16.4 the photo's part, which never changes, is written at least once a second, not 30 times.
+            let photoStart = s.project.timeline.last.flatMap { TimelineEditor.starts(s.project.timeline)[$0.id] }?.seconds ?? 0
+            let asset = AVURLAsset(url: URL(fileURLWithPath: out))
+            var times: [Double] = []
+            if let track = try? await asset.loadTracks(withMediaType: .video).first, let reader = try? AVAssetReader(asset: asset) {
+                let o = AVAssetReaderTrackOutput(track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+                reader.add(o); reader.startReading()
+                while let sb = o.copyNextSampleBuffer() { if CMSampleBufferGetNumSamples(sb) > 0 { times.append(CMSampleBufferGetPresentationTimeStamp(sb).seconds) } }
+            }
+            times.sort()
+            func gaps(_ t: [Double]) -> [Double] { zip(t.dropFirst(), t).map { $0 - $1 } }
+            let videoGap = gaps(times.filter { $0 < photoStart - 0.05 }).max() ?? 1, photoGap = gaps(times.filter { $0 >= photoStart }).max() ?? 0
+            check(abs(info.duration.seconds - s.duration.seconds) < 0.3 && videoGap < 0.05 && photoGap <= 1.01,
+                  "the export has the photo clip; the videos keep their pace (\(String(format: "%.2f", info.duration.seconds)) s, largest gap \(String(format: "%.3f", videoGap)) s in the videos, \(String(format: "%.2f", photoGap)) s on the photo)")
             if let img = try? await FrameGrabber.image(url: URL(fileURLWithPath: out), at: MediaTime(seconds: s.duration.seconds - 2), accuracy: .exact, maxSize: CGSize(width: 64, height: 64)) {
                 let px = pixel(img)
                 check(px.r > 180 && px.g > 70 && px.g < 140 && px.b < 60, "the photo's own colour is in the exported video (\(px))")

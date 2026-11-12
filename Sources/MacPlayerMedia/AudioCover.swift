@@ -205,6 +205,9 @@ public enum AudioCover {
     /// 0.16.2 the picture has no words; "cover3": 0.16.3 adds the picture at the very end; a project made by 0.16.0/0.16.1 keeps its own older video while it is there.)
     public static func cachedURL(for sound: URL) -> URL { cachedURL(for: sound, version: current) }
 
+    /// Is this a sound's cover video (in MacPlayer's covers folder)?
+    public static func isCover(_ url: URL) -> Bool { url.standardizedFileURL.path.hasPrefix(cacheFolder.standardizedFileURL.path + "/") }
+
     /// The versions of the cover video: 1 = 0.16.0/0.16.1 (words drawn in), 2 = 0.16.2 (no words, no picture at the very end), 3 = now.
     public static let current = 3
     public static func cachedURL(for sound: URL, version: Int) -> URL {
