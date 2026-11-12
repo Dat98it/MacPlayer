@@ -44,6 +44,7 @@ enum SelfTest {
         let original = (try? Data(contentsOf: demo)) ?? Data()
 
         if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_SWITCH"] != nil { await toolSwitchFlow(env: env, work: work, app: app); finish(); return }
+        if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_LINK"] != nil { await soloAndLinkFlow(env: env, work: work, app: app); finish(); return }
         if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_DRAG"] != nil { await dragSmoothnessFlow(env: env, work: work, app: app); finish(); return }
         if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_CANVAS"] != nil { await canvasFlow(env: env, work: work, app: app); await selectionFlow(env: env, work: work, app: app); await centringAndTypingFlow(env: env, work: work, app: app); finish(); return }
         if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_WORKSPACE"] != nil { await workspaceFlow(env: env, work: work, app: app); await photoWorkspaceFlow(env: env, work: work, app: app); await canvasFlow(env: env, work: work, app: app); finish(); return }
@@ -191,6 +192,7 @@ enum SelfTest {
         await selectionFlow(env: env, work: work, app: app)
         await centringAndTypingFlow(env: env, work: work, app: app)
         await dragSmoothnessFlow(env: env, work: work, app: app)
+        await soloAndLinkFlow(env: env, work: work, app: app)
         await timelineFlow(env: env, work: work, demo: demo, demoBytes: original)
 
         // H. layers over the timeline
@@ -1371,7 +1373,13 @@ enum SelfTest {
 
         // Menu
         let items = app.allMenuItems
-        let dead = items.filter { $0.action != nil && !$0.isSeparatorItem && ($0.target ?? NSApp.target(forAction: $0.action!, to: nil, from: $0)) == nil }.map(\.title)
+        // An item with a target must be answerable by it (Cut/Copy/Paste sent to the app delegate looked alive but did nothing until
+        // 0.15.2). An item for whatever has the keyboard (no target) must be one a text field or a window answers, or have a taker now.
+        let dead = items.filter { i in
+            guard let a = i.action, !i.isSeparatorItem, !i.hasSubmenu else { return false }
+            if let t = i.target { return !t.responds(to: a) }
+            return NSApp.target(forAction: a, to: nil, from: i) == nil && !NSTextView.instancesRespond(to: a) && !NSWindow.instancesRespond(to: a)
+        }.map(\.title)
         check(dead.isEmpty, "every menu item has something to act on (dead: \(dead))")
         var seen: [String: String] = [:], dup: [String] = []
         for i in items where !i.keyEquivalent.isEmpty { let k = "\(i.keyEquivalentModifierMask.rawValue)-\(i.keyEquivalent)"; if let o = seen[k] { dup.append("\(o) / \(i.title)") } else { seen[k] = i.title } }

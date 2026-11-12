@@ -25,6 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         let reports = env.saver.recoverLegacyReplaceJournals()
         if !reports.isEmpty { showRecovery(reports) }
         env.projects.importKnownProjectsOnce(store: env.projectStore, isSandbox: env.isSandbox)
+        // Photos fetched from links were only kept while they were shown.
+        LinkFetcher.clearCache()
 
         let args = CommandLine.arguments
         if let i = args.firstIndex(of: "--selftest"), i + 1 < args.count {
@@ -33,7 +35,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             Task { await SelfTest.run(mediaDir: dir, app: self) }
             return
         }
-        if controllers.isEmpty { newWindow() }
+        // Opened by Finder for a file (a double-click, Open With): the file's own window is the first one, without a start screen
+        // shown first. Should no file arrive after all, the start screen comes a moment later.
+        let launchedForFiles = (notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool) == false
+        if launchedForFiles {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { MainActor.assumeIsolated { if self.controllers.isEmpty { self.newWindow() } } }
+        } else if controllers.isEmpty { newWindow() }
         if args.contains("--fullscreen-check") { Task { await SelfTest.fullScreenCheck(app: self) } }
         if args.contains("--effects-check") { Task { await SelfTest.effectsCheck(app: self) } }
         if args.contains("--switch-check") { Task { await SelfTest.switchCheck(app: self) } }
@@ -169,11 +176,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     // MARK: Windows
 
+    /// `show: false`: made now, shown once it holds something (a file on its own is shown at its own size, not first at the
+    /// default size).
     @discardableResult
-    func newWindow() -> MainWindowController {
+    func newWindow(show: Bool = true) -> MainWindowController {
         let c = MainWindowController(playlists: playlists)
         controllers.append(c)
-        c.showWindow(nil)
+        if show { c.showWindow(nil) }
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: c.window, queue: .main) { [weak self, weak c] _ in
             MainActor.assumeIsolated { self?.controllers.removeAll { $0 === c } }
         }
@@ -199,6 +208,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         return newWindow()
     }
 
+    /// Where one file opened on its own plays (0.15): the window the app has just shown with nothing in it (the start screen,
+    /// as when Finder launched the app for this file); otherwise a new window, so the playlists, projects and other files stay
+    /// where they are.
+    func soloTarget() -> MainWindowController {
+        if let a = active, a.session == nil, a.route == .home, a.window?.isVisible == true { return a }
+        return newWindow(show: false)
+    }
+
     /// Where a project opens: the active window unless it is already editing another project.
     func editorTarget() -> MainWindowController {
         if let a = active, a.session?.isEditor != true { return a }
@@ -216,7 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             MainActor.assumeIsolated {
                 guard let self else { return }
                 let windows: [[String: Any]] = self.controllers.map { c in
-                    let route: String = { switch c.route { case .home: return "home"; case .playlist: return "playlist"; case .projects: return "projects"; case .editor: return "editor" } }()
+                    let route: String = { switch c.route { case .home: return "home"; case .playlist: return "playlist"; case .projects: return "projects"; case .editor: return "editor"; case .solo: return "solo" } }()
                     guard let s = c.session else { return ["hasVideo": false, "route": route] }
                     return ["hasVideo": true, "isProject": s.isEditor, "kind": s.project.kind.rawValue, "route": route, "path": s.sourceURL?.path ?? "", "projectPath": s.projectPath ?? "",
                             "name": s.project.name, "duration": s.info?.duration.seconds ?? 0, "clips": s.project.timeline.count,
@@ -254,8 +271,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             return
         }
         guard let url = files.first else { return }
-        let target = viewerTarget()
-        Task { await target.open(url: url) }
+        // One video or photo: a window of its own, without the playlists (0.15).
+        let target = soloTarget()
+        Task {
+            let ok = await target.openSolo(url: url)
+            // A window made only for this file (never shown) goes away when the file cannot be opened.
+            if !ok, target.session == nil, target.window?.isVisible != true { target.window?.close(); controllers.removeAll { $0 === target } }
+        }
     }
 
     /// Opens a project file in the editor (a window that already has it comes to the front). Old files are upgraded on reading.
@@ -304,6 +326,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     @objc func openDocument(_ sender: Any?) {
         if let r = active?.route, r == .projects || r == .editor { openProjectFile(sender) } else { openMedia(sender) }
     }
+
+    /// File ▸ Open Link… (⌘U): a video, stream or photo from a web link, in a window of its own (0.15).
+    @objc func openLink(_ sender: Any?) { LinkPanel.shared.show() }
 
     @objc func openMedia(_ sender: Any?) {
         let p = NSOpenPanel(); p.allowsMultipleSelection = true; p.canChooseDirectories = false
@@ -415,7 +440,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     /// "Edit" while watching a file: after a question and the choice of where to save, a new project that already holds the file
     /// opens in the editor. Cancelling anywhere leaves the file playing as it was; nothing is made.
     func editViewedFile(in w: MainWindowController) {
-        guard let s = w.session, s.role == .viewer, let url = s.sourceURL else { return }
+        guard let s = w.session, s.role == .viewer, let url = s.localFileURL else { return }
         let kind: ProjectKind = s.isPhoto ? .photo : .video
         let wasPlaying = s.player.isPlaying
         s.player.pause()
@@ -603,7 +628,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         switch item.action {
         case #selector(newAction(_:)): item.title = editing ? L("New Project…") : L("New Window"); return true
         case #selector(openDocument(_:)): item.title = editing ? L("Open Project…") : L("Open…"); return true
-        case #selector(renameCurrentFile(_:)), #selector(trashCurrentFile(_:)), #selector(editCurrentFile(_:)): return s?.role == .viewer && s?.sourceURL != nil
+        case #selector(renameCurrentFile(_:)), #selector(trashCurrentFile(_:)), #selector(editCurrentFile(_:)): return s?.role == .viewer && s?.localFileURL != nil
         case #selector(renameCurrentProject(_:)), #selector(trashCurrentProject(_:)), #selector(saveDocument(_:)): return e != nil
         case #selector(duplicateSelected(_:)): return e != nil && e?.selection != EditSelection.none
         case #selector(groupSelected(_:)): return (e?.canvasSelection.count ?? 0) > 1
@@ -636,10 +661,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     private func buildMenu() -> NSMenu {
         let main = NSMenu()
-        func add(_ menu: NSMenu, _ title: String, _ sel: Selector?, _ key: String = "", _ mods: NSEvent.ModifierFlags = .command, target: AnyObject? = nil) {
+        /// `firstResponder`: the item goes to whatever has the keyboard (a text field for Cut/Copy/Paste, the window for Close).
+        /// Without it the item goes to `target`, by default this app delegate. (Until 0.15.2 `target: nil` was meant this way but
+        /// fell back to the app delegate, which has no `paste:`: ⌘X ⌘C ⌘V ⌘A ⌘W ⌘M did nothing anywhere.)
+        func add(_ menu: NSMenu, _ title: String, _ sel: Selector?, _ key: String = "", _ mods: NSEvent.ModifierFlags = .command, target: AnyObject? = nil, firstResponder: Bool = false) {
             let i = menu.addItem(withTitle: title, action: sel, keyEquivalent: key)
             if !key.isEmpty { i.keyEquivalentModifierMask = mods }
-            i.target = target ?? (sel == nil ? nil : self)
+            i.target = firstResponder ? nil : (target ?? (sel == nil ? nil : self))
         }
         func top(_ title: String) -> NSMenu {
             let m = NSMenu(title: title); let i = main.addItem(withTitle: title, action: nil, keyEquivalent: ""); main.setSubmenu(m, for: i); return m
@@ -658,6 +686,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         add(file, L("New Playlist"), #selector(newPlaylist(_:)), "n", [.command, .shift])
         file.addItem(.separator())
         add(file, L("Open…"), #selector(openDocument(_:)), "o")
+        add(file, L("Open Link…"), #selector(openLink(_:)), "u")
         let recent = NSMenuItem(title: L("Open Recent"), action: nil, keyEquivalent: ""); recentMenu.delegate = self; file.addItem(recent); file.setSubmenu(recentMenu, for: recent)
         add(file, L("Open Folder as Playlist…"), #selector(openFolderAsPlaylist(_:)), "o", [.command, .shift])
         file.addItem(.separator())
@@ -678,16 +707,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         file.addItem(.separator())
         add(file, L("Show Export Queue"), #selector(showQueue(_:)), "e", [.command, .option])
         add(file, L("Close Video"), #selector(closeVideo(_:)), "w", [.command, .shift])
-        add(file, L("Close"), #selector(NSWindow.performClose(_:)), "w", target: nil)
+        add(file, L("Close"), #selector(NSWindow.performClose(_:)), "w", firstResponder: true)
 
         let edit = top(L("Edit"))
         add(edit, L("Undo"), #selector(undo(_:)), "z")
         add(edit, L("Redo"), #selector(redo(_:)), "z", [.command, .shift])
         edit.addItem(.separator())
-        add(edit, L("Cut"), #selector(NSText.cut(_:)), "x", target: nil)
-        add(edit, L("Copy"), #selector(NSText.copy(_:)), "c", target: nil)
-        add(edit, L("Paste"), #selector(NSText.paste(_:)), "v", target: nil)
-        add(edit, L("Select All"), #selector(NSText.selectAll(_:)), "a", target: nil)
+        add(edit, L("Cut"), #selector(NSText.cut(_:)), "x", firstResponder: true)
+        add(edit, L("Copy"), #selector(NSText.copy(_:)), "c", firstResponder: true)
+        add(edit, L("Paste"), #selector(NSText.paste(_:)), "v", firstResponder: true)
+        add(edit, L("Select All"), #selector(NSText.selectAll(_:)), "a", firstResponder: true)
         edit.addItem(.separator())
         add(edit, L("Duplicate"), #selector(duplicateSelected(_:)), "d")
         add(edit, L("Group"), #selector(groupSelected(_:)), "g")
@@ -721,7 +750,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         add(view, L("Enter Full Screen   F"), #selector(toggleFullScreen(_:)), "f", [.command, .control])
 
         let window = top(L("Window"))
-        add(window, L("Minimize"), #selector(NSWindow.performMiniaturize(_:)), "m", target: nil)
+        add(window, L("Minimize"), #selector(NSWindow.performMiniaturize(_:)), "m", firstResponder: true)
         NSApp.windowsMenu = window
         let help = top(L("Help"))
         add(help, L("Keyboard Shortcuts"), #selector(showShortcuts(_:)))

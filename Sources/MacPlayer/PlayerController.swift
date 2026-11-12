@@ -22,6 +22,16 @@ final class PlayerController: NSObject, ObservableObject {
     /// Which of `audioOptions` is playing now (the picker shows it).
     @Published private(set) var audioSelectionIndex = 0
     @Published private(set) var legibleOptions: [AVMediaSelectionOption] = []
+    /// Playing from a web link (0.15): the player waits for data now (a spinner over the picture).
+    @Published private(set) var isWaiting = false
+    /// The item can play (false while a link is still connecting).
+    @Published private(set) var isReady = false
+    /// How far the data has arrived from the playhead on (a link), for the bar under the picture.
+    @Published private(set) var bufferedUntil: MediaTime = .zero
+    /// A live stream: no end, no seeking.
+    @Published private(set) var isLive = false
+    /// The picture's size as the item reports it (a stream says nothing else about itself).
+    @Published private(set) var presentationSize: CGSize = .zero
 
     var onEnded: (() -> Void)?
     var preservePitch = true
@@ -30,6 +40,14 @@ final class PlayerController: NSObject, ObservableObject {
     private var timeObserver: Any?
     private var boundaryObserver: Any?
     private var statusObservation: NSKeyValueObservation?
+    private var itemObservations: [NSKeyValueObservation] = []
+    /// A link that stops sending data would leave the spinner turning for ever: after this long without any progress while
+    /// it cannot play, it is stopped and the reason is shown (with Try Again).
+    static var stallTimeout: TimeInterval = 20
+    private var stallTimer: Timer?
+    private var lastProgress = Date()
+    private var lastMark: (MediaTime, MediaTime) = (.zero, .zero)
+    private var waitObservation: NSKeyValueObservation?
     private var endObserver: NSObjectProtocol?
     private var seekInFlight = false
     private var pendingSeek: MediaTime?
@@ -40,6 +58,10 @@ final class PlayerController: NSObject, ObservableObject {
     override init() {
         super.init()
         player.actionAtItemEnd = .pause
+        waitObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] p, _ in
+            let waiting = p.timeControlStatus == .waitingToPlayAtSpecifiedRate
+            Task { @MainActor in if self?.isWaiting != waiting { self?.isWaiting = waiting } }
+        }
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 30), queue: .main) { [weak self] t in
             MainActor.assumeIsolated {
                 guard let self, t.isNumeric else { return }
@@ -49,7 +71,7 @@ final class PlayerController: NSObject, ObservableObject {
         }
     }
 
-    deinit { if let o = timeObserver { player.removeTimeObserver(o) } }
+    deinit { if let o = timeObserver { player.removeTimeObserver(o) }; stallTimer?.invalidate() }
 
     // MARK: Loading
 
@@ -58,7 +80,9 @@ final class PlayerController: NSObject, ObservableObject {
     /// so that a seek made while it was building is not undone.
     var seekGeneration: Int { seekCount }
 
-    func load(url: URL, preview: BuiltRender?, at requestedStart: MediaTime? = nil, since generation: Int? = nil) async {
+    /// `streaming`: a web link (0.15). It is opened without asking for exact timing up front (that would read the whole file before the
+    /// first frame), and a stream with no end is taken as live.
+    func load(url: URL, preview: BuiltRender?, at requestedStart: MediaTime? = nil, since generation: Int? = nil, streaming: Bool = false, mimeType: String? = nil) async {
         var start = requestedStart
         if let g = generation, g != seekCount { start = effectiveTime }   // the user moved while the preview was being built
         pause()
@@ -68,26 +92,59 @@ final class PlayerController: NSObject, ObservableObject {
             newItem = AVPlayerItem(asset: p.composition)
             newItem.videoComposition = p.videoComposition
             newItem.audioMix = p.audioMix
+        } else if streaming {
+            newItem = AVPlayerItem(asset: AVURLAsset(url: url, options: mimeType.map { [AVURLAssetOverrideMIMETypeKey: $0] } ?? [:]))
+            // Start soon rather than wait for a big buffer; the player keeps loading as it plays.
+            newItem.preferredForwardBufferDuration = 0
         } else {
             newItem = AVPlayerItem(asset: AVURLAsset(url: url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true]))
         }
         newItem.audioTimePitchAlgorithm = preservePitch ? .spectral : .varispeed
         install(newItem)
+        if streaming { watchForStall() }
         // The playhead stays where it is going to be, from the start of the load: it must not flash back to 0 (the timecode
         // would flicker and an edit made at that moment would use the wrong time), and a seek that arrives meanwhile wins.
         currentTime = start ?? .zero
         let seeksBefore = seekCount
+        if streaming {
+            // Nothing here waits for the network (a server that stops answering would hold the window back for ever): the length
+            // comes from the item once it is ready, the audio and subtitle choices when the asset has them.
+            Task { [weak self] in await self?.loadSelectionGroups(newItem.asset) }
+            return
+        }
         if let d = try? await newItem.asset.load(.duration), d.isNumeric { duration = MediaTime(d) }
         // Put the playhead back where it was, unless a newer seek happened while this was loading (that one wins).
         if let s = start, s > .zero, seekCount == seeksBefore { await performSeek(to: s) }
         await loadSelectionGroups(newItem.asset)
     }
 
+    private func watchForStall() {
+        stallTimer?.invalidate()
+        lastProgress = Date(); lastMark = (.zero, .zero)
+        stallTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.checkStall() } }
+    }
+
+    private func checkStall() {
+        guard item != nil, failure == nil else { return }
+        let mark = (currentTime, bufferedUntil)
+        if mark.0 != lastMark.0 || mark.1 != lastMark.1 { lastMark = mark; lastProgress = Date(); return }
+        // Paused and ready is not stuck; connecting, or playing but waiting for data, is.
+        let stuck = !isReady || isWaiting
+        if !stuck { lastProgress = Date(); return }
+        if Date().timeIntervalSince(lastProgress) > Self.stallTimeout {
+            stallTimer?.invalidate(); stallTimer = nil
+            pause()
+            failure = L("The link stopped sending data. The server may have closed the connection, or the network is too slow.")
+        }
+    }
+
     /// Nothing to show (a project whose media is missing).
     func unload() {
+        stallTimer?.invalidate(); stallTimer = nil
         pause()
         if let e = endObserver { NotificationCenter.default.removeObserver(e); endObserver = nil }
         statusObservation = nil
+        itemObservations = []
         item = nil
         player.replaceCurrentItem(with: nil)
         duration = .zero; currentTime = .zero
@@ -96,13 +153,39 @@ final class PlayerController: NSObject, ObservableObject {
     private func install(_ newItem: AVPlayerItem) {
         if let e = endObserver { NotificationCenter.default.removeObserver(e) }
         statusObservation = nil
+        itemObservations = []
+        stallTimer?.invalidate(); stallTimer = nil
         item = newItem
+        isReady = false; isLive = false; bufferedUntil = .zero; presentationSize = .zero
         player.replaceCurrentItem(with: newItem)
-        statusObservation = newItem.observe(\.status, options: [.new]) { [weak self] it, _ in
-            let failed = it.status == .failed
-            let message = it.error?.localizedDescription
-            Task { @MainActor in if failed { self?.failure = message ?? L("This file cannot be played.") } }
+        statusObservation = newItem.observe(\.status, options: [.initial, .new]) { [weak self] it, _ in
+            let status = it.status
+            let message = it.error.map(PlayerController.describe)
+            let d = it.duration
+            Task { @MainActor in
+                guard let self, self.item === it else { return }
+                switch status {
+                case .failed: self.failure = message ?? L("This file cannot be played."); self.isReady = false
+                case .readyToPlay:
+                    self.isReady = true
+                    if d.isIndefinite { self.isLive = true } else if d.isNumeric, self.duration == .zero { self.duration = MediaTime(d) }
+                default: break
+                }
+            }
         }
+        itemObservations = [
+            newItem.observe(\.loadedTimeRanges, options: [.new]) { [weak self] it, _ in
+                let ends = it.loadedTimeRanges.map { $0.timeRangeValue }.filter { $0.end.isNumeric }
+                let now = it.currentTime()
+                // The range the playhead is in, else the furthest one.
+                let end = (ends.first { $0.containsTime(now) } ?? ends.max { $0.end < $1.end })?.end
+                Task { @MainActor in if let e = end, self?.item === it { self?.bufferedUntil = MediaTime(e) } }
+            },
+            newItem.observe(\.presentationSize, options: [.new]) { [weak self] it, _ in
+                let size = it.presentationSize
+                Task { @MainActor in if self?.item === it, size.width > 0 { self?.presentationSize = size } }
+            },
+        ]
         endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: newItem, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.didReachEnd() }
         }
@@ -110,11 +193,15 @@ final class PlayerController: NSObject, ObservableObject {
     }
 
     private func loadSelectionGroups(_ asset: AVAsset) async {
-        if let g = try? await asset.loadMediaSelectionGroup(for: .audible) {
+        let audible = try? await asset.loadMediaSelectionGroup(for: .audible)
+        let legible = try? await asset.loadMediaSelectionGroup(for: .legible)
+        // Another file may have been opened meanwhile (a link answers late): its choices are not this one's.
+        guard item?.asset === asset else { return }
+        if let g = audible {
             audioOptions = g.options
             audioSelectionIndex = item?.currentMediaSelection.selectedMediaOption(in: g).flatMap { chosen in g.options.firstIndex(of: chosen) } ?? 0
         } else { audioOptions = []; audioSelectionIndex = 0 }
-        if let g = try? await asset.loadMediaSelectionGroup(for: .legible) { legibleOptions = g.options } else { legibleOptions = [] }
+        legibleOptions = legible?.options ?? []
     }
 
     func selectAudio(_ option: AVMediaSelectionOption) async {
@@ -126,6 +213,17 @@ final class PlayerController: NSObject, ObservableObject {
     func selectLegible(_ option: AVMediaSelectionOption?) async {
         guard let item, let g = try? await item.asset.loadMediaSelectionGroup(for: .legible) else { return }
         if let o = option { item.select(o, in: g) } else { item.select(nil, in: g) }
+    }
+
+    /// An error from the network or the player, in words a person can act on.
+    nonisolated static func describe(_ error: Error) -> String {
+        let ns = error as NSError
+        let url = (ns.domain == NSURLErrorDomain ? ns : ns.userInfo[NSUnderlyingErrorKey] as? NSError)
+        if let u = url, u.domain == NSURLErrorDomain { return LinkErrors.message(code: u.code) }
+        if ns.domain == AVFoundationErrorDomain, ns.code == AVError.Code.fileFormatNotRecognized.rawValue || ns.code == AVError.Code.failedToLoadMediaData.rawValue {
+            return L("This link does not give a video this Mac can play (it may be a web page, or a format such as MKV or WebM).")
+        }
+        return ns.localizedDescription
     }
 
     // MARK: Transport

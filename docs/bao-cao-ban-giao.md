@@ -589,6 +589,123 @@ Với dự án ảnh, mỗi sự kiện còn vẽ lại cả tấm ảnh.
 - Chưa có số đo "trước khi sửa" bằng chính G7: nó được viết cùng lúc với phần sửa. Nhận định "mỗi lần dời một lần ghi dự án" ở trên lấy từ đọc mã.
 
 
+## Bản 0.15.2: sửa ⌘V/⌘C/⌘X/⌘A không hoạt động (12/11/2026)
+
+**Người bảo trì báo:** copy link `.mp4`, bấm vào ô nhập rồi ấn ⌘V nhưng không dán được (bản 0.15.1).
+
+**Nguyên nhân thật:**
+- Hàm dựng menu biến `target: nil` (nghĩa là "gửi cho ô hoặc cửa sổ đang có bàn phím") thành "gửi cho AppDelegate".
+- AppDelegate không có lệnh dán, nên các mục Cắt, Sao chép, Dán, Chọn tất cả, Đóng cửa sổ, Thu nhỏ **không làm gì ở bất kỳ đâu trong app**.
+- Lỗi có từ rất lâu trước 0.15.
+
+**Sai sót trong kiểm thử của tôi:**
+- Bài test của 0.15.1 gọi thẳng lệnh dán của ô nhập, bỏ qua menu ⌘V, nên báo "đạt" dù người dùng không dán được.
+- Mục test cũ "mỗi mục menu đều có thứ để tác động" chỉ xem mục có đích hay không, không xem đích đó có làm được lệnh không.
+
+**Sửa:**
+- 6 mục trên giờ gửi cho đúng ô hoặc cửa sổ đang có bàn phím. ⌘W đóng cửa sổ và ⌘M thu nhỏ giờ cũng hoạt động.
+- Mục test menu giờ kiểm tra đích thật sự làm được lệnh.
+- G8 gửi ⌘V và ⌘A qua menu chính như phím bấm thật. Khi app chạy nền không có cửa sổ nhận bàn phím, test gửi qua chuỗi phản hồi của chính cửa sổ đó và ghi rõ điều này.
+
+**Kiểm thử:**
+- Đã xác nhận bài test mới **hỏng** khi tạm đưa mục Dán về lỗi cũ (4 mục báo lỗi), và **đạt** khi đã sửa.
+- G8 chạy riêng: 26 mục đạt. Self-test đầy đủ: 461 đạt, 1 lỗi đã biết (phím tắt hệ thống trùng).
+- Bộ nhớ tạm của người dùng được trả lại nguyên vẹn sau test.
+
+**Chưa kiểm chứng:** bấm ⌘V bằng bàn phím thật. Test gửi phím qua menu chính trong app, không đi qua phần cứng hay hệ thống.
+
+## Bản 0.15.1: dán link thẳng vào ô nhập (12/11/2026)
+
+**Người bảo trì yêu cầu:** cho phép dán link thẳng vào ô nhập thay vì dùng nút "Dán".
+
+**Đã làm:**
+- Bỏ nút "Dán". Ô nhập giờ rộng hết hàng.
+- Ô nhập nhận bàn phím ngay khi hộp thoại mở. ⌘V hoặc chuột phải ▸ Dán sẽ dán thẳng vào ô; nếu ô đã có link thì link đó được chọn sẵn, dán là thay.
+- Chữ gợi ý: "Dán hoặc gõ link vào đây (⌘V), ví dụ https://example.com/video.mp4".
+- Khi dán, dấu cách và xuống dòng thừa được bỏ, chỉ giữ dòng đầu.
+
+**Kiểm thử:**
+- G8 thêm 5 mục: ô có bàn phím khi mở, ⌘V dán vào ô (qua đúng bộ soạn chữ của ô), làm sạch chuỗi dán, dán đè link đang chọn, ô trống khi bộ nhớ tạm không phải link.
+- Bộ nhớ tạm của người dùng được lưu lại trước test và trả lại sau test (đã kiểm tra).
+- G8 với máy chủ thử: 68 mục đạt.
+
+**Chưa kiểm chứng:** gõ ⌘V bằng bàn phím thật. Test gọi lệnh dán của ô trực tiếp, không bơm phím.
+
+## Bản 0.15.0: cửa sổ phát riêng, mở video/ảnh từ link (12/11/2026)
+
+**Người bảo trì yêu cầu:**
+1. File lẻ mở nhanh qua Finder phải ra một màn hình phát riêng, không có giao diện danh sách phát.
+2. Phát video/ảnh qua link trực tiếp (`.mp4`, `.mov`, `.m3u8`, `.jpg`, `.png`…). Giao diện đẹp, khoa học; test và sửa lỗi kỹ trước khi bàn giao.
+
+**Đã làm: cửa sổ phát riêng**
+- Một video hoặc ảnh mở lẻ (bấm đúp, Mở bằng, Tệp ▸ Mở…, Mở gần đây, dòng lệnh) phát trong cửa sổ chỉ có hình và nút điều khiển. Không có thanh danh sách phát; nút trước/sau và trình chiếu ở thanh ảnh cũng ẩn.
+- Thanh trên cùng hiển thị:
+  - tên file và thông số (độ phân giải, fps, thời lượng, dung lượng);
+  - nút **Chỉnh sửa**;
+  - menu **⋯** gồm Hiện trong Finder, Sao chép đường dẫn, Đổi tên, Chuyển vào Thùng rác.
+- Cỡ cửa sổ:
+  - cửa sổ tự canh theo tỉ lệ video;
+  - video nhỏ mở đúng cỡ gốc như QuickTime, video rất nhỏ được phóng lên 640 điểm, video lớn vừa 80% màn hình;
+  - cửa sổ được canh cỡ trước rồi mới hiện, nên không bị nhảy cỡ.
+- Đóng file thì đóng luôn cửa sổ. Cửa sổ danh sách phát và dự án khác không bị đụng. Mở file thứ hai sẽ ra cửa sổ thứ hai.
+- Mở từ Finder khi app đang tắt: không hiện màn hình Trang chủ trước.
+- Cửa sổ hẹp: thanh điều khiển tự gọn lại, tổng thời lượng không bị cắt.
+- Nhiều file hoặc một thư mục vẫn thành danh sách phát như trước.
+
+**Đã làm: mở từ link**
+- Mở ở Tệp ▸ **Mở link…** (⌘U), hoặc từ nút ở Trang chủ và màn hình Danh sách phát.
+- Link được kiểm tra ngay khi gõ, chưa cần mạng:
+  - nhận ra link trang xem YouTube, Facebook, TikTok, Instagram, X, Vimeo, Google Drive, OneDrive (báo rõ đó là trang, không phải file);
+  - báo MKV/WebM/AVI không phát được;
+  - link chưa có `https://` được tự thêm;
+  - link chia sẻ Dropbox được tự đổi sang dạng tải thẳng;
+  - link `http://` được ghi chú là không mã hoá.
+- Khi bấm Mở, app hỏi máy chủ (HEAD). Máy chủ chặn HEAD thì xin byte đầu. Máy chủ chỉ trả "application/octet-stream" thì đọc 512 byte đầu để nhận dạng file.
+- Lỗi 401/403/404/429/5xx, không có mạng, không tìm thấy máy chủ, chứng chỉ hỏng, trang web giả đuôi `.mp4`: hiện thành câu tiếng Việt ngay trong hộp thoại, hộp thoại vẫn mở để sửa link.
+- Video và luồng HLS phát ngay khi có dữ liệu:
+  - vòng xoay "Đang kết nối…/Đang chờ dữ liệu…";
+  - luồng trực tiếp có nhãn **TRỰC TIẾP**, không có timeline, không tua;
+  - lỗi phát hiện thành thẻ có **Thử lại** và **Sao chép link**.
+- **Tải về…**:
+  - lưu file về máy (mặc định thư mục Tải về), có phần trăm tiến trình, huỷ được;
+  - ghi vào tên tạm rồi mới đổi tên, nên dừng giữa chừng không để lại nửa file;
+  - file trùng tên được chuyển vào Thùng rác, không xoá;
+  - xong thì **Mở** để xem bản trên máy, khi đó chỉnh sửa được;
+  - luồng HLS không tải về được (ghi rõ trong app).
+- Ảnh từ link được tải vào bộ nhớ đệm riêng của app. Đóng cửa sổ hoặc mở lại app là xoá.
+- Link không bị coi là file của bạn: không đổi tên, không vào Thùng rác, không nhớ vị trí đang xem, không báo "file không còn ở vị trí cũ".
+- **Link gần đây** chỉ lưu trên máy, xoá được từng link hoặc cả danh sách.
+- Mạng: app chỉ kết nối khi bạn mở link; không gửi gì khác (phiên mạng "ephemeral", không cookie, không cache). Info.plist cho phép `http://` để mở được camera hoặc máy chủ trong mạng nội bộ.
+
+**Lỗi tìm ra khi test và đã sửa:**
+- Cửa sổ ra sai tỉ lệ (3,05 thay vì 1,78): chiều cao các thanh được đo khi khung hình chưa dàn trang, và video bị chia cho hệ số Retina.
+- Với link, cửa sổ hiện ở cỡ to rồi mới co lại. Giờ cửa sổ chờ tối đa 1,2 giây để biết cỡ video.
+- Luồng trực tiếp hiện nhầm cảnh báo "index.m3u8 không còn ở vị trí cũ", và hiện "225 bytes" (cỡ file danh sách chứ không phải video).
+- Danh sách link gần đây bị ép còn 1 dòng. Hộp thoại Mở link bị cắt đầu và cuối khi nội dung dài ra.
+- Link mà máy chủ chỉ báo "octet-stream" không phát được. Giờ app đọc byte đầu để nhận dạng.
+- **Máy chủ ngừng gửi dữ liệu: hộp thoại kẹt mãi ở "Đang mở…"**, vì trình phát chờ danh sách track mà dữ liệu không tới. Giờ không chờ mạng ở bước mở.
+- **Máy chủ ngừng gửi dữ liệu giữa chừng: vòng xoay quay mãi.** Giờ sau 20 giây không có tiến triển thì dừng và báo, kèm Thử lại.
+- Thẻ báo lỗi kéo dài cửa sổ thành 640×1369.
+- Cửa sổ phát riêng nhỏ, bấm về Trang chủ: cửa sổ nhỏ hơn mức tối thiểu của Trang chủ.
+- **Lỗi có sẵn từ trước, tìm ra nhờ chạy test nhiều lần:**
+  - chống rung khi xuất đôi khi áp phần bù vào khung kế bên (tra khung bằng làm tròn thay vì khung đang hiện), nên video xuất còn giật hơn video gốc;
+  - trên commit cũ test hỏng 2/9 lần; sau khi sửa, đạt 9/9.
+
+**Kiểm thử:**
+- Máy chủ thử cục bộ `Scripts/link_test_server.py` hỗ trợ Range và HEAD, có các route lỗi (404, 403, chặn HEAD, trang web, octet-stream, chậm, ngắt kết nối, treo hẳn). Kèm luồng HLS thường và HLS trực tiếp do ffmpeg tạo.
+- Self-test **G8**: 67 mục đạt, chạy cả giao diện tiếng Anh và tiếng Việt (bản `.app`).
+- Test Core 408 (thêm `MediaLinkTests`: 12 test về link, nhận dạng byte đầu, cỡ cửa sổ) và Media 231 đều đạt.
+- Self-test đầy đủ: 503 đạt, 1 lỗi đã biết (phím tắt hệ thống trùng).
+- `Scripts/open_with_test.py` (mở bằng `open -a`, đúng đường Finder dùng): 15/15 đạt. Đã sửa script để chờ route `solo`.
+- Ảnh chụp cửa sổ thật (có hình video) bằng `screencapture -l`, chạy trong sandbox.
+
+**Chưa kiểm chứng:**
+- Link trên máy chủ và CDN thật ngoài Internet: chỉ test với máy chủ cục bộ, kể cả HTTPS thật.
+- Mạng chậm thật hoặc Wi-Fi rớt.
+- Video rất lớn qua link.
+- Rê, bấm bằng chuột thật trên các cửa sổ mới.
+- Kéo link từ trình duyệt thả vào cửa sổ: chưa làm, hiện chỉ dán được.
+
 ## Bản 0.14.4: bỏ viền nét đứt quanh nhãn dán (12/11/2026)
 
 **Người bảo trì báo:** nhãn dán kéo thả vào khung hình bị thêm viền nét đứt, dù ở bảng thuộc tính viền đang tắt.

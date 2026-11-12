@@ -13,7 +13,7 @@ extension AppDelegate {
     private func standard(_ path: String) -> String { PathUtil.key(path) }
 
     func windows(showing path: String) -> [MainWindowController] {
-        controllers.filter { c in c.session?.role == .viewer && (c.session?.sourceURL.map { standard($0.path) == standard(path) } ?? false) }
+        controllers.filter { c in c.session?.role == .viewer && (c.session?.localFileURL.map { standard($0.path) == standard(path) } ?? false) }
     }
 
     private func alert(_ title: String, _ text: String = "", style: NSAlert.Style = .warning) {
@@ -193,6 +193,6 @@ extension AppDelegate {
 
     // MARK: Menu commands (the video of the active window)
 
-    @objc func renameCurrentFile(_ sender: Any?) { if let s = activeSession, s.role == .viewer, let u = s.sourceURL { renameFile(at: u.path) } }
-    @objc func trashCurrentFile(_ sender: Any?) { if let s = activeSession, s.role == .viewer, let u = s.sourceURL { trashFile(at: u.path) } }
+    @objc func renameCurrentFile(_ sender: Any?) { if let s = activeSession, s.role == .viewer, let u = s.localFileURL { renameFile(at: u.path) } }
+    @objc func trashCurrentFile(_ sender: Any?) { if let s = activeSession, s.role == .viewer, let u = s.localFileURL { trashFile(at: u.path) } }
 }

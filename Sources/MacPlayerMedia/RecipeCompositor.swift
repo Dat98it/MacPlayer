@@ -197,7 +197,9 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
         // Steadying: move the picture against the shake and enlarge it a little so the moved edge stays out of view.
         if let st = plan.stabilizer, !st.dx.isEmpty {
             let sourceTime = plan.sourceStart + (time - plan.rangeStart) * plan.speed
-            let i = min(max(Int((sourceTime * st.fps).rounded()), 0), st.dx.count - 1)
+            // The frame handed over is the one showing at this moment (it started at or before it): rounding to the nearest frame
+            // picked the next frame's correction for any moment in the second half of a frame, and made the picture shakier.
+            let i = min(max(Int(floor(sourceTime * st.fps + 1e-3)), 0), st.dx.count - 1)
             let e = img.extent
             let cx = e.midX, cy = e.midY
             var t = CGAffineTransform(translationX: -cx, y: -cy).concatenating(CGAffineTransform(scaleX: st.zoom, y: st.zoom))

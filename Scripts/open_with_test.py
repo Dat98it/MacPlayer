@@ -55,7 +55,7 @@ s = wait(lambda s: len(videos(s)) == 1)
 check(s and len(videos(s)) == 1 and videos(s)[0]["path"].endswith("one.mp4"), "launching with a video opens it")
 check(s and len(s["windows"]) == 1, "and does not leave an empty window beside it")
 check(s and abs(videos(s)[0]["duration"] - 3) < 0.2, "and it is read correctly (3 s)")
-check(s and videos(s)[0].get("route") == "playlist" and not videos(s)[0]["isProject"], "a video from Finder opens to be watched (Playlists), not in the editor")
+check(s and videos(s)[0].get("route") == "solo" and not videos(s)[0]["isProject"], "a video from Finder opens to be watched in a window of its own, without the playlists (0.15), not in the editor")
 
 # 2. app running -> a second video opens in a new window; the first stays
 open_in_running(work + "/two.mov")

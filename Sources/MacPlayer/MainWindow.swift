@@ -17,7 +17,8 @@ final class VideoWindow: NSWindow {
 }
 
 /// What a window shows. Each window has its own: one can play a playlist while another edits a project.
-enum WindowRoute: Equatable { case home, playlist, projects, editor }
+/// `solo` (0.15): one video or photo opened on its own (from Finder, Open…, a web link), in a window with nothing about playlists.
+enum WindowRoute: Equatable { case home, playlist, projects, editor, solo }
 
 @MainActor
 final class ContentViewController: NSViewController {
@@ -52,12 +53,12 @@ final class ContentViewController: NSViewController {
     private func rebuild() {
         view.subviews.forEach { $0.removeFromSuperview() }
         bag.removeAll()
-        timeline = nil; host = nil; photoHost = nil; header = nil
+        timeline = nil; host = nil; photoHost = nil; header = nil; timelineHeight = nil; headerKind = ""; chromeViews = []
         if let w = workspace { w.split.view.removeFromSuperview(); w.split.removeFromParent(); workspace = nil }
         guard let s = session else {
             let root: AnyView
             switch route {
-            case .home, .editor:
+            case .home, .editor, .solo:
                 root = AnyView(HomeView(openPlaylists: { [weak self] in self?.onRoute(.playlist) }, openProjects: { [weak self] in self?.onRoute(.projects) }))
             case .playlist:
                 root = AnyView(PlaylistStartView(open: { (NSApp.delegate as? AppDelegate)?.openMedia(nil) },
@@ -90,6 +91,7 @@ final class ContentViewController: NSViewController {
         // (Dropping the natural height too would let the title bar swallow the picture's height.)
         header.sizingOptions = [.minSize, .intrinsicContentSize]; notice.sizingOptions = [.minSize, .intrinsicContentSize]; transport.sizingOptions = [.minSize, .intrinsicContentSize]
         for v in [header, ph, notice, transport, tl] { v.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(v) }
+        chromeViews = [header, notice, transport]
         keepPictureRoom(picture: ph, notice: notice)
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.topAnchor), header.leadingAnchor.constraint(equalTo: view.leadingAnchor), header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -103,7 +105,21 @@ final class ContentViewController: NSViewController {
         let h = tl.heightAnchor.constraint(equalToConstant: s.isProject ? 190 : 70)
         h.isActive = true
         timelineHeight = h
-        s.player.$failure.receive(on: DispatchQueue.main).sink { [weak ph] f in ph?.show(message: f) }.store(in: &bag)
+        if s.remote != nil {
+            // A link: its own overlay says what is happening (connecting, waiting for data, failed, live), and a live stream has no
+            // timeline to move along.
+            let overlay = PassThroughHostingView(rootView: LinkOverlay(session: s, player: s.player))
+            overlay.takesClicks = { [weak s] in s?.player.failure != nil }
+            // It lies over the picture and never decides the window's size (a message card made the window taller).
+            overlay.sizingOptions = []
+            overlay.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(overlay)
+            NSLayoutConstraint.activate([overlay.topAnchor.constraint(equalTo: ph.topAnchor), overlay.bottomAnchor.constraint(equalTo: ph.bottomAnchor),
+                                         overlay.leadingAnchor.constraint(equalTo: ph.leadingAnchor), overlay.trailingAnchor.constraint(equalTo: ph.trailingAnchor)])
+            s.player.$isLive.receive(on: DispatchQueue.main).sink { [weak h] live in h?.constant = live ? 0 : 70 }.store(in: &bag)
+        } else {
+            s.player.$failure.receive(on: DispatchQueue.main).sink { [weak ph] f in ph?.show(message: f) }.store(in: &bag)
+        }
         if s.isProject {
             // An empty timeline says what to do, right on the picture.
             let empty = NSHostingView(rootView: EmptyVideoProjectView(session: s))
@@ -181,11 +197,29 @@ final class ContentViewController: NSViewController {
         dismiss(sheet)
     }
 
+    /// The bars above and below the picture of a watched file (the strip under a video is `timelineHeight`).
+    private var chromeViews: [NSView] = []
+
+    /// The height of everything above and below the picture, from what each bar would like to be. Asked before the window has laid
+    /// them out (the picture's own height is not known yet then).
+    func chromeHeight() -> CGFloat {
+        chromeViews.reduce(0) { $0 + $1.fittingSize.height } + (timelineHeight?.constant ?? 0)
+    }
+
+    /// Which bar is above the picture ("solo", "viewer", "editor"), for the self-test.
+    private(set) var headerKind = ""
+    /// The height of the strip under a watched video (0 for a live stream), for the self-test.
+    var timelineHeightValue: CGFloat? { timelineHeight?.constant }
+
     private func makeHeader(_ s: EditorSession) -> NSHostingView<AnyView> {
         let v: NSHostingView<AnyView>
+        headerKind = s.isEditor ? "editor" : route == .solo ? "solo" : "viewer"
         if s.isEditor {
             v = NSHostingView(rootView: AnyView(EditorHeader(session: s, onBack: { [weak self] in self?.onClose() },
                                                              onExport: { [weak self] in self?.showExport() })))
+        } else if route == .solo {
+            v = NSHostingView(rootView: AnyView(SoloHeader(session: s, linkSave: s.linkSave, onRename: { [weak self] in self?.onRenameFile() },
+                                                           onTrash: { [weak self] in self?.onTrashFile() }, onEdit: { [weak self] in self?.onEditFile() })))
         } else {
             v = NSHostingView(rootView: AnyView(VideoHeader(session: s, onClose: { [weak self] in self?.onClose() }, onRename: { [weak self] in self?.onRenameFile() },
                                                             onTrash: { [weak self] in self?.onTrashFile() }, onEdit: { [weak self] in self?.onEditFile() })))
@@ -209,7 +243,7 @@ final class ContentViewController: NSViewController {
         let header = makeHeader(s)
         let notice = NSHostingView(rootView: NoticeBar(session: s))
         let model = playlists ?? (NSApp.delegate as! AppDelegate).playlists
-        let bar = NSHostingView(rootView: PhotoBar(session: s, playlists: model, actualZoom: { [weak ph] in ph?.actualPixelsZoom() ?? 1 }))
+        let bar = NSHostingView(rootView: PhotoBar(session: s, playlists: model, solo: route == .solo, actualZoom: { [weak ph] in ph?.actualPixelsZoom() ?? 1 }))
         header.sizingOptions = [.minSize, .intrinsicContentSize]; notice.sizingOptions = [.minSize, .intrinsicContentSize]; bar.sizingOptions = [.minSize, .intrinsicContentSize]
         if s.isEditor {
             let w = EditorWorkspace(session: s, centreViews: [ph, notice, bar])
@@ -230,6 +264,7 @@ final class ContentViewController: NSViewController {
             return
         }
         for v in [header, ph, notice, bar] { v.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(v) }
+        chromeViews = [header, notice, bar]
         keepPictureRoom(picture: ph, notice: notice)
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.topAnchor), header.leadingAnchor.constraint(equalTo: view.leadingAnchor), header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -338,8 +373,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
 
         content.onDropFiles = { urls in (NSApp.delegate as? AppDelegate)?.dropped(urls: urls) }
         content.onClose = { [weak self] in self?.closeVideo() }
-        content.onRenameFile = { [weak self] in if let p = self?.session?.sourceURL?.path { (NSApp.delegate as? AppDelegate)?.renameFile(at: p) } }
-        content.onTrashFile = { [weak self] in if let p = self?.session?.sourceURL?.path { (NSApp.delegate as? AppDelegate)?.trashFile(at: p) } }
+        content.onRenameFile = { [weak self] in if let p = self?.session?.localFileURL?.path { (NSApp.delegate as? AppDelegate)?.renameFile(at: p) } }
+        content.onTrashFile = { [weak self] in if let p = self?.session?.localFileURL?.path { (NSApp.delegate as? AppDelegate)?.trashFile(at: p) } }
         content.onEditFile = { [weak self] in if let self { (NSApp.delegate as? AppDelegate)?.editViewedFile(in: self) } }
         content.onRoute = { [weak self] r in self?.go(to: r) }
         content.playlists = playlists
@@ -367,7 +402,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
     /// false when the person chose to stay.
     @discardableResult
     func go(to r: WindowRoute) -> Bool {
-        if session != nil, !(r == .playlist && session?.role == .viewer) {
+        if session != nil, !(r == .playlist && session?.role == .viewer && route != .solo) {
             guard closeVideo(goingTo: r) else { return false }
             return true
         }
@@ -386,8 +421,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
         // An editor (video or photo project) has its own panels (library, properties) inside the window's middle.
         case .editor: setPanels(sidebarHidden: true, toolsHidden: true)
         case .home, .projects: setPanels(sidebarHidden: true, toolsHidden: true)
+        // One file on its own: only the picture and its controls.
+        case .solo: setPanels(sidebarHidden: true, toolsHidden: true)
+        }
+        // A window that only plays one file may be small; the others hold panels side by side.
+        window?.minSize = route == .solo ? Self.soloMinimum : NSSize(width: 900, height: 560)
+        // A small window that played one file and now shows another screen grows to that screen's minimum.
+        if let w = window, let c = w.contentView, !w.styleMask.contains(.fullScreen), c.bounds.width < w.minSize.width - 1 || c.bounds.height < w.minSize.height - 1 {
+            w.setContentSize(NSSize(width: max(c.bounds.width, w.minSize.width), height: max(c.bounds.height, w.minSize.height)))
         }
     }
+
+    static let soloMinimum = NSSize(width: 480, height: 340)
 
     private func updateTitle() {
         guard let w = window else { return }
@@ -395,15 +440,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
             if s.isEditor, let p = s.projectPath {
                 w.title = URL(fileURLWithPath: p).deletingPathExtension().lastPathComponent
                 w.representedURL = URL(fileURLWithPath: p)
+            } else if let r = s.remote {
+                w.title = r.displayName
+                w.subtitle = r.host
+                w.representedURL = nil
             } else {
                 w.title = s.sourceURL?.lastPathComponent ?? s.project.name
                 w.representedURL = s.sourceURL
             }
+            if s.remote == nil { w.subtitle = "" }
             return
         }
-        w.representedURL = nil
+        w.representedURL = nil; w.subtitle = ""
         switch route {
-        case .home, .editor: w.title = "MacPlayer"
+        case .home, .editor, .solo: w.title = "MacPlayer"
         case .playlist: w.title = L("Playlists")
         case .projects: w.title = L("Projects")
         }
@@ -411,12 +461,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
 
     // MARK: Session swap
 
-    func setSession(_ s: EditorSession, fromPlaylist fp: Bool) {
+    func setSession(_ s: EditorSession, fromPlaylist fp: Bool, solo: Bool = false) {
         slideTimer?.invalidate(); slideTimer = nil
         if let old = session { finish(old) }
         session = s
         fromPlaylist = fp
-        route = s.isEditor ? .editor : .playlist
+        route = s.isEditor ? .editor : (solo ? .solo : .playlist)
         content.show(route, session: s)
         inspector.rootView = AnyView(EmptyView())      // editors have their own panels (EditorWorkspace)
         applyPanels()
@@ -430,7 +480,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
         }.store(in: &sessionBag)
         s.$projectPath.receive(on: DispatchQueue.main).sink { [weak self] _ in DispatchQueue.main.async { self?.updateTitle() } }.store(in: &sessionBag)
         applyFloating()
-        if s.role == .viewer, let u = s.sourceURL { NSDocumentController.shared.noteNewRecentDocumentURL(u) }
+        if s.role == .viewer, let u = s.localFileURL { NSDocumentController.shared.noteNewRecentDocumentURL(u) }
         if s.isEditor, let p = s.projectPath {
             NSDocumentController.shared.noteNewRecentDocumentURL(URL(fileURLWithPath: p))
             // A project listed without a picture gets one once its picture is ready.
@@ -518,10 +568,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
     /// The open video's file was renamed: open the same video again under its new name, at the same moment, playing or paused.
     func reopen(at url: URL) {
         guard let s = session, s.role == .viewer else { return }
-        let time = s.player.currentTime, playing = s.player.isPlaying, wasFromPlaylist = fromPlaylist
+        let time = s.player.currentTime, playing = s.player.isPlaying, wasFromPlaylist = fromPlaylist, wasSolo = route == .solo
         Task {
             guard let fresh = try? await EditorSession.open(url: url) else { return }
-            setSession(fresh, fromPlaylist: wasFromPlaylist)
+            setSession(fresh, fromPlaylist: wasFromPlaylist, solo: wasSolo)
             await fresh.player.seek(to: time)
             if playing { fresh.player.play() } else { fresh.player.pause() }
         }
@@ -538,6 +588,63 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
         } catch {
             Self.cannotOpen(url, error)
         }
+    }
+
+    /// Opens one video or photo in this window on its own (0.15): no playlists, the window fitted to the picture. False when it
+    /// cannot be opened (the person was told why).
+    @discardableResult
+    func openSolo(url: URL) async -> Bool {
+        do {
+            let s = try await EditorSession.open(url: url)
+            showSolo(s)
+            return true
+        } catch {
+            Self.cannotOpen(url, error)
+            return false
+        }
+    }
+
+    /// Shows a session opened elsewhere (a web link) on its own in this window.
+    func showSolo(_ s: EditorSession) {
+        // This window's size is its own: it is not the remembered size of the main window.
+        if window?.frameAutosaveName == "MacPlayerMainWindow" { window?.setFrameAutosaveName("") }
+        setSession(s, fromPlaylist: false, solo: true)
+        fitToPicture(s)
+        guard s.remote != nil, !s.isPhoto else {
+            if window?.isVisible != true { showWindow(nil) }
+            return
+        }
+        // A link plays as soon as it can; its picture size is known only then. A new window waits a moment for it, so it does not
+        // appear at one size and jump to another.
+        s.player.play()
+        var fitted = false
+        let reveal = { [weak self] in if self?.window?.isVisible != true { self?.showWindow(nil) } }
+        s.player.$presentationSize.receive(on: DispatchQueue.main).sink { [weak self, weak s] size in
+            guard let self, let s, !fitted, size.width > 0, self.session === s else { return }
+            fitted = true
+            self.fitToPicture(s, media: size)
+            reveal()
+        }.store(in: &sessionBag)
+        s.player.$failure.receive(on: DispatchQueue.main).sink { f in if f != nil { reveal() } }.store(in: &sessionBag)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { MainActor.assumeIsolated { reveal() } }
+    }
+
+    /// Sizes the window to the picture's shape, as large as fits comfortably on its screen (not in full screen).
+    func fitToPicture(_ s: EditorSession, media: CGSize? = nil) {
+        guard let w = window, !w.styleMask.contains(.fullScreen), let screen = w.screen ?? NSScreen.main else { return }
+        let size = media ?? s.info?.primaryVideo.map { CGSize(width: $0.width, height: $0.height) }
+        // The bars around the picture.
+        let chrome = max(40, content.chromeHeight())
+        let visible = screen.visibleFrame
+        let contentSize = PlayerWindowSizing.contentSize(media: size, chrome: chrome, screen: CGSize(width: visible.width, height: visible.height - 28),
+                                                         minimum: Self.soloMinimum)
+        var frame = w.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize))
+        let centre = CGPoint(x: w.frame.midX, y: w.frame.midY)
+        frame.origin = CGPoint(x: centre.x - frame.width / 2, y: centre.y - frame.height / 2)
+        // Kept on the screen.
+        frame.origin.x = min(max(frame.origin.x, visible.minX), visible.maxX - frame.width)
+        frame.origin.y = min(max(frame.origin.y, visible.minY), visible.maxY - frame.height)
+        w.setFrame(frame, display: true, animate: w.isVisible && !AppEnvironment.shared.isSandbox)
     }
 
     static func cannotOpen(_ url: URL, _ error: Error) {
@@ -602,6 +709,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
         }
         if s.isEditor, !(confirm ?? { [unowned self] in self.writeOrAsk($0) })(s) { return false }
         if fromPlaylist { playlists.rememberResume(s.player.currentTime); playlists.stop() }
+        // A window that only played one file goes away with it (unless it is asked to show another screen).
+        if route == .solo, goingTo == nil { clearSession(to: .home); window?.close(); return true }
         clearSession(to: goingTo)
         return true
     }

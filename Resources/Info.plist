@@ -15,9 +15,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.14.4</string>
+    <string>0.15.2</string>
     <key>CFBundleVersion</key>
-    <string>22</string>
+    <string>25</string>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleLocalizations</key>
@@ -25,6 +25,16 @@
         <string>en</string>
         <string>vi</string>
     </array>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <!-- 0.15: links pasted by the person may be http:// (a camera or server on the local network, an older site). -->
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+        <key>NSAllowsArbitraryLoadsForMedia</key>
+        <true/>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
     <key>LSMinimumSystemVersion</key>
     <string>15.0</string>
     <key>LSApplicationCategoryType</key>

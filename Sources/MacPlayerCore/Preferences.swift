@@ -90,6 +90,8 @@ public final class AppPreferences {
     /// How long a photo stays on screen when a playlist plays on by itself (seconds).
     public var photoSlideSeconds: Double { get { double("photoSlideSeconds", 5) } set { store.set(min(60, max(1, newValue)), forKey: "photoSlideSeconds") } }
     public var lastExportFolder: String? { get { string("lastExportFolder") } set { store.set(newValue, forKey: "lastExportFolder") } }
+    /// Web links opened lately (0.15), newest first; kept on this Mac only and cleared with one button.
+    public var recentLinks: [String] { get { store.object(forKey: "recentLinks") as? [String] ?? [] } set { store.set(Array(newValue.prefix(RecentLinks.limit)), forKey: "recentLinks") } }
 }
 
 /// Where the viewer stopped in each file (design section 4). Capped, can be switched off and cleared.

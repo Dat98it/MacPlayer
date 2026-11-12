@@ -21,7 +21,13 @@ struct HomeView: View {
                 HomeCard(icon: "slider.horizontal.below.rectangle", tint: .orange, title: L("Editing"),
                          subtitle: L("Your video and photo projects. Saved as you work."), shortcut: "⌘2", action: openProjects)
             }
-            Text(L("Or drop videos, photos, a folder or a project here.")).font(.callout).foregroundColor(.secondary)
+            VStack(spacing: 8) {
+                Text(L("Or drop videos, photos, a folder or a project here.")).font(.callout).foregroundColor(.secondary)
+                Button { (NSApp.delegate as? AppDelegate)?.openLink(nil) } label: {
+                    Label(L("Open a video or photo from a link…"), systemImage: "link")
+                }
+                .buttonStyle(.link).help(L("Paste a link straight to a .mp4, .mov, .m3u8, .jpg or .png file (⌘U)"))
+            }
         }
         .padding(40).frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))
@@ -91,6 +97,8 @@ struct PlaylistStartView: View {
                 HStack {
                     Button(L("Open a Video or Photo…")) { open() }.controlSize(.large).keyboardShortcut(.defaultAction)
                     Button(L("Open a Folder as Playlist…")) { openFolder() }.controlSize(.large)
+                    Button { (NSApp.delegate as? AppDelegate)?.openLink(nil) } label: { Label(L("Open Link…"), systemImage: "link") }.controlSize(.large)
+                        .help(L("Paste a link straight to a .mp4, .mov, .m3u8, .jpg or .png file (⌘U)"))
                 }
                 Text(L("Or drop a video, photo or folder here.")).font(.callout).foregroundColor(.secondary)
                 if !recents.isEmpty {

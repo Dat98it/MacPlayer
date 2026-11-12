@@ -6,7 +6,8 @@ It is kept in the repository on purpose, at the maintainer's request. When you c
 ## 1. What this is
 
 **MacPlayer** (formerly *MacVideo*; old project files `.macvideo` still open) is a free (MIT) macOS app to **play, organise and edit videos and photos**,
-all on the Mac: no account, no network code, no telemetry. It is built with **SwiftPM only (no Xcode project, no Xcode installation, only the
+all on the Mac: no account, no telemetry, and no network use except opening a web link the person pastes (0.15, File ▸ Open Link…; the only network code is
+`LinkFetcher`/`Download` and AVPlayer playing that link). It is built with **SwiftPM only (no Xcode project, no Xcode installation, only the
 Command Line Tools)**, Swift 6 toolchain with `swiftLanguageVersions: [.v5]`, macOS 15+, arm64 tested (Intel is not tested). No third-party libraries
 (Apple frameworks only: AVFoundation, AVKit, CoreImage, Vision, Speech, SwiftUI, AppKit).
 
@@ -77,6 +78,7 @@ Other launch flags: `--selftest <dir with demo.mp4>` (real-app flows A–N, prin
 | `MACPLAYER_ONLY_THREE=<n>`, `MACPLAYER_THREE_PORTRAIT=1` | `--selftest`: run only flow G0 (new project of three videos, played in a window) n times; portrait = the maintainer's 1080×1918/1920 phone videos |
 | `MACPLAYER_ONLY_SWITCH=1`, `MACPLAYER_SWITCH_MEDIA=a\|b\|c`, `MACPLAYER_SWITCH_PROJECT=<copy.macplayer>`, `MACPLAYER_SWITCH_PLAYING=1`, `MACPLAYER_SWITCH_CLICKS=1`, `MACPLAYER_SWITCH_DEBUG=1` | `--selftest`: run only flow G1 (switching between filters, transitions and colour in a window), with these videos or a copy of this project (copied again into the work folder; only its media is read), while playing; CLICKS clicks the tiles through the window (only works when the app is the active one, which a background run is not) |
 | `MACPLAYER_ONLY_DRAG=1`, `MACPLAYER_DRAG_PROJECT=<copy.macplayer>` | `--selftest`: only flow G7 (how smooth a drag on the picture is) |
+| `MACPLAYER_ONLY_LINK=1`, `MACPLAYER_LINK_BASE=http://127.0.0.1:<port>`, `MACPLAYER_LINK_LIVE=1`, `MACPLAYER_SHOTS=<dir>` | `--selftest`: only flow G8 (solo windows, links). Links need `Scripts/link_test_server.py <files> <port>` (Range, HEAD, failing routes); LIVE needs an ffmpeg live HLS in `<files>/live`; SHOTS writes window pictures. Without LINK_BASE only the solo part runs (it is also in the full run) |
 | `MACPLAYER_ONLY_CANVAS=1` | `--selftest`: only flows G4 (text/shapes/pictures put and moved on the picture) and G5 (several selected, groups, locks, keys) |
 | `MACPLAYER_ONLY_WORKSPACE=1`, `MACPLAYER_LIBRARY_TAB=media\|audio\|text\|filters\|transitions` | `--selftest`: only flows G2 (video editor workspace, drag-and-drop) and G3 (photo project workspace); start the library on that tab (snapshots) |
 | `MACPLAYER_LAYOUT=list\|grid\|tree`, `MACPLAYER_TREE_FILES=list\|grid`, `MACPLAYER_PREVIEW_SCALE=0.75…3` | start with that sidebar setup (sandbox only) |
@@ -99,7 +101,7 @@ macplayer-probe (CLI)            ──►  both
 - **`Sources/MacPlayerMedia`** — AVFoundation/Core Image/Vision. **One renderer** (`CompositionBuilder` + `RecipeCompositor`) draws both the preview and the
   export, so what is seen is what is written. Also probing, thumbnails, exporters, noise reduction, sound FX, transitions, masks, stabiliser, speech.
 - **`Sources/MacPlayer`** — a thin app layer. `AppDelegate` (opening/routing every file, menus, new project), `MainWindow` (each window has a
-  `WindowRoute`: home / playlist / projects / editor), `EditorSession` (+ extensions) = one open thing: a **viewer** (role `.viewer`, watching a file
+  `WindowRoute`: home / playlist / projects / editor / solo — one file on its own, 0.15), `EditorSession` (+ extensions) = one open thing: a **viewer** (role `.viewer`, watching a file
   from the playlist side, never edited or saved) or an **editor** (role `.editor`, a project file with undo history, autosave into the file via
   `ProjectFileWriter`, and every action); `NavigationViews` (Home, project list, editor header, empty states), `ProjectsController` (registry +
   card pictures), `ProjectActions` (rename/trash a project); `Inspector*.swift` = the right-hand tool panels; `PlaylistSidebar` + `PlaylistModel` = left panel; `TimelineView`; `SelfTest*.swift` (in-app self-test).
@@ -219,6 +221,41 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.15.2 Edit menu fix.** `buildMenu`'s `add(..., target: nil)` fell back to `self`, so Cut/Copy/Paste/Select All, Close and Minimize went to
+the app delegate (which has none of those): ⌘X ⌘C ⌘V ⌘A ⌘W ⌘M did nothing in any field or window, since long before 0.15. Now
+`add(..., firstResponder: true)` leaves the target nil. The self-test's "every menu item has something to act on" let it through (it only
+asked whether a target was set); it now checks that the target responds, and that a target-less item is one a text view or a window answers.
+G8 sends ⌘V/⌘A through the main menu (or, in a background run with no key window, along the window's responder chain); 0.15.1's test called the
+field's `paste` directly and missed the bug. **When testing a shortcut, go through the menu, never call the receiver directly.**
+
+**0.15.1** Open Link: no Paste button; the field takes the keyboard when the window opens (`LinkPanel.focusField()` finds the SwiftUI
+`NSTextField`, selects what is in it), ⌘V/right-click paste go into it; `LinkPanelModel.text` cleans a paste (`cleanPasted`: first non-empty line,
+trimmed). G8 pastes through the field editor (`LinkPanel.fieldEditor`) and puts the person's clipboard back.
+
+**0.15.0 Solo windows and web links.**
+- *Solo:* `AppDelegate.open(urls:)` sends ONE media file to `soloTarget()` (the visible empty Home window, else `newWindow(show: false)`) →
+  `MainWindowController.openSolo(url:)` → `showSolo(_:)`: `setSession(_, fromPlaylist: false, solo: true)` (route `.solo`), `fitToPicture` (Core
+  `PlayerWindowSizing.contentSize`: a pixel a point, small pictures grown to 640, ≤80%×85% of the screen; the bars' height is
+  `ContentViewController.chromeHeight()` = `chromeViews` fitting heights + `timelineHeight`), then shown. Solo windows clear the
+  "MacPlayerMainWindow" autosave name, have `soloMinimum` 480×340, close with their file (`closeVideo` with no target), and grow back to 900×560 when
+  sent to another screen. Header `SoloHeader` (`SoloViews.swift`), `PhotoBar(solo: true)` hides playlist buttons. Launched by Finder for a file
+  (`launchIsDefaultUserInfoKey == false`) → no Home window first (one appears after 1.5 s if nothing opened). File actions use
+  `EditorSession.localFileURL` (nil for links), never `sourceURL`.
+- *Links:* Core `MediaLink.check` (verdicts: ok/page(site)/problem; Dropbox `raw=1`; `kind(ofContentType:)`, `sniff(_:)` first bytes,
+  `suggestedFileName`), `RecentLinks`, `AppPreferences.recentLinks`. App: `OpenLinkPanel.swift` (`LinkPanel.shared`, `LinkPanelModel.open()`:
+  `LinkFetcher.inspect` HEAD → GET range fallback, html → error, unknown → sniff; photos fetched into `<support>/LinkCache` (cleared at launch and when
+  their window closes) → `EditorSession.openRemote` → `soloTarget().showSolo`). `EditorSession.remote: RemoteSource?` (+ `playbackMIME` for
+  octet-stream), `linkSave: LinkSave` ("Download…", `Download` writes `.name.download` then renames; an existing file is trashed). `PlayerController`
+  `load(streaming:mimeType:)` never awaits the network (selection groups in a Task, guarded by `item.asset ===`; awaiting them hung Open Link on a
+  stalled server), publishes `isWaiting`, `isReady`, `bufferedUntil`, `isLive` (indefinite duration), `presentationSize`; a stall watchdog
+  (`stallTimeout` 20 s, no progress while `!isReady || isWaiting`) sets `failure`. `LinkOverlay` (spinner / error card with Try Again) sits in a
+  `PassThroughHostingView` with `sizingOptions = []` (it used to stretch the window). Live streams: timeline height 0, `TransportBar` shows play +
+  LIVE only; it also has a compact layout (`ViewThatFits`). `refreshSourceState` skips links. Info.plist ATS allows arbitrary loads (+ media, local
+  networking) so http:// links work.
+- *Fix:* `RecipeCompositor.mainPicture` indexes the stabilizer plan with `floor(t·fps + 1e-3)` (the frame shown), not rounding — exports were
+  intermittently shakier than the source (`StabilizerTests` flaked: 2/9 on the old commit, 8/9 on this tree before the fix, 0/9 after).
+- Self-test **G8** (`SelfTestLink.swift`), Core `MediaLinkTests`; `Scripts/open_with_test.py` now expects route `solo`.
+
 **0.14.4 Hover-only dashed frames.** `ElementManipulatorView` and `OverlayManipulatorView` used to stroke a faint dashed frame around *every* unselected
 element/layer; on a sticker with its outline off it read as a border of the sticker itself. Now each view has a tracking area (`hoverPoint`) and only
 the topmost item under the mouse gets the dashed frame (none while dragging). Selected items keep their solid frame. Self-test G4 checks it
@@ -310,7 +347,8 @@ for a frame at most once per 1/60 s (`refreshFrameSoon`; a photo re-renders at m
 
 ## 10. Known limits and ideas not done
 
-Not done / not verified: keyframes for colour and crop; Intel Macs; other players reading fast-cut files; real VoiceOver/Reduce Motion audit; Vision on real people (only stubbed in tests);
+Not done / not verified: links on real internet servers and CDNs (tested only against a local test server, incl. HLS VOD/live made by ffmpeg); links
+dragged onto a window (only pasting); keyframes for colour and crop; Intel Macs; other players reading fast-cut files; real VoiceOver/Reduce Motion audit; Vision on real people (only stubbed in tests);
 UI flows with a real mouse; notarization and Developer ID (needs a paid account: never fake it); tags/collections for the library; picture-in-picture window; custom shortcuts;
 undo for playlist operations. HDR video: colour changes apply to the stored HDR values without tone mapping (the UI warns). Voice-effect copies are made when an effect is chosen
 (not live while a slider moves).

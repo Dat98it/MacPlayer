@@ -24,53 +24,73 @@ struct TransportBar: View {
     private var fr: FrameRate { session.frameRate }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Group {
-                btn("backward.end.fill", L("Go to start")) { Task { await player.seek(to: .zero) } }
-                btn("gobackward.5", L("Back 5 seconds")) { player.skip(seconds: -session.env.prefs.skipSeconds) }
-                btn("backward.frame.fill", L("Previous frame")) { player.step(frames: -1) }
-                btn(player.isPlaying ? "pause.fill" : "play.fill", player.isPlaying ? L("Pause") : L("Play"), big: true) { player.togglePlay() }
-                btn("forward.frame.fill", L("Next frame")) { player.step(frames: 1) }
-                btn("goforward.5", L("Forward 5 seconds")) { player.skip(seconds: session.env.prefs.skipSeconds) }
-                btn("forward.end.fill", L("Go to end")) { Task { await player.seek(to: session.duration) } }
-            }
+        // A narrow window (a file on its own may be small) drops the less needed buttons rather than cutting the times short.
+        ViewThatFits(in: .horizontal) {
+            bar(compact: false)
+            bar(compact: true)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
 
-            Group {
-                if editingTime {
-                    TextField(L("Timecode"), text: $edit.text, onCommit: goToTyped)
-                        .textFieldStyle(.roundedBorder).frame(width: 110).font(.system(.body, design: .monospaced))
-                } else {
-                    Text(Timecode.format(player.currentTime, frameRate: fr))
-                        .font(.system(.body, design: .monospaced)).frame(width: 110)
-                        .onTapGesture { edit.text = Timecode.format(player.currentTime); edit.editing = true }.clickable()
-                        .accessibilityLabel(LF("Time %@", Timecode.format(player.currentTime, frameRate: fr)))
-                        .accessibilityHint(L("Click to type a time"))
-                        .help(L("Click to type a time"))
+    private func bar(compact: Bool) -> some View {
+        HStack(spacing: 6) {
+            if player.isLive {
+                // A live stream: play or pause, nothing to move along.
+                btn(player.isPlaying ? "pause.fill" : "play.fill", player.isPlaying ? L("Pause") : L("Play"), big: true) { player.togglePlay() }
+                SoloBadge(text: L("LIVE"), color: .red, dot: true)
+            } else {
+                Group {
+                    if !compact { btn("backward.end.fill", L("Go to start")) { Task { await player.seek(to: .zero) } } }
+                    if !compact { btn("gobackward.5", L("Back 5 seconds")) { player.skip(seconds: -session.env.prefs.skipSeconds) } }
+                    btn("backward.frame.fill", L("Previous frame")) { player.step(frames: -1) }
+                    btn(player.isPlaying ? "pause.fill" : "play.fill", player.isPlaying ? L("Pause") : L("Play"), big: true) { player.togglePlay() }
+                    btn("forward.frame.fill", L("Next frame")) { player.step(frames: 1) }
+                    if !compact { btn("goforward.5", L("Forward 5 seconds")) { player.skip(seconds: session.env.prefs.skipSeconds) } }
+                    if !compact { btn("forward.end.fill", L("Go to end")) { Task { await player.seek(to: session.duration) } } }
                 }
-                Text("/ " + Timecode.format(session.duration)).font(.system(.caption, design: .monospaced)).foregroundColor(.secondary)
+                Group {
+                    if editingTime {
+                        TextField(L("Timecode"), text: $edit.text, onCommit: goToTyped)
+                            .textFieldStyle(.roundedBorder).frame(width: 110).font(.system(.body, design: .monospaced))
+                    } else {
+                        Text(Timecode.format(player.currentTime, frameRate: fr))
+                            .font(.system(.body, design: .monospaced)).frame(width: 110)
+                            .onTapGesture { edit.text = Timecode.format(player.currentTime); edit.editing = true }.clickable()
+                            .accessibilityLabel(LF("Time %@", Timecode.format(player.currentTime, frameRate: fr)))
+                            .accessibilityHint(L("Click to type a time"))
+                            .help(L("Click to type a time"))
+                    }
+                    Text("/ " + Timecode.format(session.duration)).font(.system(.caption, design: .monospaced)).foregroundColor(.secondary)
+                        .lineLimit(1).fixedSize()
+                }
             }
 
             Spacer(minLength: 8)
 
-            Menu {
-                ForEach([Float(0.25), 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4], id: \.self) { s in
-                    Button((player.speed == s ? "✓ " : "") + speedLabel(s)) { player.setSpeed(s) }
-                }
-            } label: { Text(speedLabel(player.speed)) }
-            .frame(width: 64).help(L("Playback speed")).accessibilityLabel(L("Playback speed"))
+            if !player.isLive {
+                Menu {
+                    ForEach([Float(0.25), 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4], id: \.self) { s in
+                        Button((player.speed == s ? "✓ " : "") + speedLabel(s)) { player.setSpeed(s) }
+                    }
+                } label: { Text(speedLabel(player.speed)) }
+                .frame(width: 64).help(L("Playback speed")).accessibilityLabel(L("Playback speed"))
 
-            Menu {
-                Button((player.loop == .off ? "✓ " : "") + L("No repeat")) { player.loop = .off }
-                Button((player.loop == .whole ? "✓ " : "") + L("Repeat video")) { player.loop = .whole }
-                if session.isProject, let c = session.timingClip, let start = TimelineEditor.starts(session.project.timeline)[c.id] {
-                    Button(L("Repeat the selected clip")) { player.loop = .range(TimeSpan(start: start, end: start + c.duration)) }
-                }
-            } label: { Image(systemName: loopIcon) }
-            .frame(width: 44).help(L("Repeat")).accessibilityLabel(L("Repeat"))
+                Menu {
+                    Button((player.loop == .off ? "✓ " : "") + L("No repeat")) { player.loop = .off }
+                    Button((player.loop == .whole ? "✓ " : "") + L("Repeat video")) { player.loop = .whole }
+                    if session.isProject, let c = session.timingClip, let start = TimelineEditor.starts(session.project.timeline)[c.id] {
+                        Button(L("Repeat the selected clip")) { player.loop = .range(TimeSpan(start: start, end: start + c.duration)) }
+                    }
+                } label: { Image(systemName: loopIcon) }
+                .frame(width: 44).help(L("Repeat")).accessibilityLabel(L("Repeat"))
+            }
 
             Image(systemName: player.isMuted || player.volume == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
                 .onTapGesture { player.isMuted.toggle() }.clickable().accessibilityLabel(L("Mute")).accessibilityAddTraits(.isButton)
-            Slider(value: Binding(get: { Double(player.volume) }, set: { player.volume = Float($0) }), in: 0...1).frame(width: 70).accessibilityLabel(L("Volume"))
+            if !compact {
+                Slider(value: Binding(get: { Double(player.volume) }, set: { player.volume = Float($0) }), in: 0...1).frame(width: 70).accessibilityLabel(L("Volume"))
+            }
 
             if session.isProject {
                 Divider().frame(height: 18)
@@ -80,8 +100,6 @@ struct TransportBar: View {
                 Button { session.addMarker() } label: { Image(systemName: "flag") }.help(L("Add marker (M)")).accessibilityLabel(L("Add marker"))
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(Color(NSColor.windowBackgroundColor))
     }
 
     private var loopIcon: String {

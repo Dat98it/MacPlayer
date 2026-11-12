@@ -71,6 +71,14 @@ final class EditorSession: NSObject, ObservableObject {
     @Published var history: History<Project>
     @Published var info: MediaInfo?
     @Published var sourceURL: URL?
+    /// Opened from a web link (0.15): what it is. `sourceURL` is then the link (a video or stream) or a copy in the cache (a photo),
+    /// never a file of the person's.
+    @Published var remote: RemoteSource?
+    /// Saving what the link shows into a file ("Download…").
+    let linkSave = LinkSave()
+    var remoteBag = Set<AnyCancellable>()
+    /// The person's own file being watched: what Rename, Trash, Show in Finder, Edit and "remember where I stopped" act on.
+    var localFileURL: URL? { remote == nil ? sourceURL : nil }
     @Published var selectedClipIDs: Set<UUID> = []
     @Published var notice: Notice?
     /// The edits are not in the project file yet (they will be, within seconds).
@@ -342,7 +350,7 @@ final class EditorSession: NSObject, ObservableObject {
         // Watching: the file plays as it is.
         guard let url = sourceURL else { return }
         previewHasCompositor = false
-        await player.load(url: url, preview: nil, at: start, since: generation)
+        await player.load(url: url, preview: nil, at: start, since: generation, streaming: remote != nil, mimeType: remote?.playbackMIME)
     }
 
     /// Rebuilds the preview shortly after an edit, keeping the playhead and play state.
@@ -361,7 +369,8 @@ final class EditorSession: NSObject, ObservableObject {
     func loadWaveform() {
         waveformTask?.cancel()
         peaks = []
-        guard let url = sourceURL, info?.hasAudio == true else { return }
+        // A link would be read whole for its waveform.
+        guard remote == nil, let url = sourceURL, info?.hasAudio == true else { return }
         waveformTask = Task {
             let p = try? await Waveform.peaks(url: url)
             if !Task.isCancelled { peaks = p ?? [] }
@@ -431,6 +440,8 @@ final class EditorSession: NSObject, ObservableObject {
 
     /// Called when the window comes to the front: is every file of the project still where it was?
     func refreshSourceState() {
+        // A link is not a file on this Mac (a photo from a link is in the cache, looked after by the app).
+        guard remote == nil else { return }
         for src in project.sources {
             guard let url = sourceURLs[src.id] else { continue }
             if !env.fs.exists(url.path) {
@@ -560,7 +571,7 @@ final class EditorSession: NSObject, ObservableObject {
     }
 
     func rememberPosition() {
-        guard role == .viewer, env.prefs.rememberPositions, !isPhoto, let url = sourceURL, let info else { return }
+        guard role == .viewer, env.prefs.rememberPositions, !isPhoto, let url = localFileURL, let info else { return }
         env.positions.remember(PositionStore.key(path: url.path, size: info.fileSize), seconds: player.currentTime.seconds, duration: info.duration.seconds)
         env.positions.flush()
     }
@@ -571,6 +582,9 @@ final class EditorSession: NSObject, ObservableObject {
         autosaveTimer?.invalidate(); positionTimer?.invalidate()
         previewTask?.cancel(); waveformTask?.cancel()
         rememberPosition()
+        linkSave.cancel(); remoteBag.removeAll()
+        // A photo from a link was kept in the cache only while shown.
+        if remote?.kind == .photo, let u = sourceURL, u.path.hasPrefix(LinkFetcher.cacheFolder.path) { try? FileManager.default.removeItem(at: u) }
         player.pause()
         if role == .editor, !isDirty { env.projectStore.clearAutosave(projectID: project.id) }
     }
