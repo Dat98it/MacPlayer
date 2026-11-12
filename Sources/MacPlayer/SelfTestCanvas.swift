@@ -49,6 +49,23 @@ extension SelfTest {
         check(layer.map { abs($0.transform.centerX - 0.8) < 0.01 && abs($0.transform.centerY - 0.2) < 0.01 } == true,
               "a picture dropped on the picture becomes a layer centred there (\(String(format: "%.2f, %.2f", layer?.transform.centerX ?? -1, layer?.transform.centerY ?? -1)))")
 
+        // Nothing gets a dashed frame just for being there (it looked like a border on the sticker); only what the mouse is over (0.14.4).
+        let stickerID = s.project.overlays[2].id
+        s.select(.none); try? await Task.sleep(nanoseconds: 200_000_000)
+        host.elements.testHover(at: nil); host.manipulator.testHover(at: nil)
+        check(host.elements.testDashedIDs.isEmpty && host.manipulator.testDashedIDs.isEmpty, "no dashed frame around stickers, texts or layers the mouse is not over")
+        if let fr = host.elements.testFrame(of: stickerID) {
+            host.elements.testHover(at: CGPoint(x: fr.midX, y: fr.midY))
+            check(host.elements.testDashedIDs == [stickerID], "the sticker under the mouse shows a dashed frame")
+            host.elements.testHover(at: nil)
+            check(host.elements.testDashedIDs.isEmpty, "the frame goes when the mouse leaves")
+        } else { check(false, "the sticker has a frame") }
+        if let l = layer, let fl = host.manipulator.frames().first(where: { $0.id == l.id })?.frame {
+            host.manipulator.testHover(at: CGPoint(x: fl.midX, y: fl.midY))
+            check(host.manipulator.testDashedIDs == [l.id], "the layer under the mouse shows a dashed frame")
+            host.manipulator.testHover(at: nil)
+        }
+
         // A square from the library is square on this wide picture (it used to come out a wide rectangle).
         s.addShape(.rectangle, position: CGPoint(x: 0.5, y: 0.25))
         let squareID = s.project.overlays.last!.id

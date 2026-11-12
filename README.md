@@ -2,7 +2,7 @@
 
 Xem và chỉnh sửa **video lẫn ảnh**: cắt đoạn, ghép nhiều video, chỉnh màu chuyên nghiệp (đường cong, bánh xe màu, HSL, LUT), tách nền và mặt nạ, chuyển cảnh và keyframe, hiệu ứng giọng, chữ và hình dán, rồi xuất ngay trên Mac. Mọi xử lý diễn ra trên máy; không có tài khoản, không thu thập dữ liệu, không có tính năng trực tuyến.
 
-> **Trạng thái: bản 0.14.3 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
+> **Trạng thái: bản 0.14.4 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
 
 ## Yêu cầu
 
@@ -135,6 +135,7 @@ Mở một dự án video là thấy ngay bố cục quen thuộc của các app
     - **một** lựa chọn chất lượng (Tốt nhất, 4K, Full HD, HD, Nhẹ) thay cho "Chất lượng" và "Cỡ".
     - Video dọc 1080p là 1080 × 1920.
   - Ô Thư viện không còn nhấp nháy khi phát video.
+- **0.14.4:** nhãn dán, chữ, hình, logo trên khung hình không còn bị viền nét đứt bao quanh khi viền đang tắt: khung nét đứt chỉ hiện khi rê chuột lên đối tượng, và không bao giờ có trong video/ảnh xuất ra.
 - **0.14.3:** kéo chữ, hình, nhãn dán, logo trên khung hình giờ đi liền theo chuột: trong lúc kéo app tự vẽ đối tượng nổi trên khung hình, trình phát chỉ vẽ lại khi bắt đầu và khi thả. Sửa lỗi sập khi mở dự án mà mọi video đều đã bị dời đi.
 - **0.14.2:** kéo chữ, hình, nhãn dán, lớp trên khung hình mượt hơn: khung chọn và hình đi đúng theo chuột; các bảng bên không vẽ lại trong lúc kéo, dự án chỉ ghi một lần khi thả.
 - **0.14.1:** tab Chữ của Thư viện chia thành 4 tab con: **Kiểu chữ · Mẫu sẵn · Hình · Nhãn dán**. Mỗi lần hiện một nhóm, không phải cuộn dài; hình và nhãn dán hiện to hơn, hình có tên.

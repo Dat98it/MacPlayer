@@ -237,8 +237,33 @@ final class ElementManipulatorView: NSView {
     private let handle: CGFloat = 10
     /// Where something being dragged in would land (drawn as a target while it hovers), in this view's coordinates.
     var dropPoint: CGPoint? { didSet { if dropPoint != oldValue { needsDisplay = true } } }
+    /// Where the mouse rests over the picture: only the element under it shows a dashed frame (0.14.4). A frame around every
+    /// element, all the time, looked like a border on the sticker or text itself, even with its outline turned off.
+    private(set) var hoverPoint: CGPoint? { didSet { if hoverPoint != oldValue { needsDisplay = true } } }
+    private var hoverArea: NSTrackingArea?
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let a = hoverArea { removeTrackingArea(a) }
+        let a = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(a); hoverArea = a
+    }
+    override func mouseMoved(with e: NSEvent) { hoverPoint = convert(e.locationInWindow, from: nil) }
+    override func mouseExited(with e: NSEvent) { hoverPoint = nil }
+    /// The element the mouse is over (the topmost one there), whose dashed frame is drawn.
+    private func hovered(_ items: [(o: TextOverlay, frame: CGRect)]) -> UUID? {
+        guard mode == nil, let p = hoverPoint else { return nil }
+        return items.last { $0.frame.contains(p) }?.o.id
+    }
+    /// For the self-test: the elements drawn with a dashed frame now.
+    var testDashedIDs: [UUID] {
+        guard let s = session else { return [] }
+        let items = visible(), h = hovered(items)
+        return items.filter { !(s.canvasSelection.contains($0.o.id) || $0.o.id == s.selectedTextID) && $0.o.id == h }.map(\.o.id)
+    }
+    func testHover(at p: CGPoint?) { hoverPoint = p }
 
     func attach(_ s: EditorSession?) {
         session = s
@@ -336,13 +361,14 @@ final class ElementManipulatorView: NSView {
         let items = visible()
         let several = s.canvasSelection.count > 1
         let corner = handled(items)
+        let hover = hovered(items)
         for item in items {
             let r = item.frame
             let selected = s.canvasSelection.contains(item.o.id) || item.o.id == s.selectedTextID
             if selected {
                 ctx.setStrokeColor(NSColor.white.cgColor); ctx.setLineWidth(1.5); ctx.stroke(r)
                 ctx.setStrokeColor(NSColor.controlAccentColor.cgColor); ctx.setLineWidth(1); ctx.stroke(r.insetBy(dx: -1.5, dy: -1.5))
-            } else {
+            } else if item.o.id == hover {
                 ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.45).cgColor); ctx.setLineWidth(1)
                 ctx.setLineDash(phase: 0, lengths: [3, 3]); ctx.stroke(r); ctx.setLineDash(phase: 0, lengths: [])
             }

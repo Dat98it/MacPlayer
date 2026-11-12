@@ -219,6 +219,11 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.14.4 Hover-only dashed frames.** `ElementManipulatorView` and `OverlayManipulatorView` used to stroke a faint dashed frame around *every* unselected
+element/layer; on a sticker with its outline off it read as a border of the sticker itself. Now each view has a tracking area (`hoverPoint`) and only
+the topmost item under the mouse gets the dashed frame (none while dragging). Selected items keep their solid frame. Self-test G4 checks it
+(`testHover(at:)`, `testDashedIDs`). Editor-only UI: exports never had it.
+
 **0.14.3 Lifted drags.** 0.14.2 still asked AVPlayer for a frame per move (reassigning `videoComposition`), and the picture lagged behind the frame
 on a real mouse. Now the first move of a drag *lifts* what moves: `CanvasLiftLayers` (one per view: `ElementManipulatorView`, `OverlayManipulatorView`)
 asks `EditorSession.liftPicture(_:pic:scale:)` for its pixels, drawn by the preview's own code (`CanvasLift.element` / `CanvasLift.layer` in

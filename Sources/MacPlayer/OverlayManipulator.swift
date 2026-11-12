@@ -31,6 +31,29 @@ final class OverlayManipulatorView: NSView {
     private var liftTried = false
     private var guides: (x: Double?, y: Double?) = (nil, nil)
     private let handleSize: CGFloat = 10
+    /// Where the mouse rests: only the layer under it shows a dashed frame (0.14.4), not every layer all the time.
+    private(set) var hoverPoint: CGPoint? { didSet { if hoverPoint != oldValue { needsDisplay = true } } }
+    private var hoverArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let a = hoverArea { removeTrackingArea(a) }
+        let a = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(a); hoverArea = a
+    }
+    override func mouseMoved(with e: NSEvent) { hoverPoint = convert(e.locationInWindow, from: nil) }
+    override func mouseExited(with e: NSEvent) { hoverPoint = nil }
+    /// The layer the mouse is over (the topmost one there).
+    private func hovered(video: CGRect) -> UUID? {
+        guard mode == nil, let p = hoverPoint else { return nil }
+        return visible().reversed().first { rect($0.clip, $0.state, video: video).contains(p) }?.clip.id
+    }
+    /// For the self-test: the layers drawn with a dashed frame now.
+    var testDashedIDs: [UUID] {
+        let video = videoRect(), h = hovered(video: video)
+        return visible().filter { $0.clip.id == h && !($0.clip.id == session?.selectedOverlayID && (session?.canvasSelection.count ?? 0) <= 1) }.map(\.clip.id)
+    }
+    func testHover(at p: CGPoint?) { hoverPoint = p }
 
     func attach(_ s: EditorSession?) {
         session = s
@@ -111,6 +134,7 @@ final class OverlayManipulatorView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let video = videoRect()
         guard video.width > 1, let s = session, let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let hover = hovered(video: video)
         for item in visible() {
             let r = rect(item.clip, item.state, video: video)
             if item.clip.id == s.selectedOverlayID && s.canvasSelection.count <= 1 {
@@ -121,7 +145,7 @@ final class OverlayManipulatorView: NSView {
                     ctx.setFillColor(NSColor.white.cgColor); ctx.fill(h)
                     ctx.setStrokeColor(NSColor.controlAccentColor.cgColor); ctx.setLineWidth(1.5); ctx.stroke(h)
                 }
-            } else {
+            } else if item.clip.id == hover {
                 ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.6).cgColor); ctx.setLineWidth(1)
                 ctx.setLineDash(phase: 0, lengths: [4, 3]); ctx.stroke(r); ctx.setLineDash(phase: 0, lengths: [])
             }

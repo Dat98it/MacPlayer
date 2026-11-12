@@ -589,6 +589,25 @@ Với dự án ảnh, mỗi sự kiện còn vẽ lại cả tấm ảnh.
 - Chưa có số đo "trước khi sửa" bằng chính G7: nó được viết cùng lúc với phần sửa. Nhận định "mỗi lần dời một lần ghi dự án" ở trên lấy từ đọc mã.
 
 
+## Bản 0.14.4: bỏ viền nét đứt quanh nhãn dán (12/11/2026)
+
+**Người bảo trì báo:** nhãn dán kéo thả vào khung hình bị thêm viền nét đứt, dù ở bảng thuộc tính viền đang tắt.
+
+**Nguyên nhân:**
+- Nhãn dán không có viền thật: nó được tạo với độ dày viền bằng 0 và ảnh xuất ra không có viền.
+- Viền nét đứt là khung gợi ý của vùng chỉnh sửa. Khung này được vẽ quanh *mọi* chữ, hình, nhãn dán, logo chưa được chọn, lúc nào cũng hiện, nên trông như viền của chính nhãn dán.
+
+**Sửa:**
+- Khung nét đứt giờ chỉ hiện quanh đối tượng nằm trên cùng dưới con trỏ chuột, và biến mất khi chuột rời đi hoặc đang kéo.
+- Đối tượng đang chọn vẫn giữ khung liền và các núm góc như cũ.
+- Áp dụng cho cả chữ/hình/nhãn dán lẫn logo/ảnh lớp.
+
+**Kiểm thử:**
+- G4 thêm 4 mục: không đối tượng nào có khung nét đứt khi chuột không ở trên; nhãn dán dưới chuột có khung; khung biến mất khi chuột rời đi; logo dưới chuột có khung.
+- G4/G5/G6: 55 đạt, 0 lỗi. G2/G3: 84 đạt, 0 lỗi.
+
+**Chưa kiểm chứng:** rê chuột thật trên màn hình. Bài thử đặt vị trí chuột trực tiếp vào view, không qua sự kiện chuột của hệ thống.
+
 ## Bản 0.14.3: kéo đối tượng đi liền theo chuột (11/11/2026)
 
 **Người bảo trì báo:** sau bản 0.14.2, kéo đối tượng trên khung hình vẫn rất giật.
