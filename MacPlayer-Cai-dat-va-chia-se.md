@@ -1,4 +1,4 @@
-# MacPlayer 0.16.4: cài đặt và chia sẻ
+# MacPlayer 0.17.3: cài đặt và chia sẻ
 
 **MacPlayer** (trước đây tên MacVideo) là app miễn phí cho macOS để xem và chỉnh sửa video lẫn ảnh: cắt, ghép, chỉnh màu chuyên nghiệp, tách nền và mặt nạ, chuyển cảnh, hiệu ứng giọng, chữ, hình dán, rồi xuất ngay trên Mac. Mọi thứ chạy trên máy bạn: không tài khoản, không kết nối mạng, không gửi video đi đâu, không thu thập dữ liệu.
 
@@ -9,7 +9,7 @@ Giấy phép MIT: dùng, sao chép và chia sẻ tự do (xem mục cuối).
 - Đã kiểm thử trên Mac chip Apple (M1 trở đi). **Mac Intel chưa được thử**, không cam kết chạy.
 
 ## Cài đặt
-1. Tải `MacPlayer-0.16.4.dmg` (hoặc `.zip`) từ nơi người chia sẻ cho bạn.
+1. Tải `MacPlayer-0.17.3.dmg` (hoặc `.zip`) từ nơi người chia sẻ cho bạn.
 2. Mở file `.dmg`, kéo **MacPlayer** vào thư mục **Applications**.
 3. Lần đầu mở, macOS báo không xác minh được nhà phát triển. Đây là bình thường: app chưa được Apple công chứng vì việc đó cần tài khoản nhà phát triển trả phí. Chọn một cách:
    - Chuột phải vào MacPlayer trong Applications, chọn **Mở**, rồi bấm **Mở** lần nữa; hoặc
@@ -24,12 +24,12 @@ Giấy phép MIT: dùng, sao chép và chia sẻ tự do (xem mục cuối).
 So mã SHA-256 của file với mã dưới đây. Khác nhau nghĩa là file đã bị đổi hoặc tải lỗi: đừng cài.
 
 ```bash
-shasum -a 256 MacPlayer-0.16.4.dmg
+shasum -a 256 MacPlayer-0.17.3.dmg
 ```
 
 ```
-17beec7ec2cbbeeea7d9b3929b37895e6668a30f9300fec014e00a07f384c404  MacPlayer-0.16.4.dmg
-6aad17ad50a247f59513db38b12b1a38dbae273d0fc5ace8ea73a2ccba710082  MacPlayer-0.16.4.zip
+e35f1cda37ec36ea678e1e3b87a5cca363d01b71a2bfd059b49b6c2ac612f4a6  MacPlayer-0.17.3.dmg
+155461f97b83275a760bd63424556b691c3ac7dd526a58e1976681858e05ee9f  MacPlayer-0.17.3.zip
 ```
 
 ## Dùng nhanh

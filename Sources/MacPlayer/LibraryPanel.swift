@@ -380,7 +380,9 @@ struct TextLibrary: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
                     ForEach(ShapeKind.allCases, id: \.self) { k in
                         VStack(spacing: 4) {
-                            Image(systemName: TextPane.shapeIcon(k)).font(.system(size: 26)).foregroundColor(color(k.defaultFillHex))
+                            // The shape itself, drawn by the same outline the picture uses (0.16.5).
+                            ShapeOutline(kind: k).fill(color(k.defaultFillHex), style: FillStyle(eoFill: k.isHollow))
+                                .frame(width: 38, height: 38 * min(1.3, max(0.3, k.naturalHeightRatio)))
                                 .frame(maxWidth: .infinity).frame(height: 52)
                                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.12)))
                             Text(TextPane.shapeName(k)).font(.system(size: 10.5)).lineLimit(1).minimumScaleFactor(0.8)
@@ -668,3 +670,12 @@ final class LibraryDragSourceView: NSView, NSDraggingSource {
     }
 }
 
+/// A shape's outline as the renderer draws it (CG's y points up; SwiftUI's down).
+struct ShapeOutline: Shape {
+    let kind: ShapeKind
+    func path(in rect: CGRect) -> Path {
+        let cg = ShapeOutlines.path(kind, in: CGRect(origin: .zero, size: rect.size))
+        var flip = CGAffineTransform(translationX: rect.minX, y: rect.maxY).scaledBy(x: 1, y: -1)
+        return Path(cg.copy(using: &flip) ?? cg)
+    }
+}

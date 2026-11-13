@@ -39,6 +39,14 @@ struct TimingPane: View {
             if session.timingClip == nil {
                 Text(L("Select a clip on the timeline to use these tools.")).foregroundColor(.secondary)
             } else {
+                let look = session.project.activeLook
+                let sections = [PaneSection(id: "speed", title: L("Speed"), icon: "speedometer", changed: look.speed != 1),
+                                PaneSection(id: "ramp", title: L("Speed ramp"), icon: "chart.line.uptrend.xyaxis"),
+                                PaneSection(id: "freeze", title: L("Freeze"), icon: "snowflake"),
+                                PaneSection(id: "reverse", title: L("Reverse"), icon: "arrow.counterclockwise")]
+                let tab = session.paneTab("timing", sections).wrappedValue
+                SectionTabBar(sections: sections, selection: session.paneTab("timing", sections))
+                if tab == "speed" {
                 ToolCard(title: L("Speed"), icon: "speedometer") {
                     SliderRow(title: L("Speed"), value: session.binding("Clip speed", coalesce: "spd-timing", get: { $0.activeLook.speed }, set: { $0.activeLook.speed = $1 }), range: 0.25...4, format: "%.2f×", onDone: { session.endCoalescing() })
                     HStack(spacing: 6) {
@@ -47,6 +55,8 @@ struct TimingPane: View {
                         }
                     }
                 }
+                }
+                if tab == "ramp" {
                 ToolCard(title: L("Speed ramp"), icon: "chart.line.uptrend.xyaxis") {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 78), spacing: 8)], spacing: 8) {
                         ForEach(SpeedRamp.Preset.allCases, id: \.self) { p in
@@ -61,14 +71,19 @@ struct TimingPane: View {
                     }
                     Text(L("The speed changes smoothly along the clip. The clip is cut into ten parts, each at its own steady speed; you can still change any of them.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
+                }
+                if tab == "freeze" {
                 ToolCard(title: L("Freeze frame"), icon: "snowflake") {
                     SliderRow(title: L("Hold for (s)"), value: Binding(get: { hold.value }, set: { hold.value = $0 }), range: 0.5...10, format: "%.1f")
                     Button(L("Freeze the Frame at the Playhead")) { session.freezeFrameAtPlayhead(hold: hold.value) }
                     Text(L("The picture stops on this frame for the time you choose, then the clip carries on.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
+                }
+                if tab == "reverse" {
                 ToolCard(title: L("Reverse"), icon: "arrow.counterclockwise") {
                     Button(L("Reverse This Clip")) { session.reverseClip() }
                     Text(L("Makes a copy of the clip that plays backwards, picture and sound, and uses it in the clip's place. The original video is not changed. Works on clips up to three minutes.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
                 }
             }
         }

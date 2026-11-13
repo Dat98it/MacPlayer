@@ -222,7 +222,7 @@ extension EditorSession {
     /// A text in one of the ready-made styles, at `time` (the playhead) for 3 seconds; selected so it can be typed into.
     func addText(_ template: TextTemplate?, at time: MediaTime? = nil, position: CGPoint? = nil) {
         guard canEdit else { return }
-        let start = isPhoto ? .zero : min(time ?? player.currentTime, max(.zero, duration - MediaTime(seconds: 0.5)))
+        let start = isPhoto ? .zero : min(shownFrameStart(time), max(.zero, duration - MediaTime(seconds: 0.5)))
         let end = isPhoto ? MediaTime(seconds: 100_000) : min(max(duration, start + MediaTime(seconds: 0.5)), start + MediaTime(seconds: 3))
         var o = TextOverlay(text: template.map { TextPane.templateName($0) } ?? L("Text"), start: start, end: end, sizeFraction: 0.07, y: 0.5)
         template?.apply(to: &o)
@@ -234,7 +234,7 @@ extension EditorSession {
     /// A sticker (a large emoji) at `time`, popping in.
     func addSticker(_ e: String, at time: MediaTime? = nil, position: CGPoint? = nil) {
         guard canEdit else { return }
-        let start = isPhoto ? .zero : min(time ?? player.currentTime, max(.zero, duration - MediaTime(seconds: 0.5)))
+        let start = isPhoto ? .zero : min(shownFrameStart(time), max(.zero, duration - MediaTime(seconds: 0.5)))
         let end = isPhoto ? MediaTime(seconds: 100_000) : min(max(duration, start + MediaTime(seconds: 0.5)), start + MediaTime(seconds: 3))
         var o = TextOverlay(text: e, start: start, end: end, sizeFraction: 0.22, y: 0.5)
         var f = TextFlair(); f.outlineWidth = 0; o.flair = f; o.animationIn = ElementAnimation(kind: .pop, duration: 0.4)
@@ -246,7 +246,7 @@ extension EditorSession {
     /// A ready-made text (a subscribe button, a sale badge…) at `time` and `position` (its own place when nil).
     func addPreset(_ preset: TextPreset, at time: MediaTime? = nil, position: CGPoint? = nil) {
         guard canEdit else { return }
-        let start = isPhoto ? .zero : min(time ?? player.currentTime, max(.zero, duration - MediaTime(seconds: 0.5)))
+        let start = isPhoto ? .zero : min(shownFrameStart(time), max(.zero, duration - MediaTime(seconds: 0.5)))
         let end = isPhoto ? MediaTime(seconds: 100_000) : min(max(duration, start + MediaTime(seconds: 0.5)), start + MediaTime(seconds: 3))
         var o = preset.make()
         o.id = UUID(); o.start = start; o.end = end
@@ -258,7 +258,7 @@ extension EditorSession {
     /// A shape (rectangle, circle, star, arrow…) at `time` and `position` (the middle of the picture when nil).
     func addShape(_ k: ShapeKind, at time: MediaTime? = nil, position: CGPoint? = nil) {
         guard canEdit else { return }
-        let start = isPhoto ? .zero : min(time ?? player.currentTime, max(.zero, duration - MediaTime(seconds: 0.5)))
+        let start = isPhoto ? .zero : min(shownFrameStart(time), max(.zero, duration - MediaTime(seconds: 0.5)))
         let end = isPhoto ? MediaTime(seconds: 100_000) : min(max(duration, start + MediaTime(seconds: 0.5)), start + MediaTime(seconds: 3))
         // Its height follows the picture's shape, so a square is square on a wide or a tall picture (it was 18% × 18%: a wide rectangle on 16:9).
         let spec = ShapeSpec.made(k, width: k == .arrow ? 0.25 : 0.18, aspect: outputAspect)

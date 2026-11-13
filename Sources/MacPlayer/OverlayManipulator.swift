@@ -10,6 +10,7 @@ import MacPlayerCore
 final class OverlayManipulatorView: NSView {
     override var acceptsFirstResponder: Bool { true }
     private weak var session: EditorSession?
+    var attachedSession: EditorSession? { session }
     private var bag = Set<AnyCancellable>()
     /// The picture's rectangle in this view's coordinates, supplied by the host.
     var videoRect: () -> CGRect = { .zero }
@@ -21,8 +22,8 @@ final class OverlayManipulatorView: NSView {
     /// What the last drag was centred on (for the self-test).
     private(set) var lastGuideLabels: [String] = []
 
-    private enum Mode { case move(start: OverlayState, from: CGPoint), resize(corner: OverlayDrag.Corner, start: OverlayState) }
-    private enum Hit { case handle(OverlayClip, OverlayDrag.Corner), body(OverlayClip), none }
+    private enum Mode { case move(start: OverlayState, from: CGPoint), resize(corner: OverlayDrag.Corner, start: OverlayState), stretch(edge: OverlayDrag.Edge, start: OverlayState, stretch: Double) }
+    private enum Hit { case handle(OverlayClip, OverlayDrag.Corner), edge(OverlayClip, OverlayDrag.Edge), body(OverlayClip), none }
     private var mode: Mode?
     /// The project as it was when the drag began (the draft starts from it at every move).
     private var dragOrigin: Project?
@@ -93,6 +94,11 @@ final class OverlayManipulatorView: NSView {
          (.bottomLeft, CGPoint(x: r.minX, y: r.minY)), (.bottomRight, CGPoint(x: r.maxX, y: r.minY))]
     }
 
+    /// The middles of the four sides: dragged, they stretch the picture in one direction only (0.16.5).
+    private func edgePoints(_ r: CGRect) -> [(OverlayDrag.Edge, CGPoint)] {
+        [(.left, CGPoint(x: r.minX, y: r.midY)), (.right, CGPoint(x: r.maxX, y: r.midY)), (.top, CGPoint(x: r.midX, y: r.maxY)), (.bottom, CGPoint(x: r.midX, y: r.minY))]
+    }
+
     private func hit(at p: CGPoint) -> Hit {
         let video = videoRect()
         guard video.width > 1, let s = session else { return .none }
@@ -100,6 +106,7 @@ final class OverlayManipulatorView: NSView {
         if let sel = items.first(where: { $0.clip.id == s.selectedOverlayID }), s.canvasSelection.count <= 1, !(sel.clip.locked ?? false) {
             let r = rect(sel.clip, sel.state, video: video)
             for (corner, pt) in cornerPoints(r) where hypot(p.x - pt.x, p.y - pt.y) <= handleSize { return .handle(sel.clip, corner) }
+            for (edge, pt) in edgePoints(r) where hypot(p.x - pt.x, p.y - pt.y) <= handleSize { return .edge(sel.clip, edge) }
             if r.contains(p) { return .body(sel.clip) }
         }
         for item in items.reversed() where rect(item.clip, item.state, video: video).contains(p) { return .body(item.clip) }
@@ -145,6 +152,15 @@ final class OverlayManipulatorView: NSView {
                     ctx.setFillColor(NSColor.white.cgColor); ctx.fill(h)
                     ctx.setStrokeColor(NSColor.controlAccentColor.cgColor); ctx.setLineWidth(1.5); ctx.stroke(h)
                 }
+                // Side handles (rounded bars): stretch in one direction.
+                for (edge, pt) in edgePoints(r) where !(item.clip.locked ?? false) {
+                    let along: CGFloat = 16, across: CGFloat = 7
+                    let h = edge == .left || edge == .right ? CGRect(x: pt.x - across / 2, y: pt.y - along / 2, width: across, height: along)
+                                                          : CGRect(x: pt.x - along / 2, y: pt.y - across / 2, width: along, height: across)
+                    let path = CGPath(roundedRect: h, cornerWidth: across / 2, cornerHeight: across / 2, transform: nil)
+                    ctx.addPath(path); ctx.setFillColor(NSColor.white.cgColor); ctx.fillPath()
+                    ctx.addPath(path); ctx.setStrokeColor(NSColor.controlAccentColor.cgColor); ctx.setLineWidth(1.5); ctx.strokePath()
+                }
             } else if item.clip.id == hover {
                 ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.6).cgColor); ctx.setLineWidth(1)
                 ctx.setLineDash(phase: 0, lengths: [4, 3]); ctx.stroke(r); ctx.setLineDash(phase: 0, lengths: [])
@@ -162,6 +178,10 @@ final class OverlayManipulatorView: NSView {
         let r = rect(sel.clip, sel.state, video: video)
         addCursorRect(r, cursor: .openHand)
         for (_, pt) in cornerPoints(r) { addCursorRect(CGRect(x: pt.x - handleSize, y: pt.y - handleSize, width: handleSize * 2, height: handleSize * 2), cursor: .crosshair) }
+        for (edge, pt) in edgePoints(r) {
+            addCursorRect(CGRect(x: pt.x - handleSize, y: pt.y - handleSize, width: handleSize * 2, height: handleSize * 2),
+                          cursor: edge == .left || edge == .right ? .resizeLeftRight : .resizeUpDown)
+        }
     }
 
     // MARK: Mouse
@@ -173,6 +193,9 @@ final class OverlayManipulatorView: NSView {
         case .handle(let c, let corner):
             guard let st = visible().first(where: { $0.clip.id == c.id })?.state else { return }
             mode = .resize(corner: corner, start: st); dragOrigin = s.project
+        case .edge(let c, let edge):
+            guard let st = visible().first(where: { $0.clip.id == c.id })?.state else { return }
+            mode = .stretch(edge: edge, start: st, stretch: c.transform.stretch); dragOrigin = s.project
         case .body(let c):
             window?.makeFirstResponder(self)
             if s.selectedOverlayID != c.id || s.canvasSelection.count > 1 { s.select(.layer(c.id)) }
@@ -192,6 +215,7 @@ final class OverlayManipulatorView: NSView {
         let oa = outputAspect(video), la = s.layerAspect(clip)
         if !liftTried { liftTried = true; lift.lift([id], session: s, pic: video) }
         var next: OverlayState
+        var newStretch: Double?
         switch mode {
         case .move(let start, let from):
             next = OverlayDrag.move(start, dx: Double((p.x - from.x) / video.width), dy: Double(-(p.y - from.y) / video.height))
@@ -215,10 +239,17 @@ final class OverlayManipulatorView: NSView {
             let point = (x: Double((p.x - video.minX) / video.width), y: Double(1 - (p.y - video.minY) / video.height))
             next = OverlayDrag.resize(start, corner: corner, to: point, outputAspect: oa, layerAspect: la)
             guides = (nil, nil)
+        case .stretch(let edge, let start, let s0):
+            let point = (x: Double((p.x - video.minX) / video.width), y: Double(1 - (p.y - video.minY) / video.height))
+            let r = OverlayDrag.stretch(start, stretch: s0, edge: edge, to: point, outputAspect: oa, layerAspect: s.ownLayerAspect(clip))
+            next = r.state; newStretch = r.stretch
+            guides = (nil, nil)
         }
         // A draft while dragging; the project changes once, at the drop.
         var d = origin
+        let stretchNow = newStretch
         s.setOverlayValue(id, in: &d) { $0.centerX = next.centerX; $0.centerY = next.centerY; $0.width = next.width }
+        if let stretchNow, let i = d.overlayClips.firstIndex(where: { $0.id == id }) { d.overlayClips[i].transform.stretch = stretchNow }
         s.showDraft(d, ids: [id]); lift.follow(s, pic: video)
         needsDisplay = true
     }

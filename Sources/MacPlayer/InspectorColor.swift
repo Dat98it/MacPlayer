@@ -20,13 +20,26 @@ struct ColorPane: View {
             .help(hint ?? title)
     }
 
-    private func section<Content: View>(_ id: String, _ title: String, icon: String, changed: Bool, reset: @escaping () -> Void, @ViewBuilder _ content: @escaping () -> Content) -> some View {
-        let isOpen = open.value.contains(id)
+    /// The groups of the Colour tab, one at a time (0.17.1; they were folding cards in one long list).
+    private func colourSections(_ c: ColorAdjust) -> [PaneSection] {
+        [PaneSection(id: "basic", title: L("Lighting"), icon: "sun.max", changed: c.brightness != 0 || c.contrast != 0 || c.saturation != 0 || c.temperature != 0 || c.exposure != 0 || c.highlights != 0 || c.shadows != 0 || c.vibrance != 0 || c.tint != 0),
+         PaneSection(id: "curves", title: L("Curves"), icon: "chart.xyaxis.line", changed: !c.curves.isNeutral),
+         PaneSection(id: "wheels", title: L("Wheels"), icon: "circle.hexagongrid", changed: !c.wheels.isNeutral),
+         PaneSection(id: "hsl", title: L("Colours"), icon: "paintpalette", changed: !c.hsl.isNeutral),
+         PaneSection(id: "lut", title: L("Look file"), icon: "cube", changed: c.lut != nil),
+         PaneSection(id: "scope", title: L("Histogram"), icon: "chart.bar")]
+    }
+
+    @ViewBuilder private func section<Content: View>(_ id: String, _ title: String, icon: String, changed: Bool, reset: @escaping () -> Void, @ViewBuilder _ content: @escaping () -> Content) -> some View {
+        if session.paneTab("colour", colourSections(colour)).wrappedValue == id { sectionCard(id, title, icon: icon, changed: changed, reset: reset, content) }
+    }
+
+    private func sectionCard<Content: View>(_ id: String, _ title: String, icon: String, changed: Bool, reset: @escaping () -> Void, @ViewBuilder _ content: @escaping () -> Content) -> some View {
+        let isOpen = true
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Button { if isOpen { open.value.remove(id) } else { open.value.insert(id) } } label: {
+                Button {} label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).rotationEffect(.degrees(isOpen ? 90 : 0)).frame(width: 10)
                         Image(systemName: icon).foregroundColor(.accentColor).frame(width: 18)
                         Text(title).font(.subheadline.weight(.semibold))
                         if changed { Circle().fill(Color.accentColor).frame(width: 6, height: 6).accessibilityLabel(L("changed")) }
@@ -65,7 +78,8 @@ struct ColorPane: View {
         let c = colour
         VStack(alignment: .leading, spacing: 10) {
             header(c)
-            scopeCard
+            SectionTabBar(sections: colourSections(c), selection: session.paneTab("colour", colourSections(c)))
+            if session.paneTab("colour", colourSections(c)).wrappedValue == "scope" { scopeCard }
             section("basic", L("Light and colour"), icon: "sun.max", changed: c.brightness != 0 || c.contrast != 0 || c.saturation != 0 || c.temperature != 0 || c.exposure != 0 || c.highlights != 0 || c.shadows != 0 || c.vibrance != 0 || c.tint != 0,
                     reset: { session.editColor("Reset light and colour") { v in v.brightness = 0; v.contrast = 0; v.saturation = 0; v.temperature = 0; v.exposure = 0; v.highlights = 0; v.shadows = 0; v.vibrance = 0; v.tint = 0 } }) {
                 slider(L("Exposure"), "c-exposure", \.exposure, hint: L("Makes the whole picture lighter or darker."))

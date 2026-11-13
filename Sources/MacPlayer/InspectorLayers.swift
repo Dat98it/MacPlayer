@@ -73,10 +73,33 @@ struct LayersPane: View {
         let now = session.player.currentTime
         let st = OverlayEditor.editableState(c, at: now)
         let animated = !c.keyframes.isEmpty
-        TextField(L("Name"), text: Binding(get: { c.name }, set: { n in session.updateOverlay(c.id, "Rename layer", coalesce: "ovname") { $0.name = n } })).textFieldStyle(.roundedBorder)
-        if !session.isPhoto { timing(c, now: now) }
-        positionAndLook(c, st: st, now: now)
-        if !session.isPhoto { motion(c, now: now, animated: animated) }
+        // One group at a time (0.17.1: eight cards stacked made a long scroll).
+        let sections = layerSections(c, animated: animated)
+        let tab = session.paneTab(session.isPhoto ? "logo" : "layer", sections)
+        SectionTabBar(sections: sections, selection: tab)
+        switch tab.wrappedValue {
+        case "look": lookCards(c, st: st)
+        case "anim": arriveCard(c); soundCard(c)
+        case "motion": loopCard(c)
+        case "keys": keyframeCard(c, now: now, animated: animated)
+        default:
+            TextField(L("Name"), text: Binding(get: { c.name }, set: { n in session.updateOverlay(c.id, "Rename layer", coalesce: "ovname") { $0.name = n } })).textFieldStyle(.roundedBorder)
+            if !session.isPhoto { timing(c, now: now) }
+            positionAndLook(c, st: st, now: now)
+        }
+    }
+
+    private func layerSections(_ c: OverlayClip, animated: Bool) -> [PaneSection] {
+        let t = c.transform
+        var s = [PaneSection(id: "place", title: L("Position"), icon: "arrow.up.left.and.arrow.down.right"),
+                 PaneSection(id: "look", title: L("Look"), icon: "paintbrush",
+                             changed: t.borderWidth > 0 || t.chromaKey != nil || t.mask != nil || t.blend != .normal || t.isolateSubject || t.opacity < 1)]
+        if !session.isPhoto {
+            s += [PaneSection(id: "anim", title: L("In and out"), icon: "sparkles", changed: c.animationIn != nil || c.animationOut != nil),
+                  PaneSection(id: "motion", title: L("Motion"), icon: "wand.and.rays", changed: c.loop != nil),
+                  PaneSection(id: "keys", title: L("Keyframes"), icon: "diamond", changed: animated)]
+        }
+        return s
     }
 
     @ViewBuilder private func timing(_ c: OverlayClip, now: MediaTime) -> some View {
@@ -109,12 +132,25 @@ struct LayersPane: View {
                     }
                 }
                 SliderRow(title: L("Size"), value: Binding(get: { st.width }, set: { v in session.setOverlayValue(c.id, "size") { $0.width = v } }), range: 0.05...1, format: "%.2f", onDone: { session.endCoalescing() })
+                // Stretched freely with the side handles (0.16.5): how much, and back to its own shape.
+                if !c.isVideo {
+                    SliderRow(title: L("Stretch (height)"), value: Binding(get: { c.transform.stretch }, set: { v in session.updateOverlay(c.id, "Stretch", coalesce: "ovstretch") { $0.transform.stretch = min(max(v, 0.1), 10) } }),
+                              range: 0.25...4, format: "%.2f", onDone: { session.endCoalescing() })
+                    HStack {
+                        Text(L("Drag the middle of a side on the picture to stretch it.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        if abs(c.transform.stretch - 1) > 0.001 { Button(L("Own Shape")) { session.updateOverlay(c.id, "Stretch") { $0.transform.stretch = 1 } }.controlSize(.small) }
+                    }
+                }
                 SliderRow(title: L("Horizontal position"), value: Binding(get: { st.centerX }, set: { v in session.setOverlayValue(c.id, "x") { $0.centerX = v } }), range: -0.2...1.2, onDone: { session.endCoalescing() })
                 SliderRow(title: L("Vertical position"), value: Binding(get: { st.centerY }, set: { v in session.setOverlayValue(c.id, "y") { $0.centerY = v } }), range: -0.2...1.2, onDone: { session.endCoalescing() })
                 SliderRow(title: L("Opacity"), value: Binding(get: { st.opacity }, set: { v in session.setOverlayValue(c.id, "opacity") { $0.opacity = v } }), range: 0...1, onDone: { session.endCoalescing() })
                 SliderRow(title: L("Turn (degrees)"), value: Binding(get: { st.rotation }, set: { v in session.setOverlayValue(c.id, "turn") { $0.rotation = v } }), range: -180...180, format: "%.0f°", onDone: { session.endCoalescing() })
             }.padding(4)
         }
+    }
+
+    @ViewBuilder private func lookCards(_ c: OverlayClip, st: OverlayState) -> some View {
         GroupBox(L("Look")) {
             VStack(alignment: .leading, spacing: 6) {
                 SliderRow(title: L("Border"), value: Binding(get: { c.transform.borderWidth }, set: { v in session.updateOverlay(c.id, "Layer border", coalesce: "ovbw") { $0.transform.borderWidth = v; $0.transform = $0.transform.clamped() } }), range: 0...0.05, format: "%.3f", onDone: { session.endCoalescing() })
@@ -157,7 +193,7 @@ struct LayersPane: View {
         }
     }
 
-    @ViewBuilder private func motion(_ c: OverlayClip, now: MediaTime, animated: Bool) -> some View {
+    @ViewBuilder private func soundCard(_ c: OverlayClip) -> some View {
         if c.isVideo {
             GroupBox(L("Layer sound")) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -166,6 +202,9 @@ struct LayersPane: View {
                 }.padding(4)
             }
         }
+    }
+
+    @ViewBuilder private func arriveCard(_ c: OverlayClip) -> some View {
         GroupBox(L("Arrive and leave")) {
             VStack(alignment: .leading, spacing: 8) {
                 ArrivalControls(title: L("Arrives with"), animation: c.animationIn) { a in session.updateOverlay(c.id, "Layer arrival", coalesce: "ovain") { $0.animationIn = a } }
@@ -173,6 +212,17 @@ struct LayersPane: View {
                 Text(L("Ready-made moves at the start and end of the layer. They add to the keyframes below.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             }.padding(4)
         }
+    }
+
+    @ViewBuilder private func loopCard(_ c: OverlayClip) -> some View {
+        GroupBox(L("Motion")) {
+            LoopMotionControls(loop: c.loop, set: { l, coalesce in session.updateOverlay(c.id, "Motion", coalesce: coalesce ? "ovloop" : nil) { $0.loop = l } },
+                               preview: { session.previewFrom(c.start) })
+                .padding(4)
+        }
+    }
+
+    @ViewBuilder private func keyframeCard(_ c: OverlayClip, now: MediaTime, animated: Bool) -> some View {
         GroupBox(L("Animation")) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(animated ? L("Changing a value at the playhead sets a keyframe there. Pick how the values move between keyframes with the menu on each one.") : L("Add a keyframe, then move the playhead and change position, size, turn or opacity to animate the layer."))

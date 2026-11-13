@@ -41,6 +41,12 @@ struct EffectsPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if session.info?.primaryVideo == nil { Text(L("This file has no picture.")).foregroundColor(.secondary) } else {
+                let sections = [PaneSection(id: "filters", title: L("Filters"), icon: "camera.filters", changed: effects.filter != .none),
+                                PaneSection(id: "adjust", title: L("Adjust"), icon: "slider.horizontal.3", changed: effects.sharpen != 0 || effects.blur != 0 || effects.vignette != 0),
+                                PaneSection(id: "bg", title: L("Background"), icon: "rectangle.center.inset.filled", changed: effects.blurBackground)]
+                let tab = session.paneTab("effects", sections).wrappedValue
+                SectionTabBar(sections: sections, selection: session.paneTab("effects", sections))
+                if tab == "filters" {
                 ToolCard(title: L("Filters"), icon: "camera.filters") {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 78), spacing: 8)], spacing: 8) {
                         ForEach(FilterPreset.allCases, id: \.self) { p in tile(p) }
@@ -50,16 +56,21 @@ struct EffectsPane: View {
                                   range: 0...1, format: "%.2f", onDone: { session.endCoalescing() })
                     }
                 }
+                }
+                if tab == "adjust" {
                 ToolCard(title: L("Adjust"), icon: "slider.horizontal.3") {
                     slider(L("Sharpen"), "fx-sharpen", \.sharpen)
                     slider(L("Blur"), "fx-blur", \.blur)
                     slider(L("Vignette"), "fx-vignette", \.vignette)
                 }
+                }
+                if tab == "bg" {
                 ToolCard(title: L("Blurred background"), icon: "rectangle.center.inset.filled") {
                     Toggle(L("Fill the empty bars with the blurred video"), isOn: Binding(get: { session.project.activeLook.effects.blurBackground }, set: { on in session.editEffects(L("Blurred background")) { $0.blurBackground = on } }))
                     if effects.blurBackground { slider(L("Blur amount"), "fx-bgblur", \.blurBackgroundAmount) }
                     Text(L("Shows where the picture does not fill the frame: for example a landscape video on a 9:16 canvas. Choose the canvas in Picture ▸ Canvas, with “Fit”."))
                         .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
                 }
                 Button(L("Reset all effects")) { session.edit("Reset effects") { $0.activeLook.effects = LookEffects() } }.font(.caption).disabled(effects == LookEffects())
             }

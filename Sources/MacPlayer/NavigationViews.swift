@@ -295,11 +295,20 @@ struct EditorHeader: View {
     var onBack: () -> Void
     /// A video project: the Export button at the right.
     var onExport: (() -> Void)? = nil
+    /// Straight to the start screen (0.16.5).
+    var onHome: (() -> Void)? = nil
+    @StateObject private var showHistory = Box(false)
 
     var body: some View {
         HStack(spacing: 8) {
+            if let onHome {
+                Button(action: onHome) { Image(systemName: "house") }
+                    .controlSize(.small).help(L("Home (the start screen). Your edits are already saved.")).accessibilityLabel(L("Home"))
+            }
             Button(action: onBack) { Label(L("Projects"), systemImage: "chevron.left") }
                 .controlSize(.small).help(L("Back to the list of projects (⇧⌘W). Your edits are already saved."))
+            Divider().frame(height: 16)
+            historyButtons
             Divider().frame(height: 16)
             Image(systemName: session.isPhoto ? "photo" : "film").foregroundColor(.secondary).accessibilityHidden(true)
             Text(session.projectPath.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent } ?? session.project.name)
@@ -316,6 +325,27 @@ struct EditorHeader: View {
         }
         .padding(.horizontal, 12).padding(.vertical, onExport == nil ? 5 : 6)
         .background(Color(NSColor.windowBackgroundColor))
+    }
+
+    /// Back and forward through the edits (undo, redo), and the list of steps to jump to one (0.16.5).
+    private var historyButtons: some View {
+        let h = session.history
+        return HStack(spacing: 2) {
+            Button { session.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                .disabled(!h.canUndo || !session.canEdit)
+                .help(h.undoLabel.map { LF("Back: undo “%@” (⌘Z)", L($0)) } ?? L("Back (⌘Z): nothing to undo"))
+                .accessibilityLabel(L("Back"))
+            Button { session.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                .disabled(!h.canRedo || !session.canEdit)
+                .help(h.redoLabel.map { LF("Forward: redo “%@” (⇧⌘Z)", L($0)) } ?? L("Forward (⇧⌘Z): nothing to redo"))
+                .accessibilityLabel(L("Forward"))
+            Button { showHistory.value.toggle() } label: { Image(systemName: "clock.arrow.circlepath") }
+                .disabled(!h.canUndo && !h.canRedo)
+                .help(L("History of your edits: click a step to go back or forward to it"))
+                .accessibilityLabel(L("History"))
+                .popover(isPresented: $showHistory.value, arrowEdge: .bottom) { HistoryList(session: session) { showHistory.value = false } }
+        }
+        .controlSize(.small)
     }
 
     @ViewBuilder private var saveStatus: some View {
@@ -341,6 +371,56 @@ struct EditorHeader: View {
                 }
             }
         }
+    }
+}
+
+/// The edits of this session, newest at the top: the ones that can be redone (greyed, above), "Now", and the ones that can be undone.
+/// A click on a step goes back (or forward) to just after it.
+struct HistoryList: View {
+    @ObservedObject var session: EditorSession
+    var done: () -> Void
+
+    var body: some View {
+        let redo = session.history.redoLabels, undo = session.history.undoLabels
+        VStack(alignment: .leading, spacing: 0) {
+            Text(L("History")).font(.headline).padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 1) {
+                    // Redo steps: the furthest at the top.
+                    ForEach(Array(redo.enumerated().reversed()), id: \.offset) { i, label in
+                        row(L(label), icon: "arrow.uturn.forward", dim: true) { session.redo(steps: i + 1); done() }
+                    }
+                    HStack(spacing: 6) {
+                        Image(systemName: "smallcircle.filled.circle").foregroundColor(.accentColor)
+                        Text(L("Now")).font(.callout.weight(.semibold))
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.accentColor.opacity(0.12))
+                    ForEach(Array(undo.enumerated()), id: \.offset) { i, label in
+                        row(L(label), icon: "arrow.uturn.backward", dim: false) { session.undo(steps: i + 1); done() }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            .frame(maxHeight: 360)
+        }
+        .frame(width: 280)
+    }
+
+    private func row(_ text: String, icon: String, dim: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.caption).foregroundColor(.secondary).frame(width: 14)
+                Text(text).font(.callout).foregroundColor(dim ? .secondary : .primary).lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 12).padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(dim ? L("Go forward to this step") : L("Go back to before this step"))
     }
 }
 

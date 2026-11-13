@@ -589,6 +589,65 @@ Với dự án ảnh, mỗi sự kiện còn vẽ lại cả tấm ảnh.
 - Chưa có số đo "trước khi sửa" bằng chính G7: nó được viết cùng lúc với phần sửa. Nhận định "mỗi lần dời một lần ghi dự án" ở trên lấy từ đọc mã.
 
 
+## Bản 0.17.3: không khựng khi phát; chạy bộ tự kiểm tra G1–G9 (13/11/2026)
+
+**Yêu cầu:** chạy bộ tự kiểm tra G1–G9.
+
+**Kết quả lần chạy đầu (bản 0.17.2):** 510 đạt, 2 lỗi. Một lỗi đã biết từ trước (menu hệ thống "Emoji & Symbols"/"Enter Full Screen" bị tính là trùng phím tắt). Lỗi còn lại là **lỗi mới do 0.17.2**: G9 "dự án phát trong cửa sổ" chỉ phát được 0,2 s trong 1 s. Nguyên nhân: cửa sổ vừa hiện (hoặc đổi cỡ) lúc đang phát thì khung xem bị dựng lại theo cỡ màn hình, làm hình dừng khoảng nửa giây. Đã xác nhận bằng cách tắt riêng việc dựng lại: phát 0,63 s, đạt.
+
+**Sửa:** không dựng lại khi đang phát; giữ lại và dựng khi tạm dừng. G9 thêm kiểm tra: sau khi dừng, khung xem được dựng đúng cỡ cửa sổ (1356×762 cho vùng 1356×937).
+
+**Kiểm thử:** G9 riêng 2 lần đạt hết; toàn bộ self-test 512 đạt, chỉ còn lỗi menu hệ thống đã biết; Core 423, Media 254 đạt.
+
+## Bản 0.17.2: ảnh/chữ/hình/nhãn dán sắc nét hơn (13/11/2026)
+
+**Yêu cầu:** ảnh, chữ, hình, nhãn dán kéo thả vào bị mờ, không sắc nét.
+
+**Nguyên nhân tìm được (đo trên dự án thật "Đến khi nào remix"):**
+1. Khung xem luôn dựng ở 1920×1080 rồi phóng/thu theo cửa sổ (0,7× ở cửa sổ nhỏ, 1,1× ở cửa sổ lớn). Nay dựng đúng số điểm ảnh của màn hình (ví dụ 1356×762, 2196×1236; tối đa cao 1800), dựng lại khi cửa sổ đổi cỡ quá 12%. Video xuất không đổi.
+2. Nguyên nhân chính: chữ, hình, nhãn dán được vẽ ở cỡ gốc rồi **phóng to ảnh bitmap** khi người dùng kéo góc để phóng (tên bài trong dự án đang phóng 1,58×), cả lúc xem lẫn khi xuất. Nay vẽ thẳng ở cỡ đã phóng (tới 3×), chỉ thu nhỏ/xoay. Test: chữ phóng 2,5× trùng khớp với chữ được vẽ thẳng ở cỡ đó (trước đây số điểm ảnh viền nhoè gấp 3,5 lần).
+3. Ảnh lớp to (vài nghìn điểm ảnh) thu nhỏ bằng nội suy đơn giản bị rỗ/răng cưa. Nay dùng Lanczos khi thu nhỏ dưới 0,75×. Test: bàn cờ 1 điểm ảnh 2000×2000 thu còn 200×150 ra màu xám đều.
+
+**Kiểm chứng trên cửa sổ thật (dự án thật, đã sao lưu ngay trước và chép trả sau, mã băm khớp):** phóng to 5× vùng chữ "ĐẾN": viền chữ trước loang 2–3 điểm ảnh, nay khoảng 1. Ảnh nền gió (file JPG Facebook 2048×1892, vẽ gần 1:1) không đổi: độ mờ còn lại là của chính file ảnh đó (nén JPG), app không làm nét hơn được.
+
+**Kiểm thử:** Core 423, Media 254 đạt (thêm `SharpnessTests`).
+
+**Chưa kiểm chứng:** xem bằng mắt khi đang phát; ảnh động/video làm lớp (không đổi cách vẽ ngoài Lanczos khi thu nhỏ); self-test G1–G9 (sandbox) không chạy.
+
+## Bản 0.17.1: thanh cài đặt bên phải chia tab (13/11/2026)
+
+**Yêu cầu:** các mục chỉnh sửa ở thanh bên phải hiện theo tab, không phải cuộn dài.
+
+**Đã làm:** thanh tab con (biểu tượng + tên ngắn, xuống dòng khi hẹp, chấm xanh ở nhóm đã chỉnh, nhớ tab đã chọn cho từng mục) cho: Chữ/Hình/Nhãn dán (8 tab, tách "Chữ" thành Chữ · Kiểu · Thời gian), Lớp ảnh (5), Cơ bản (6), Màu (6, biểu đồ thành một tab), Hiệu ứng (3), Tốc độ (4), Tách nền (4), Âm thanh (2–4). Một số tên dịch bị trùng/sai khi làm tab (Animation và Motion cùng thành "Chuyển động"; "Shape" thành "Tỷ lệ") đã có tên riêng: Vào/ra, Hình, Hình cắt, Ánh sáng.
+
+**Kiểm thử:** Core 423, Media 252 đạt (không đổi logic). Chụp cửa sổ thật trên dự án thật khi chọn chữ (3 tab), nhãn dán (tab Chuyển động), ảnh, đoạn video (tab Màu): mỗi tab vừa một màn hình, không cần cuộn.
+
+**Sự cố trong lúc test và cách xử lý:** trong lúc tôi đang thử, người bảo trì đã mở "Đến khi nào remix" bằng app thật và chỉnh sửa (thêm hình vuông, mũi nhọn, 😭, 💪, 🎁; xoá tên bài). Sau lần thử tiếp theo, tôi chép bản sao lưu lúc 08:28 đè lên file nên các chỉnh sửa đó bị mất. Tôi phát hiện vì lần chụp có 6 thứ trên hình thay vì 1, và đã khôi phục từ điểm khôi phục app tự giữ (`Recovery/55903E7F…/snapshots`, 09:06), bỏ đúng nhãn 🔥 do bài test thêm vào. Đã mở lại để kiểm tra: đủ 5 thứ ở 0:39. Từ nay sao lưu ngay trước mỗi lần thử và so mã băm trước khi chạy.
+
+**Chưa kiểm chứng:** bấm chuột thật vào các tab; self-test G1–G9 (sandbox) không chạy.
+
+## Bản 0.17.0: sửa lỗi trong suốt và gõ chữ; kéo giãn ảnh; Trang chủ, Quay lại/Tiến lên, Lịch sử; thêm mẫu; hiệu ứng chuyển động (13/11/2026)
+
+**Cách kiểm thử lần này (theo yêu cầu):** dùng thẳng dự án thật của người bảo trì, app thật, không sandbox. Trước khi thử: sao lưu 12 file `.macplayer` (ổ Lexar) kèm mã SHA-256; sau mỗi lần thử chép bản sao lưu trở lại và so mã băm (đều khớp). Nhạc/video gốc chỉ được đọc. Một lần tôi đóng app thử bằng cách dừng tiến trình nên app để lại bản "khôi phục sau khi thoát đột ngột" trong thư mục Recovery thật; tôi đã chuyển đúng 2 file đó vào Thùng rác và thêm cách thoát êm cho các lần sau.
+
+**Lỗi chữ/hình/nhãn dán/ảnh trong suốt khi thả** — tái hiện bằng ảnh chụp cửa sổ thật trên dự án "Đến khi nào remix":
+1. Hiệu ứng xuất hiện (bật ra, mờ dần) bắt đầu đúng tại đầu phát; dừng ở đó thì khung hình vẽ với độ mờ 0. Sửa: khi dừng, vẽ ở trạng thái đã hiện xong; khi phát và khi xuất, hiệu ứng giữ nguyên.
+2. (Đúng như người bảo trì nghi về lớp layer) Ảnh thả vào là một lớp bắt đầu đúng thời điểm đầu phát (21,487 s), nhưng khung đang hiện bắt đầu từ 21,467 s nên khung đó không có lớp này: chỉ thấy khung chọn. Sửa: mọi thứ thêm tại đầu phát bắt đầu từ đầu khung đang hiện. Ảnh chụp sau khi sửa: ảnh hiện.
+Ghi nhận thêm: chữ luôn được vẽ trên mọi ảnh/lớp (thứ tự cố định), nên ảnh thả vào nằm dưới tên bài.
+
+**Lỗi chữ đổ bóng, lệch khi gõ:** mỗi phím dựng lại toàn bộ khung xem; chữ cũ vẫn vẽ dưới ô gõ. Đo trên dự án thật: 0 lần dựng lại trong lúc gõ, 1 lần khi bấm Return; ảnh chụp khi đang gõ chỉ còn chữ trong ô. Thêm: ô gõ tự cao theo nội dung (lần chụp đầu thấy dòng trên bị cắt).
+
+**Tính năng mới:** kéo giãn ảnh tự do (tay nắm giữa các cạnh, thanh Kéo giãn, nút Tỉ lệ gốc); nút Trang chủ; Quay lại/Tiến lên; danh sách Lịch sử để nhảy tới một bước; 35 kiểu chữ, 33 hình, hơn 120 nhãn dán; 13 hiệu ứng chuyển động liên tục cho chữ/hình/nhãn dán/ảnh.
+
+**Kiểm thử:**
+- Core thêm `EditorAdditionsTests` (vẽ đầy đủ khi dừng, chuyển động lặp đúng chu kỳ và trong giới hạn, kéo giãn từ cạnh, mở dự án cũ, ≥30 mẫu, lịch sử). Media thêm `EditorDrawingTests` (nhãn dán hiện khi dừng, ẩn ở khung đầu khi phát như video xuất; ảnh kéo giãn vẽ đúng 80×120; hiệu ứng Lắc ngang làm nhãn dán dịch qua lại trong video xuất; mọi hình vẽ được; mọi kiểu chữ có đúng phông trên máy). Cập nhật 2 test cũ (số hình = 16; 3 hình mới rỗng giữa theo thiết kế). Core 423, Media 252 đạt.
+- Cửa sổ thật trên dự án thật: thả 🔥, chữ Neon, ngôi sao, ảnh (đều hiện); gõ tên bài; hiệu ứng Nảy khi phát (vị trí ngôi sao thay đổi giữa các khung 132–165 điểm ảnh); ảnh kéo giãn 1,6; lịch sử ghi đúng 5 bước.
+
+**Chưa kiểm chứng / chưa chạy:**
+- Self-test tự động G1–G9 (chạy trong sandbox) không chạy lần này theo yêu cầu không dùng sandbox; các luồng kéo-thả trên hình (G4–G7) vì vậy chưa được chạy lại tự động.
+- Bấm chuột/bàn phím thật (các thao tác được gọi qua đúng hàm mà chuột/phím gọi, trong app thật).
+- Dự án "Tư duy BĐ" không phát được vì 3 video của nó không còn ở chỗ cũ (Missing) — có sẵn từ trước, không liên quan bản này.
+
 ## Bản 0.16.4: xuất video nhanh hơn cho mọi dự án (12/11/2026)
 
 **Yêu cầu:** xuất video (dự án từ mp3) rất lâu; tối ưu ngắn nhất có thể, cho cả dự án video nói chung.

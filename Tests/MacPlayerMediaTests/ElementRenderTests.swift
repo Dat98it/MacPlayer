@@ -36,7 +36,8 @@ import MacPlayerCore
         for kind in ShapeKind.allCases {
             let spec = ShapeSpec(kind: kind, width: 0.4, height: kind == .line ? 0.03 : 0.4, fillHex: "#FF0000")
             let img = try #require(OverlayRenderer.renderShape(spec, centerX: 0.5, centerY: 0.5, size: size), "\(kind)")
-            if kind != .ring { #expect(alpha(img, 160, 90) > 200, "\(kind): filled at its centre") }     // a ring is empty in the middle (tested on its own)
+            // A ring and a frame are empty in the middle (even-odd), a moon is cut there, a chevron has its notch there.
+            if ![.ring, .frame, .crescent, .chevron].contains(kind) { #expect(alpha(img, 160, 90) > 200, "\(kind): filled at its centre") }
             #expect(alpha(img, 5, 5) == 0 && alpha(img, 315, 175) == 0, "\(kind): nothing outside")
             let b = bounds(img)
             #expect(b.width <= 0.4 * 320 + 3 && b.height <= max(0.4 * 180 + 3, 8), "\(kind) stays within its box: \(b)")

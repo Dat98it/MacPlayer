@@ -36,7 +36,7 @@ import Testing
         let arrow = ShapeSpec.made(.arrow, width: 0.25, aspect: 16.0 / 9)
         #expect(abs(arrow.height - 0.25 * 0.5 * 16 / 9) < 1e-9, "an arrow is twice as wide as it is tall on screen")
         #expect(ShapeSpec.made(.line, aspect: 16.0 / 9).height < 0.02)
-        #expect(ShapeKind.allCases.count == 16)
+        #expect(ShapeKind.allCases.count >= 33)        // 16 until 0.16.5
     }
 
     @Test func tallVideosAreSizedByTheirShortSide() {

@@ -16,7 +16,14 @@ struct MaskPane: View {
 
     var body: some View {
         let l = look
+        let sections = [PaneSection(id: "subject", title: L("Person"), icon: "person.crop.rectangle", changed: l.isolateSubject),
+                        PaneSection(id: "green", title: L("Green screen"), icon: "rectangle.on.rectangle.angled", changed: l.chromaKey != nil),
+                        PaneSection(id: "shape", title: L("Mask shape"), icon: "circle.dashed", changed: l.mask != nil),
+                        PaneSection(id: "backdrop", title: L("Backdrop"), icon: "paintbrush", changed: l.backdropHex != nil)]
+        let tab = session.paneTab("mask", sections).wrappedValue
         VStack(alignment: .leading, spacing: 10) {
+            SectionTabBar(sections: sections, selection: session.paneTab("mask", sections))
+            if tab == "subject" {
             ToolCard(title: L("Remove background"), icon: "person.crop.rectangle", onReset: l.isolateSubject ? { editLook("Keep background") { $0.isolateSubject = false } } : nil) {
                 Toggle(L("Keep only the person or subject"), isOn: Binding(get: { look.isolateSubject }, set: { on in editLook("Remove background") { $0.isolateSubject = on } }))
                 Text(session.isPhoto ? L("Finds the main subject of the photo on this Mac and removes everything behind it.")
@@ -24,17 +31,25 @@ struct MaskPane: View {
                     .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                 if l.isolateSubject { Text(L("If nothing is found in a picture, it is left as it is.")).font(.caption).foregroundColor(.secondary) }
             }
+            }
+            if tab == "green" {
             ToolCard(title: L("Green screen"), icon: "rectangle.on.rectangle.angled", onReset: l.chromaKey != nil ? { editLook("Remove chroma key") { $0.chromaKey = nil } } : nil) {
                 ChromaControls(key: l.chromaKey,
                                change: { label, coalesce, f in editLook(label, coalesce: coalesce) { var k = $0.chromaKey; f(&k); $0.chromaKey = k } },
                                done: { session.endCoalescing() })
             }
+            }
+            if tab == "shape" {
             ToolCard(title: L("Shape"), icon: "circle.dashed", onReset: l.mask != nil ? { editLook("Remove mask") { $0.mask = nil } } : nil) {
                 MaskControls(spec: l.mask,
                              change: { label, coalesce, f in editLook(label, coalesce: coalesce) { var m = $0.mask; f(&m); $0.mask = m } },
                              done: { session.endCoalescing() })
             }
-            if l.cutsOut {
+            }
+            if tab == "backdrop" && !l.cutsOut {
+                Text(L("Turn on one of the cut-outs (Person, Green screen, Shape) first: this is what shows where the picture is taken away.")).font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            if tab == "backdrop" && l.cutsOut {
                 ToolCard(title: L("What shows instead"), icon: "paintbrush", onReset: l.backdropHex != nil ? { editLook("Black backdrop") { $0.backdropHex = nil } } : nil) {
                     Text(L("The parts that are taken away show this:")).font(.caption).foregroundColor(.secondary)
                     HStack {

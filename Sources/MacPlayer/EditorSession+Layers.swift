@@ -16,8 +16,27 @@ extension EditorSession {
         return Double(size.width) / Double(max(1, size.height))
     }
 
+    /// Where a thing added at `time` (the playhead when nil) starts: at the start of the frame on the picture, never after it (0.16.5).
+    /// The playhead usually lies inside a frame (21.487 s inside the frame shown from 21.467 s): a layer starting at the playhead was not
+    /// on that frame yet, so the frame drawn left it out — its selection frame showed, the picture did not.
+    func shownFrameStart(_ time: MediaTime?) -> MediaTime {
+        let t = time ?? player.currentTime
+        let d = player.player.currentItem?.videoComposition?.frameDuration
+        let step = (d?.isNumeric == true && (d?.seconds ?? 0) > 0) ? d!.seconds : 1.0 / 30
+        let frames = (t.seconds / step + 1e-6).rounded(.down)
+        return MediaTime(seconds: max(0, frames * step), timescale: 6000)
+    }
+
+    /// Plays from `t` (the start of a thing), to see how it moves (0.16.5).
+    func previewFrom(_ t: MediaTime) {
+        Task { await player.seek(to: t); player.play() }
+    }
+
+    /// The layer's shape as drawn: its own shape, stretched (0.16.5).
+    func layerAspect(_ c: OverlayClip) -> Double { c.transform.drawnAspect(ownLayerAspect(c)) }
+
     /// The layer's own width / height (video size, or the picture's pixel size).
-    func layerAspect(_ c: OverlayClip) -> Double {
+    func ownLayerAspect(_ c: OverlayClip) -> Double {
         switch c.kind {
         case .video(let sid, _, _): if let v = infos[sid]?.primaryVideo, v.height > 0 { return Double(v.width) / Double(v.height) }
         case .image(let path, _):
@@ -57,7 +76,7 @@ extension EditorSession {
                 let info = try await MediaProbe.probe(url: url)
                 guard info.hasVideo, info.isExportable, let v = info.primaryVideo else { flash(LF("“%@” has no picture or cannot be used here.", url.lastPathComponent), error: true); continue }
                 let total = project.timelineDuration
-                let start = min(start0 ?? player.currentTime, max(.zero, total - MediaTime(seconds: 0.5)))
+                let start = min(shownFrameStart(start0), max(.zero, total - MediaTime(seconds: 0.5)))
                 let length = min(info.duration, total - start)
                 guard let lane = freeLane(wanted, start: start, duration: length) else {
                     flash(L("All three layers are busy at this point. Move the playhead or remove a layer."), error: true); continue
@@ -93,7 +112,7 @@ extension EditorSession {
         // An animation (a moving sticker, 0.16) is played from a see-through video MacPlayer makes of it, as a video layer.
         if PhotoLoader.animation(url: url) != nil { await addAnimatedLayer(url, at: start0, lane: wanted, center: center, aspect: w / h); return }
         let total = project.timelineDuration
-        let start = min(start0 ?? player.currentTime, max(.zero, total - MediaTime(seconds: 0.5)))
+        let start = min(shownFrameStart(start0), max(.zero, total - MediaTime(seconds: 0.5)))
         let length = min(MediaTime(seconds: 5), total - start)
         guard let lane = freeLane(wanted, start: start, duration: length) else {
             flash(L("All three layers are busy at this point. Move the playhead or remove a layer."), error: true); return
@@ -117,7 +136,7 @@ extension EditorSession {
             guard let video = try await StillClip.makeLayer(from: url), let anim = PhotoLoader.animation(url: url) else { return }
             let info = try await MediaProbe.probe(url: video)
             let total = project.timelineDuration
-            let start = min(start0 ?? player.currentTime, max(.zero, total - MediaTime(seconds: 0.5)))
+            let start = min(shownFrameStart(start0), max(.zero, total - MediaTime(seconds: 0.5)))
             let want = MediaTime(seconds: min(info.duration.seconds, max(5, anim.duration)), timescale: 600)
             let length = min(want, total - start)
             guard let lane = freeLane(wanted, start: start, duration: length) else {

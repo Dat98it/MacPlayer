@@ -12,18 +12,32 @@ struct AudioPane: View {
 
     private var needsClip: Bool { session.isProject && session.project.activeClipID == nil }
 
+    /// The groups of the Audio tab, one at a time (0.17.1).
+    private var audioSections: [PaneSection] {
+        var s = [PaneSection(id: "own", title: L("Clip sound"), icon: "speaker.wave.2", changed: !needsClip && !session.project.activeAudio.isNeutral)]
+        if session.canHaveSounds {
+            s += [PaneSection(id: "music", title: L("Music"), icon: "music.note.list", changed: !session.project.soundClips.isEmpty),
+                  PaneSection(id: "voice", title: L("Voice-over"), icon: "mic")]
+        }
+        if let c = session.timingClip, session.infos[c.sourceID]?.hasAudio == true { s.append(PaneSection(id: "save", title: L("Save sound"), icon: "square.and.arrow.down")) }
+        return s
+    }
+
     var body: some View {
+        let sections = audioSections
+        // A sound selected on the timeline opens on the music group (its settings are there).
+        let tab = session.selectedSoundID != nil && session.paneTabs["audio"] == nil ? "music" : session.paneTab("audio", sections).wrappedValue
         VStack(alignment: .leading, spacing: 12) {
-            ownSoundCard
-            if session.canHaveSounds {
-                soundsCard
-                voiceCard
-            }
-            if let c = session.timingClip, session.infos[c.sourceID]?.hasAudio == true {
+            if sections.count > 1 { SectionTabBar(sections: sections, selection: Binding(get: { tab }, set: { session.paneTabs["audio"] = $0 })) }
+            switch tab {
+            case "music": soundsCard
+            case "voice": voiceCard
+            case "save":
                 ToolCard(title: L("Save the sound alone"), icon: "square.and.arrow.down") {
                     Button(L("Export Audio Only (.m4a)…")) { exportAudio() }
                     Text(L("The sound of the selected clip, as a new file.")).font(.caption).foregroundColor(.secondary)
                 }
+            default: ownSoundCard
             }
         }
     }

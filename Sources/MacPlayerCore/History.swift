@@ -38,6 +38,11 @@ public struct History<State: Equatable> {
         future.removeAll()
     }
 
+    /// The names of the steps that can be undone, the most recent first (for a history list, 0.16.5).
+    public var undoLabels: [String] { past.reversed().map(\.label) }
+    /// The names of the steps that can be redone, the next one first.
+    public var redoLabels: [String] { future.reversed().map(\.label) }
+
     /// Ends a run of coalesced steps (mouse up), so the next change starts a new undo step.
     public mutating func endCoalescing() { lastCoalesceKey = nil }
 

@@ -2,7 +2,7 @@
 
 Xem và chỉnh sửa **video lẫn ảnh**: cắt đoạn, ghép nhiều video, chỉnh màu chuyên nghiệp (đường cong, bánh xe màu, HSL, LUT), tách nền và mặt nạ, chuyển cảnh và keyframe, hiệu ứng giọng, chữ và hình dán, rồi xuất ngay trên Mac. Mọi xử lý diễn ra trên máy; không có tài khoản, không thu thập dữ liệu. Từ 0.15 app chỉ dùng mạng khi bạn tự dán một link video/ảnh để xem (Tệp ▸ Mở link…), ngoài ra không kết nối đi đâu.
 
-> **Trạng thái: bản 0.16.4 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
+> **Trạng thái: bản 0.17.3 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
 
 ## Yêu cầu
 
@@ -136,6 +136,16 @@ Mở một dự án video là thấy ngay bố cục quen thuộc của các app
     - **một** lựa chọn chất lượng (Tốt nhất, 4K, Full HD, HD, Nhẹ) thay cho "Chất lượng" và "Cỡ".
     - Video dọc 1080p là 1080 × 1920.
   - Ô Thư viện không còn nhấp nháy khi phát video.
+- **0.17.3:** phát không còn khựng khi cửa sổ hiện ra hoặc đổi cỡ; khung xem dựng lại theo cỡ màn hình khi tạm dừng.
+- **0.17.2:** ảnh/chữ/hình/nhãn dán sắc nét hơn: khung xem dựng đúng số điểm ảnh màn hình; chữ, hình, nhãn dán đã phóng to được vẽ thẳng ở cỡ đó (không phóng ảnh bitmap), cả khi xem và khi xuất; ảnh lớn thu nhỏ bằng Lanczos.
+- **0.17.1:** thanh cài đặt bên phải chia **tab con có biểu tượng** để không phải cuộn dài: Chữ/Hình/Nhãn dán (Chữ · Kiểu · Thời gian · Vị trí · Vào/ra · Chuyển động · Keyframe · Tất cả), Lớp ảnh (Vị trí · Diện mạo · Vào/ra · Chuyển động · Keyframe), Cơ bản (Cắt khung · Xoay · Khung hình · Thu phóng · Ổn định hình · Màu sắc), Màu (Ánh sáng · Đường cong · Bánh xe · Từng màu · File màu · Biểu đồ), Hiệu ứng, Tốc độ, Tách nền, Âm thanh. Tab có chỉnh sửa có chấm xanh; tab đã chọn được nhớ cho từng mục.
+- **0.17.0:**
+  - **Sửa lỗi chữ/hình/nhãn dán/ảnh bị trong suốt khi thả vào dự án** (cả dự án từ nhạc lẫn dự án video). Hai nguyên nhân, đã tái hiện trên dự án thật: (1) hiệu ứng xuất hiện bắt đầu đúng ở đầu phát nên khi dừng, khung đó vẽ chúng với độ mờ 0 — giờ khi dừng mọi thứ được vẽ đầy đủ, hiệu ứng chạy khi phát và trong video xuất; (2) ảnh (lớp layer) bắt đầu ngay tại đầu phát, nằm *sau* thời điểm của khung đang hiện nên không được vẽ, chỉ thấy khung chọn — giờ mọi thứ thêm vào bắt đầu từ đầu khung đang hiện.
+  - **Sửa lỗi gõ chữ trên hình bị đổ bóng, lệch:** mỗi phím bấm dựng lại toàn bộ khung xem và chữ cũ vẫn vẽ bên dưới ô gõ. Giờ chữ được nhấc khỏi hình khi đang gõ (chỉ còn ô gõ), không dựng lại khi gõ (dựng 1 lần khi xong), ô gõ tự cao theo nội dung.
+  - **Kéo giãn ảnh tự do:** chọn ảnh, kéo tay nắm ở giữa mỗi cạnh để kéo dài/hẹp theo một chiều (góc vẫn giữ tỉ lệ); có thanh "Kéo giãn (chiều cao)" và nút "Tỉ lệ gốc".
+  - **Nút Trang chủ, Quay lại/Tiến lên và Lịch sử** trên thanh trên cùng của màn hình sửa: Quay lại/Tiến lên ghi rõ bước sẽ hoàn tác/làm lại; Lịch sử liệt kê các bước, bấm một bước để nhảy thẳng tới đó.
+  - **Thêm mẫu:** 35 kiểu chữ (thêm 18), 33 hình (thêm 17: bát giác, hình bình hành, hình thang, trăng khuyết, tia sét, giọt nước, lấp lánh, sao 6 cánh, mũi tên hai đầu, mũi nhọn, viên nang, khung, dải băng, nhãn giá, khiên, đám mây, nửa tròn), hơn 120 nhãn dán. Ô hình trong thư viện vẽ đúng hình thật.
+  - **Hiệu ứng chuyển động** cho chữ, hình, nhãn dán và ảnh (thẻ "Chuyển động" bên phải khi chọn): 13 kiểu chạy liên tục khi đang hiện — Nhịp đập, Tim đập, Thở, Nảy, Lơ lửng, Lắc ngang, Đung đưa, Lắc lư, Xoay, Rung, Nhấp nháy, Chớp, Tada — chỉnh tốc độ, độ mạnh, nút "Xem thử".
 - **0.16.4: xuất video nhanh hơn**, cho mọi dự án video:
   - khung hình giống hệt khung trước (ảnh bìa bài hát, ảnh, khung dừng, đoạn có chữ đứng yên) không bị vẽ lại và mã hoá lại; khung trước được kéo dài, vẫn ghi ít nhất 1 khung mỗi giây;
   - dự án mà không có gì chuyển động (ảnh tĩnh, ảnh bìa, chữ và logo không hiệu ứng, không chuyển cảnh) được vẽ 4 khung/giây thay vì 30; chữ hiện/ẩn chính xác tới 1/4 giây;

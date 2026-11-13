@@ -223,6 +223,46 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.17.3** A screen-size rebuild never runs while playing (it stopped the picture ~0.5 s; G9 "plays in its window" caught it):
+`rebuildForScreenPixels` sets `pixelsRebuildWaiting`, `pausedRebuildIfWaiting` (from `$isPlaying`, looked at on the next main turn because the
+publisher fires before the value changes) does it on pause. `MACPLAYER_DEV_NOSHARP` now also turns off `screenPixelsChanged`. G9 checks the paused size.
+**0.17.2 Sharp things on the picture.** (1) Previews render at the player's pixel size (`CompositionBuilder.build(screenPixels:)`,
+`previewMaxPixelHeight` 1800; `PlayerHostView.layout` → `EditorSession.screenPixelsChanged`, rebuild after 0.4 s when >12% off; exports unchanged;
+`MACPLAYER_DEV_SIZES`, `MACPLAYER_DEV_WINDOW=WxH`, `MACPLAYER_DEV_NOSHARP`). (2) `OverlayLayer.visible` draws an element scaled up (own scale, pop,
+pulse) on a canvas k× bigger (quarter steps, ≤3×, ≤5760 px) and maps it with ONE transform (scale st.scale/k) — a 1/k transform followed by a k one
+came out as soft as a plain blow-up; the cache is bounded by pixels. (3) `RecipeCompositor.scaledSharply` (Lanczos under 0.75×) for layers. Media `SharpnessTests`.
+**0.17.1 Tabs in the settings panel.** `PaneSection` + `SectionTabBar` (PanelButtons.swift): one group of a pane at a time, a dot on groups
+that differ from the defaults; the choice per pane is `EditorSession.paneTabs` / `paneTab(_:_:)` (kept across selections). Used by the
+element pane (`TextPane.sections`: look/flair/time/place/anim/motion/keys/list; `flairControls` split out of `textControls`), `LayersPane`
+(`layerSections`: place/look/anim/motion/keys; `lookCards`, `arriveCard`, `soundCard`, `loopCard`, `keyframeCard`), `PicturePane`
+(`pictureSections`), `ColorPane` (`colourSections`; `section` shows only the chosen one, always open; the histogram is a tab), Effects,
+Timing, Mask, Audio (a selected sound opens on "music"). Debug aids `MACPLAYER_DEV_SELECT=text|layer|clip`, `MACPLAYER_DEV_TABS="element:motion,tool:color"`.
+**Testing on real projects — lesson (0.17.1):** take the backup *right before* each run and compare the file's hash first; restoring an
+older backup overwrote edits the maintainer had made in the meantime (recovered from the app's own restore point,
+`Recovery/<project id>/snapshots/*.json`, minus the one sticker the test had added).
+
+**0.17.0 Editor fixes and additions (tested on the maintainer's real projects, not the sandbox, at their request).** The maintainer asked
+to use their real projects directly: back them up first (`scratchpad/project-backups-*` with SHA256.txt), run the debug binary *without*
+`--sandbox` on the project file, and copy the backup back after each run (check the hash). Debug-only aids in `AppDelegate.openProject`
+(`#if DEBUG`): `MACPLAYER_DEV_DROP` ("sticker:🔥@x,y|text:neon@x,y|shape:star@x,y|picture:/p.png@x,y" through `applyDropped`/`addOverlayPicture`),
+`MACPLAYER_DEV_TYPE` (+`_END`), `MACPLAYER_DEV_LOOP`, `MACPLAYER_DEV_STRETCH`, `MACPLAYER_DEV_PLAY`, `MACPLAYER_DEV_HISTORY`, `MACPLAYER_DEV_OLDPAUSE`,
+`MACPLAYER_DEV_QUIT_AFTER` (terminates cleanly — killing it left a crash copy in the real Recovery folder once; that copy was moved to the Trash).
+- *See-through things on drop*, two causes found in real windows: (1) entrance fades/animations start at the playhead, so a paused editor drew
+  them at alpha 0 — `ElementAnimator.state(of:at:settled:)` and `OverlayAnimating.state(at:settled:)` skip fade/in/out; previews use it while
+  `ElementLive.paused` (set from `player.$isPlaying`; frame redrawn on pause); exports never; (2) a layer started at the raw playhead, after
+  the start of the frame shown (21.487 vs 21.467 s), so that frame left it out — `shownFrameStart(_:)` snaps every add-at-playhead (texts,
+  stickers, shapes, presets, layers) down to the preview's frame grid.
+- *Typing on the picture*: `beginInlineTyping`/`endInlineTyping` lift the text (`CanvasLift`) while its field is open, edits use
+  `refreshPreview: false` (it rebuilt the whole preview per key), one rebuild at the end; `fitTypingField` grows the field.
+- *Free stretch*: `OverlayTransform.stretch` (height multiplier, decodeIfPresent 1), `drawnAspect`, `EditorSession.layerAspect` = drawn,
+  `ownLayerAspect`; `OverlayDrag.stretch(edge:)`; `OverlayManipulatorView` side handles (`edgePoints`, `.stretch` mode); `drawLayer` scales non-uniformly.
+- *Header*: `EditorHeader` `onHome`, back/forward (undo/redo with step names), `HistoryList` popover (`History.undoLabels/redoLabels`,
+  `EditorSession.undo(steps:)/redo(steps:)`).
+- *Templates*: `TextTemplate` 35, `ShapeKind` 33 (`isHollow` for ring/frame; `ShapeOutlines.path` for SwiftUI tiles `ShapeOutline`), stickers 120+.
+- *Motion*: Core `ElementLoop`/`ElementLoopKind` (13 kinds, `offsets(at:)`), `TextOverlay.loop`, `OverlayClip.loop`, `LayerSpec.loop`;
+  applied in both state functions (also when settled); `editableState` ignores it; `nothingMoves` treats it as moving. UI `LoopMotionControls`.
+Not run this time: the sandbox self-test (G1–G9), at the maintainer's request; unit tests and real-window checks were run instead.
+
 **0.16.4 Faster exports (all video projects).** Measured first (`macplayer-probe songexport|videoexport`, release build): time is linear in
 frames; the H.264/HEVC encoder is the main cost, drawing second. Three changes:
 - `RecipeCompositor.startRequest` hands over the previous output again when `StillFrameKey` (same instruction, the very same source buffer,

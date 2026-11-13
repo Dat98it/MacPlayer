@@ -35,6 +35,7 @@ final class OverlayLayer: @unchecked Sendable {
     let live: Bool
     private let lock = NSLock()
     private var cache: [String: CIImage] = [:]
+    private var cachedPixels = 0.0
 
     init(overlays: [TextOverlay], cues: [SubtitleCue], style: SubtitleStyle, live: Bool = false) {
         self.overlays = overlays
@@ -53,8 +54,10 @@ final class OverlayLayer: @unchecked Sendable {
         guard let cg = drawn else { return nil }
         let ci = CIImage(cgImage: cg)
         lock.lock()
-        if cache.count > 80 { cache.removeAll() }
-        cache[k] = ci
+        // Kept by pixels, not by count: drawings for enlarged things are bigger than the picture (0.17.2).
+        let px = Double(cg.width * cg.height)
+        if cache.count > 80 || cachedPixels + px > 160_000_000 { cache.removeAll(); cachedPixels = 0 }
+        cache[k] = ci; cachedPixels += px
         lock.unlock()
         return ci
     }
@@ -64,26 +67,32 @@ final class OverlayLayer: @unchecked Sendable {
     func visible(at t: Double, size: CGSize) -> [(CIImage, Double)] {
         var out: [(CIImage, Double)] = []
         for o in overlays {
-            guard var st = ElementAnimator.state(of: o, at: t), st.alpha > 0.001 else { continue }
+            guard var st = ElementAnimator.state(of: o, at: t, settled: live && ElementLive.paused), st.alpha > 0.001 else { continue }
             if live && CanvasLift.contains(o.id) { continue }          // being dragged: the editor draws it until the drop
             if live, let l = ElementLive.placement(for: o.id) {
                 // Being dragged: moved and sized from where the preview was built, at once (the next rebuild has the new values in it).
                 st.x += l.x - o.x; st.y += l.y - o.y; st.scale *= l.scale / max(0.01, o.scale ?? 1)
             }
             let still = o.id.uuidString + "|\(o.x)|\(o.y)|\(o.sizeFraction)|\(o.colorHex)|\(o.backgroundHex ?? "-")|\(o.fontName)|\(o.alignment)"
+            // Made bigger (its own size, a pop, a pulse…): drawn on a canvas that much larger, then only made smaller, never blown up — a
+            // picture of the text enlarged 1.58× came out soft, on screen and in exports (0.17.2). Steps of a quarter keep the drawings cached.
+            // At most 3×, and 5760 pixels on the long side: each drawing is a whole picture's size.
+            let k = min(max(1, (st.scale * 4).rounded(.up) / 4), 3, max(1, 5760 / max(size.width, size.height)))
+            let canvas = CGSize(width: size.width * k, height: size.height * k)
             var img: CIImage?
             if let shape = o.shape {
-                img = image(key: still + "|S\(shape)", size: size, make: { nil }, makeImage: { OverlayRenderer.renderShape(shape, centerX: o.x, centerY: o.y, size: size) })
+                img = image(key: still + "|S\(shape)", size: canvas, make: { nil }, makeImage: { OverlayRenderer.renderShape(shape, centerX: o.x, centerY: o.y, size: canvas) })
             } else {
                 let shown = st.reveal >= 1 ? -1 : Int(ceil(Double(o.text.count) * max(0, st.reveal)))
                 if st.reveal < 1 && shown <= 0 { continue }
-                img = image(key: still + "|\(o.text)|\(String(describing: o.flair))|\(shown)", size: size, make: { OverlayRenderer.box(for: o, reveal: st.reveal) })
+                img = image(key: still + "|\(o.text)|\(String(describing: o.flair))|\(shown)", size: canvas, make: { OverlayRenderer.box(for: o, reveal: st.reveal) })
             }
             guard var picture = img else { continue }
-            if st.x != o.x || st.y != o.y || st.scale != 1 || st.rotation != 0 {
-                let c0 = CGPoint(x: o.x * size.width, y: (1 - o.y) * size.height), c1 = CGPoint(x: st.x * size.width, y: (1 - st.y) * size.height)
+            // One transform from the big drawing to the picture (a 1/k then a k were not merged, and the text came out as soft as before).
+            if k != 1 || st.x != o.x || st.y != o.y || st.scale != 1 || st.rotation != 0 {
+                let c0 = CGPoint(x: o.x * canvas.width, y: (1 - o.y) * canvas.height), c1 = CGPoint(x: st.x * size.width, y: (1 - st.y) * size.height)
                 var m = CGAffineTransform(translationX: -c0.x, y: -c0.y)
-                m = m.concatenating(CGAffineTransform(scaleX: st.scale, y: st.scale))
+                m = m.concatenating(CGAffineTransform(scaleX: st.scale / k, y: st.scale / k))
                 m = m.concatenating(CGAffineTransform(rotationAngle: -st.rotation * .pi / 180))        // clockwise on screen, and Core Image's y points up
                 m = m.concatenating(CGAffineTransform(translationX: c1.x, y: c1.y))
                 picture = picture.transformed(by: m)
@@ -340,7 +349,7 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
             var li: CIImage
             if let pb { li = normalized(CIImage(cvPixelBuffer: pb).oriented(d.orientation)) } else if let im = d.image { li = normalized(im) } else { continue }
             out = drawLayer(li, spec: spec, border: d.live ? CompositionBuilder.ciColor(hex: spec.transform.borderHex) : d.border, time: time,
-                            subjectMode: plan.subjectMode, over: out, frame: frame)
+                            subjectMode: plan.subjectMode, over: out, frame: frame, settled: d.live && ElementLive.paused)
         }
 
         // Text and subtitles.
@@ -355,17 +364,18 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
 
     /// One layer (a picture or a video frame) drawn over `out` as its spec says at `time`: cut-out, place, border, turn, opacity, blend.
     /// Used by video frames and by photos (logos), so both look the same.
-    static func drawLayer(_ picture: CIImage, spec: LayerSpec, border: CIColor, time: Double, subjectMode: SubjectMasker.Mode, over out: CIImage, frame: CGRect) -> CIImage {
+    static func drawLayer(_ picture: CIImage, spec: LayerSpec, border: CIColor, time: Double, subjectMode: SubjectMasker.Mode, over out: CIImage, frame: CGRect,
+                          settled: Bool = false) -> CIImage {
         let ow = Double(frame.width), oh = Double(frame.height)
-        guard let st = spec.state(at: MediaTime(seconds: time, timescale: 6000)), st.opacity > 0.001 else { return out }
+        guard let st = spec.state(at: MediaTime(seconds: time, timescale: 6000), settled: settled), st.opacity > 0.001 else { return out }
         var li = picture
         guard li.extent.width > 0, li.extent.height > 0 else { return out }
         if let key = spec.transform.chromaKey { li = LookEffectsRenderer.chromaKeyed(li, key: key) }
         if spec.transform.isolateSubject, let subject = SubjectMasker.mask(for: li, mode: subjectMode) { li = MaskRenderer.apply(subject, to: li) }
         if let m = spec.transform.mask { li = MaskRenderer.apply(MaskRenderer.alpha(m, size: li.extent.size), to: li) }
-        let r = OverlayRect.rect(for: st, outputWidth: ow, outputHeight: oh, aspect: Double(li.extent.width / li.extent.height))
-        let k = r.width / Double(li.extent.width)
-        li = li.transformed(by: CGAffineTransform(scaleX: k, y: k))
+        // A picture stretched freely (0.16.5) is drawn in its stretched shape.
+        let r = OverlayRect.rect(for: st, outputWidth: ow, outputHeight: oh, aspect: spec.transform.drawnAspect(Double(li.extent.width / li.extent.height)))
+        li = scaledSharply(li, toWidth: r.width, height: r.height)
         // CI origin is bottom-left; `r.y` is measured from the top.
         li = li.transformed(by: CGAffineTransform(translationX: r.x, y: oh - r.y - r.height))
         let bw = spec.transform.borderWidth * oh
@@ -382,6 +392,22 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
             return li.applyingFilter(blend, parameters: [kCIInputBackgroundImageKey: out]).cropped(to: frame)
         }
         return li.composited(over: out).cropped(to: frame)
+    }
+
+    /// `image` made `w`×`h` pixels, its corner at 0,0. Made much smaller (a 4000-pixel photo as a small picture on the video), a plain
+    /// transform reads only a few source pixels per output pixel: the result shimmered and looked soft (0.17.2). Lanczos takes all of them.
+    static func scaledSharply(_ image: CIImage, toWidth w: Double, height h: Double) -> CIImage {
+        let e = image.extent
+        guard e.width > 0, e.height > 0, w > 0, h > 0 else { return image }
+        let sx = w / Double(e.width), sy = h / Double(e.height)
+        var out = image
+        if min(sx, sy) < 0.75 {
+            out = image.applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: sy, kCIInputAspectRatioKey: sx / sy])
+        }
+        let o = out.extent
+        guard o.width > 0, o.height > 0 else { return image.transformed(by: CGAffineTransform(scaleX: sx, y: sy)) }
+        return out.transformed(by: CGAffineTransform(translationX: -o.minX, y: -o.minY)
+            .concatenating(CGAffineTransform(scaleX: w / Double(o.width), y: h / Double(o.height))))
     }
 
     /// Gives the output the same colour description as the frame it came from. Without it, the encoder and the
@@ -455,6 +481,15 @@ public enum ElementLive {
     public static func set(_ p: Placement, for id: UUID) { lock.lock(); overrides[id] = p; lock.unlock() }
     public static func clear() { lock.lock(); overrides.removeAll(); lock.unlock() }
     public static func placement(for id: UUID) -> Placement? { lock.lock(); defer { lock.unlock() }; return overrides[id] }
+
+    /// The editor is paused (0.16.5): previews draw texts, stickers, shapes and layers as they are once they have arrived — no fade or
+    /// arriving move — so a thing just added at the playhead is seen at once, not at the first, see-through instant of its animation.
+    /// Playing (and every export) shows the animations as they are.
+    nonisolated(unsafe) private static var isPaused = true
+    public static var paused: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return isPaused }
+        set { lock.lock(); isPaused = newValue; lock.unlock() }
+    }
 }
 
 /// A transition's kind changed while the preview plays, by the incoming clip: the compositor draws the new kind at the next frame,
@@ -500,7 +535,7 @@ public enum CanvasLift {
     /// A text, shape or sticker as the preview draws it at `t` on a picture of `size` pixels (`still`: as a photo draws it): its pixels,
     /// where they lie on the picture (Core Image's way up: y from the bottom), and its opacity.
     public static func element(_ o: TextOverlay, at t: Double, size: CGSize, still: Bool) -> (image: CGImage, rect: CGRect, alpha: Double)? {
-        let layer = OverlayLayer(overlays: still ? PhotoRenderer.stilled([o]) : [o], cues: [], style: SubtitleStyle())
+        let layer = OverlayLayer(overlays: still ? PhotoRenderer.stilled([o]) : [o], cues: [], style: SubtitleStyle(), live: !still)
         guard let (img, alpha) = layer.visible(at: still ? PhotoRenderer.stillTime : t, size: size).first else { return nil }
         return pixels(img, size: size).map { ($0.0, $0.1, alpha) }
     }
@@ -509,7 +544,7 @@ public enum CanvasLift {
     public static func layer(_ spec: LayerSpec, picture: CIImage, at t: Double, size: CGSize) -> (image: CGImage, rect: CGRect)? {
         let frame = CGRect(origin: .zero, size: size)
         let drawn = RecipeCompositor.drawLayer(RecipeCompositor.normalized(picture), spec: spec, border: CompositionBuilder.ciColor(hex: spec.transform.borderHex),
-                                               time: t, subjectMode: .previewVideo, over: CIImage.empty(), frame: frame)
+                                               time: t, subjectMode: .previewVideo, over: CIImage.empty(), frame: frame, settled: ElementLive.paused)
         return pixels(drawn, size: size)
     }
 

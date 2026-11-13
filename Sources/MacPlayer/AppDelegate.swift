@@ -297,6 +297,93 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                 if env.isSandbox, let add = ProcessInfo.processInfo.environment["MACPLAYER_DEV_ADD"] {
                     await s.addVideos(add.split(separator: "|").map { URL(fileURLWithPath: String($0)) })
                 }
+                #if DEBUG
+                // Development aid (debug builds only, 0.16.5): drops things on the picture as a person would, to look at them in a real window:
+                // MACPLAYER_DEV_DROP="sticker:🔥@0.3,0.3|text:neon@0.5,0.4|shape:star@0.7,0.3|picture:/path/logo.png@0.8,0.7".
+                if let drops = ProcessInfo.processInfo.environment["MACPLAYER_DEV_DROP"] {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    for d in drops.split(separator: "|") {
+                        let parts = d.split(separator: "@", maxSplits: 1).map(String.init)
+                        let xy = parts.count > 1 ? parts[1].split(separator: ",").compactMap { Double($0) } : []
+                        let at = xy.count == 2 ? CGPoint(x: xy[0], y: xy[1]) : nil
+                        let kv = parts[0].split(separator: ":", maxSplits: 1).map(String.init)
+                        guard kv.count == 2 else { continue }
+                        switch kv[0] {
+                        case "sticker": s.applyDropped(.sticker(kv[1]), position: at)
+                        case "text": s.applyDropped(.text(TextTemplate(rawValue: kv[1])), position: at)
+                        case "shape": if let k = ShapeKind(rawValue: kv[1]) { s.applyDropped(.shape(k), position: at) }
+                        case "picture": await s.addOverlayPicture(URL(fileURLWithPath: kv[1]), center: at)
+                        default: break
+                        }
+                    }
+                }
+                if ProcessInfo.processInfo.environment["MACPLAYER_DEV_OLDPAUSE"] != nil { ElementLive.paused = false; s.player.refreshFrame() }
+                let w = controllers.first { $0.session === s }
+                // MACPLAYER_DEV_WINDOW=WxH: the window's size (points).
+                if let wh = ProcessInfo.processInfo.environment["MACPLAYER_DEV_WINDOW"]?.split(separator: "x").compactMap({ Double($0) }), wh.count == 2, let win = w?.window {
+                    win.setFrame(NSRect(x: 40, y: 40, width: wh[0], height: wh[1]), display: true)
+                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                }
+                // MACPLAYER_DEV_TYPE="words": types them into the first text on the picture, a letter at a time, like a keyboard; prints
+                // how many times the preview was rebuilt meanwhile, and leaves the field open (MACPLAYER_DEV_TYPE_END=1 closes it).
+                if let words = ProcessInfo.processInfo.environment["MACPLAYER_DEV_TYPE"], let w, let ev = w.contentController.host?.elements,
+                   let first = s.project.overlays.first(where: { !$0.isShape }) {
+                    NSApp.activate(ignoringOtherApps: true); w.window?.makeKeyAndOrderFront(nil)
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    let loadsBefore = s.previewLoads
+                    ev.beginTyping(first.id)
+                    if let f = ev.testTypingField, let tv = f.currentEditor() as? NSTextView {
+                        tv.selectAll(nil)
+                        for ch in words { tv.insertText(String(ch), replacementRange: tv.selectedRange()); try? await Task.sleep(nanoseconds: 60_000_000) }
+                        try? await Task.sleep(nanoseconds: 600_000_000)
+                        print("DEV_TYPE rebuilds while typing: \(s.previewLoads - loadsBefore); lifted: \(CanvasLift.contains(first.id)); text now: \(s.project.overlays.first { $0.id == first.id }?.text ?? "")")
+                        if ProcessInfo.processInfo.environment["MACPLAYER_DEV_TYPE_END"] != nil {
+                            _ = ev.control(f, textView: tv, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+                            try? await Task.sleep(nanoseconds: 1_500_000_000)
+                            print("DEV_TYPE after Return: rebuilds \(s.previewLoads - loadsBefore); lifted: \(CanvasLift.contains(first.id))")
+                        }
+                    } else { print("DEV_TYPE no field editor (the window has no keyboard)") }
+                }
+                // MACPLAYER_DEV_LOOP=kind: gives every text, sticker and shape that motion; MACPLAYER_DEV_STRETCH=2: stretches every picture layer;
+                // MACPLAYER_DEV_PLAY=<s>: plays for that long; MACPLAYER_DEV_HISTORY=1: opens the history list.
+                if let k = ProcessInfo.processInfo.environment["MACPLAYER_DEV_LOOP"].flatMap(ElementLoopKind.init(rawValue:)) {
+                    s.edit("Motion") { p in for i in p.overlays.indices { p.overlays[i].loop = ElementLoop(kind: k) } }
+                }
+                if let st = ProcessInfo.processInfo.environment["MACPLAYER_DEV_STRETCH"].flatMap(Double.init) {
+                    s.edit("Stretch") { p in for i in p.overlayClips.indices { p.overlayClips[i].transform.stretch = st } }
+                }
+                if let secs = ProcessInfo.processInfo.environment["MACPLAYER_DEV_PLAY"].flatMap(Double.init) {
+                    try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    s.player.play(); try? await Task.sleep(nanoseconds: UInt64(secs * 1e9)); s.player.pause()
+                }
+                // MACPLAYER_DEV_SELECT=text|layer|clip, MACPLAYER_DEV_TABS="element:place,picture:canvas": what the right panel shows (0.17.1).
+                if let what = ProcessInfo.processInfo.environment["MACPLAYER_DEV_SELECT"] {
+                    switch what {
+                    case "text": if let o = s.project.overlays.last { s.select(.text(o.id)); s.activeTool = .text }
+                    case "layer": if let c = s.project.overlayClips.last { s.select(.layer(c.id)); s.activeTool = .layers }
+                    default: if let c = s.project.timeline.first { s.select(.clip(c.id)) }
+                    }
+                }
+                for pair in (ProcessInfo.processInfo.environment["MACPLAYER_DEV_TABS"] ?? "").split(separator: ",") {
+                    let kv = pair.split(separator: ":").map(String.init)
+                    if kv.count == 2 { s.paneTabs[kv[0]] = kv[1] }
+                    if kv.count == 2, kv[0] == "tool", let t = InspectorTab(rawValue: kv[1]) { s.activeTool = t }
+                }
+                if ProcessInfo.processInfo.environment["MACPLAYER_DEV_SIZES"] != nil, let w {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    let rs = s.player.player.currentItem?.videoComposition?.renderSize ?? .zero
+                    let host = w.contentController.host
+                    let scale = w.window?.backingScaleFactor ?? 0
+                    print("DEV_SIZES render \(rs) view \(host?.bounds.size ?? .zero) x\(scale) gravity \(String(describing: host?.layer?.sublayers?.first.map { type(of: $0) }))")
+                }
+                if ProcessInfo.processInfo.environment["MACPLAYER_DEV_HISTORY"] != nil {
+                    print("DEV_HISTORY back: \(s.history.undoLabels) forward: \(s.history.redoLabels)")
+                }
+                // MACPLAYER_DEV_QUIT_AFTER=<s>: saves and quits as ⌘Q does (no crash copy is left behind).
+                if let q = ProcessInfo.processInfo.environment["MACPLAYER_DEV_QUIT_AFTER"].flatMap(Double.init) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + q) { NSApp.terminate(nil) }
+                }
+                #endif
                 if env.isSandbox, ProcessInfo.processInfo.environment["MACPLAYER_DEV_AUTOPLAY"] != nil {
                     try? await Task.sleep(nanoseconds: 2_000_000_000); s.player.play()
                 }

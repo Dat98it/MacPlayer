@@ -122,6 +122,12 @@ extension SelfTest {
             ew.window?.orderFront(nil)
             e.player.play(); try? await Task.sleep(nanoseconds: 1_000_000_000)
             check(ew.route == .editor && e.player.currentTime.seconds > 0.4 && e.player.failure == nil, "the project plays in its window (\(String(format: "%.2f", e.player.currentTime.seconds)) s)")
+            // Drawn at the window's own pixels (0.17.2), but only once paused: a rebuild while playing stopped the picture.
+            e.player.pause()
+            await waitFor(5) { e.previewBuiltForPixels.map { b in e.previewScreenPixels.map { abs($0.height - b.height) < 2 } ?? false } ?? false }
+            let rs = e.player.player.currentItem?.videoComposition?.renderSize ?? .zero
+            check(e.previewScreenPixels.map { abs(rs.height - min(max($0.height, 360), CompositionBuilder.previewMaxPixelHeight)) < 40 || abs(rs.width - $0.width) < 40 } ?? false,
+                  "paused, the picture is drawn at the window's size (\(Int(rs.width))×\(Int(rs.height)) for \(Int(e.previewScreenPixels?.width ?? 0))×\(Int(e.previewScreenPixels?.height ?? 0)))")
             // The song's title and artist are texts of the project (0.16.2), not words drawn into the cover: they can be typed over.
             let texts = e.project.overlays.filter { !$0.isShape }
             if song != nil {

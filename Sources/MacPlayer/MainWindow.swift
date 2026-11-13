@@ -228,7 +228,8 @@ final class ContentViewController: NSViewController {
         headerKind = s.isEditor ? "editor" : route == .solo ? "solo" : "viewer"
         if s.isEditor {
             v = NSHostingView(rootView: AnyView(EditorHeader(session: s, onBack: { [weak self] in self?.onClose() },
-                                                             onExport: { [weak self] in self?.showExport() })))
+                                                             onExport: { [weak self] in self?.showExport() },
+                                                             onHome: { [weak self] in self?.onRoute(.home) })))
         } else if route == .solo {
             v = NSHostingView(rootView: AnyView(SoloHeader(session: s, linkSave: s.linkSave, onRename: { [weak self] in self?.onRenameFile() },
                                                            onTrash: { [weak self] in self?.onTrashFile() }, onEdit: { [weak self] in self?.onEditFile() })))

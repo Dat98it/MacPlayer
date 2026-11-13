@@ -30,19 +30,33 @@ public enum ShapeKind: String, Codable, CaseIterable, Sendable {
     case rectangle, roundedRectangle, ellipse, triangle, star, heart, arrow, line
     // 0.14
     case diamond, pentagon, hexagon, speechBubble, burst, checkmark, cross, ring
+    // 0.16.5
+    case octagon, parallelogram, trapezoid, crescent, lightning, droplet, sparkle, star6, doubleArrow, chevron, capsule, frame, ribbon, tag, shield, cloud, semicircle
+
+    /// Shapes with an empty middle (filled with the even-odd rule).
+    public var isHollow: Bool { self == .ring || self == .frame }
 
     /// Shapes that keep their own proportions on any picture (a square stays square on a wide picture): their height is set from their width
     /// and the picture's shape when they are made.
     public var keepsProportions: Bool { self != .line && self != .arrow }
     /// How tall it is for its width, on screen, when it is made.
     public var naturalHeightRatio: Double {
-        switch self { case .arrow: return 0.5; case .line: return 0.04; case .speechBubble: return 0.8; default: return 1 }
+        switch self {
+        case .arrow: return 0.5; case .line: return 0.04; case .speechBubble: return 0.8
+        case .parallelogram: return 0.55; case .trapezoid: return 0.6; case .doubleArrow: return 0.45; case .capsule: return 0.4; case .ribbon: return 0.35
+        case .tag: return 0.5; case .cloud: return 0.65; case .semicircle: return 0.5; case .droplet: return 1.3; case .shield: return 1.15
+        default: return 1
+        }
     }
     /// The colour it starts with.
     public var defaultFillHex: String {
         switch self {
         case .speechBubble: return "#FFFFFF"; case .checkmark: return "#34C759"; case .cross: return "#FF3B30"; case .burst: return "#FF2D55"
         case .ring: return "#FFFFFF"; case .diamond: return "#5AC8FA"
+        case .octagon: return "#FF3B30"; case .crescent: return "#FFE9A8"; case .lightning: return "#FFD60A"; case .droplet: return "#0A84FF"
+        case .sparkle: return "#FFFFFF"; case .star6: return "#FF9F0A"; case .doubleArrow, .chevron: return "#30D158"; case .capsule: return "#5E5CE6"
+        case .frame: return "#FFFFFF"; case .ribbon: return "#FF2D55"; case .tag: return "#FF9F0A"; case .shield: return "#0A84FF"; case .cloud: return "#F2F2F7"
+        case .semicircle: return "#64D2FF"; case .parallelogram: return "#BF5AF2"; case .trapezoid: return "#FF6482"
         default: return "#FFD60A"
         }
     }
@@ -112,7 +126,9 @@ public struct ElementState: Equatable, Sendable {
 
 public enum ElementAnimator {
     /// The element's state at timeline time `t` (seconds), or nil when it is not on screen then.
-    public static func state(of o: TextOverlay, at t: Double) -> ElementState? {
+    /// `settled`: as it is once it has arrived — no fade, no arriving or leaving move, the typewriter done (an editor that is paused, 0.16.5:
+    /// a text or sticker added at the playhead was drawn see-through, at the very start of its animation). Keyframes and loops still apply.
+    public static func state(of o: TextOverlay, at t: Double, settled: Bool = false) -> ElementState? {
         let start = o.start.seconds, end = o.end.seconds
         guard t >= start, t < end else { return nil }
         let local = t - start
@@ -129,11 +145,16 @@ public enum ElementAnimator {
             }
         }
 
-        // The plain fade at both ends (the original "fade" setting).
-        if o.fade > 0 { s.alpha *= max(0, min(1, local / o.fade, (end - t) / o.fade)) }
-
-        if let a = o.animationIn, a.kind != .none, a.duration > 0, local < a.duration { apply(a.kind, progress: local / a.duration, leaving: false, to: &s) }
-        if let a = o.animationOut, a.kind != .none, a.duration > 0, end - t < a.duration { apply(a.kind, progress: (end - t) / a.duration, leaving: true, to: &s) }
+        if !settled {
+            // The plain fade at both ends (the original "fade" setting).
+            if o.fade > 0 { s.alpha *= max(0, min(1, local / o.fade, (end - t) / o.fade)) }
+            if let a = o.animationIn, a.kind != .none, a.duration > 0, local < a.duration { apply(a.kind, progress: local / a.duration, leaving: false, to: &s) }
+            if let a = o.animationOut, a.kind != .none, a.duration > 0, end - t < a.duration { apply(a.kind, progress: (end - t) / a.duration, leaving: true, to: &s) }
+        }
+        if let l = o.loop {
+            let m = l.offsets(at: local)
+            s.x += m.dx; s.y += m.dy; s.scale *= m.scale; s.rotation += m.rotation; s.alpha *= m.alpha
+        }
         s.alpha = min(max(s.alpha, 0), 1)
         return s
     }
@@ -172,6 +193,8 @@ public enum TextTemplate: String, CaseIterable, Sendable {
     case classic, neon, comic, cinematic, typewriter, lowerThird, highlight, pill
     // 0.14
     case headline, subtitleBox, quote, retro, elegant, handwritten, hashtag, sale, minimal
+    // 0.16.5
+    case impact, marker, chalk, stickerText, gold, pastel, tech, warning, news, wedding, kids, spooky, vintage, glow, yellowCaption, inverse, serif, condensed
 
     /// Applies the look. The text, timing and position are kept (a template that needs a position moves the text there).
     public func apply(to o: inout TextOverlay) {
@@ -245,6 +268,78 @@ public enum TextTemplate: String, CaseIterable, Sendable {
             o.fontName = "HelveticaNeue-Light"; o.colorHex = "#FFFFFF"; o.sizeFraction = 0.05
             f.outlineWidth = 0; f.letterSpacing = 0.08
             o.animationIn = ElementAnimation(kind: .fade, duration: 0.5); o.animationOut = ElementAnimation(kind: .fade, duration: 0.5)
+        case .impact:
+            o.fontName = "Impact"; o.colorHex = "#FFFFFF"; o.sizeFraction = 0.11
+            f.outlineHex = "#000000"; f.outlineWidth = 0.14; f.uppercase = true
+            o.animationIn = ElementAnimation(kind: .pop, duration: 0.35)
+        case .marker:
+            o.fontName = "MarkerFelt-Thin"; o.colorHex = "#FFFFFF"; o.sizeFraction = 0.08
+            f.outlineWidth = 0; f.shadow = true
+            o.animationIn = ElementAnimation(kind: .slideUp, duration: 0.35)
+        case .chalk:
+            o.fontName = "ChalkboardSE-Bold"; o.colorHex = "#F5F5F0"; o.sizeFraction = 0.075
+            f.outlineWidth = 0; f.shadow = true; f.shadowHex = "#1C3B2B"
+            o.animationIn = ElementAnimation(kind: .typewriter, duration: 1)
+        case .stickerText:
+            o.fontName = "AvenirNext-Heavy"; o.colorHex = "#FFFFFF"; o.sizeFraction = 0.09
+            f.outlineHex = "#FF2D55"; f.outlineWidth = 0.18; f.shadow = true
+            o.animationIn = ElementAnimation(kind: .pop, duration: 0.4)
+        case .gold:
+            o.fontName = "Didot-Bold"; o.colorHex = "#FFD700"; o.sizeFraction = 0.085
+            f.outlineHex = "#7A5200"; f.outlineWidth = 0.05; f.shadow = true; f.letterSpacing = 0.06; f.uppercase = true
+            o.animationIn = ElementAnimation(kind: .zoom, duration: 0.6)
+        case .pastel:
+            o.fontName = "AvenirNext-DemiBold"; o.colorHex = "#FFB3C7"; o.sizeFraction = 0.075
+            f.outlineHex = "#FFFFFF"; f.outlineWidth = 0.08
+            o.animationIn = ElementAnimation(kind: .fade, duration: 0.5)
+        case .tech:
+            o.fontName = "Menlo-Bold"; o.colorHex = "#32D74B"; o.sizeFraction = 0.06
+            f.outlineWidth = 0; f.shadow = true; f.shadowHex = "#32D74B"; f.uppercase = true; f.letterSpacing = 0.12
+            o.animationIn = ElementAnimation(kind: .typewriter, duration: 1)
+        case .warning:
+            o.fontName = "Impact"; o.colorHex = "#000000"; o.sizeFraction = 0.08; o.backgroundHex = "#FFD60A"
+            f.outlineWidth = 0; f.uppercase = true
+            o.animationIn = ElementAnimation(kind: .pop, duration: 0.35)
+        case .news:
+            o.fontName = "HelveticaNeue-Bold"; o.colorHex = "#FFFFFF"; o.sizeFraction = 0.05; o.backgroundHex = "#C8102E"
+            f.outlineWidth = 0; f.uppercase = true
+            o.alignment = .left; o.x = 0.3; o.y = 0.84
+            o.animationIn = ElementAnimation(kind: .slideLeft, duration: 0.4); o.animationOut = ElementAnimation(kind: .slideRight, duration: 0.4)
+        case .wedding:
+            o.fontName = "SnellRoundhand-Bold"; o.colorHex = "#FFFFFF"; o.sizeFraction = 0.1
+            f.outlineWidth = 0; f.shadow = true
+            o.animationIn = ElementAnimation(kind: .fade, duration: 1.2); o.animationOut = ElementAnimation(kind: .fade, duration: 1)
+        case .kids:
+            o.fontName = "ChalkboardSE-Bold"; o.colorHex = "#FF9F0A"; o.sizeFraction = 0.1
+            f.outlineHex = "#FFFFFF"; f.outlineWidth = 0.16; f.shadow = true
+            o.animationIn = ElementAnimation(kind: .pop, duration: 0.5)
+        case .spooky:
+            o.fontName = "Copperplate-Bold"; o.colorHex = "#FF453A"; o.sizeFraction = 0.08
+            f.outlineWidth = 0; f.shadow = true; f.shadowHex = "#000000"; f.letterSpacing = 0.1; f.uppercase = true
+            o.animationIn = ElementAnimation(kind: .fade, duration: 1.2)
+        case .vintage:
+            o.fontName = "AmericanTypewriter-Bold"; o.colorHex = "#F4E1C1"; o.sizeFraction = 0.07
+            f.outlineHex = "#3A2A1A"; f.outlineWidth = 0.06
+            o.animationIn = ElementAnimation(kind: .typewriter, duration: 1.1)
+        case .glow:
+            o.fontName = "AvenirNext-Bold"; o.colorHex = "#FFFFFF"; o.sizeFraction = 0.08
+            f.outlineWidth = 0; f.shadow = true; f.shadowHex = "#FF2D55"
+            o.animationIn = ElementAnimation(kind: .zoom, duration: 0.5)
+        case .yellowCaption:
+            o.fontName = "HelveticaNeue-Bold"; o.colorHex = "#FFE600"; o.sizeFraction = 0.055; o.y = 0.86
+            f.outlineHex = "#000000"; f.outlineWidth = 0.1
+        case .inverse:
+            o.fontName = "Futura-Bold"; o.colorHex = "#000000"; o.sizeFraction = 0.09
+            f.outlineHex = "#FFFFFF"; f.outlineWidth = 0.16; f.uppercase = true
+            o.animationIn = ElementAnimation(kind: .slideDown, duration: 0.35)
+        case .serif:
+            o.fontName = "Baskerville-Bold"; o.colorHex = "#FFFFFF"; o.sizeFraction = 0.075
+            f.outlineWidth = 0; f.shadow = true
+            o.animationIn = ElementAnimation(kind: .fade, duration: 0.7)
+        case .condensed:
+            o.fontName = "AvenirNextCondensed-Heavy"; o.colorHex = "#FFFFFF"; o.sizeFraction = 0.1
+            f.outlineWidth = 0; f.letterSpacing = 0.04; f.uppercase = true; f.shadow = true
+            o.animationIn = ElementAnimation(kind: .slideUp, duration: 0.35)
         }
         o.flair = f
     }

@@ -45,6 +45,9 @@ public enum CompositionBuilder {
     /// - Parameters:
     ///   - frameAccurate: shift each piece's boundaries by half a frame so exactly the named frames are kept (export).
     ///     The preview of a whole source passes false.
+    /// The tallest a preview is drawn at the screen's pixels (a full-screen picture on a 5K display is drawn no bigger, to keep playing smooth).
+    public static let previewMaxPixelHeight: CGFloat = 1800
+
     /// Pictures a second for an export where nothing moves (see `nothingMoves`). Things appear and go on a quarter of a second.
     public static let stillPace = 4
 
@@ -52,15 +55,16 @@ public enum CompositionBuilder {
     /// keyframes. (Transitions and moving sources are checked by the caller.)
     public static func nothingMoves(pieces: [RenderPiece], overlays: [TextOverlay], layers: [LayerSpec]) -> Bool {
         pieces.allSatisfy { $0.look.motion.isEmpty && $0.look.stabilize <= 0 && $0.look.transitionIn == nil }
-            && overlays.allSatisfy { $0.fade <= 0 && ($0.animationIn?.kind ?? .none) == .none && ($0.animationOut?.kind ?? .none) == .none && ($0.keyframes ?? []).isEmpty }
+            && overlays.allSatisfy { $0.fade <= 0 && ($0.animationIn?.kind ?? .none) == .none && ($0.animationOut?.kind ?? .none) == .none && ($0.keyframes ?? []).isEmpty && $0.loop == nil }
             && layers.allSatisfy { l in
                 if case .video = l.kind { return false }
-                return l.keyframes.isEmpty && l.fadeIn <= 0 && l.fadeOut <= 0 && (l.animationIn?.kind ?? .none) == .none && (l.animationOut?.kind ?? .none) == .none
+                return l.keyframes.isEmpty && l.fadeIn <= 0 && l.fadeOut <= 0 && (l.animationIn?.kind ?? .none) == .none && (l.animationOut?.kind ?? .none) == .none && l.loop == nil
             }
     }
 
     public static func build(pieces: [RenderPiece], overlays: [TextOverlay] = [], cues: [SubtitleCue] = [], subtitleStyle: SubtitleStyle = SubtitleStyle(),
-                             maxHeight: Int? = nil, includeAudio: Bool = true, replacementAudio: URL? = nil, layers: [LayerSpec] = [], soundClips: [SoundClip] = [], frameAccurate: Bool = true, fixedGrid: Bool = false) async throws -> BuiltRender {
+                             maxHeight: Int? = nil, includeAudio: Bool = true, replacementAudio: URL? = nil, layers: [LayerSpec] = [], soundClips: [SoundClip] = [], frameAccurate: Bool = true, fixedGrid: Bool = false,
+                             screenPixels: CGSize? = nil) async throws -> BuiltRender {
         guard !pieces.isEmpty else { throw BuildError.noPieces }
         let comp = AVMutableComposition()
         var assets: [URL: AVURLAsset] = [:]
@@ -346,6 +350,15 @@ public enum CompositionBuilder {
         // An export limits the shorter side (a tall video at 1080p is 1080 × 1920); the preview limits the height, to stay light.
         let outSize = RenderGeometry.outputSize(source: display, look: lookForSize, maxHeight: maxHeight, limitsShortSide: frameAccurate)
         var renderSize = CGSize(width: outSize.width, height: outSize.height)
+        // A preview is drawn at the screen's own pixels (0.17.2): drawn at the output size and then scaled by the player to the screen, texts,
+        // shapes, stickers and pictures came out soft (a 1080p frame shown 1356 or 2120 pixels wide). Exports never do this.
+        if !frameAccurate, let px = screenPixels, px.width > 64, px.height > 64 {
+            let aspect = renderSize.width / max(1, renderSize.height)
+            var h = min(px.height, px.width / aspect)
+            h = min(max(h, 360), Self.previewMaxPixelHeight)
+            let w = h * aspect
+            renderSize = CGSize(width: max(2, (w / 2).rounded() * 2), height: max(2, (h / 2).rounded() * 2))
+        }
 
         // An all-HDR export stays HDR through the compositor: it works on 10-bit pictures. Any SDR piece among them makes the whole output SDR
         // (the system tone-maps the HDR ones when it hands them over as ordinary 8-bit pictures).

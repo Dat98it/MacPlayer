@@ -251,6 +251,8 @@ public struct TextOverlay: Codable, Identifiable, Equatable, Sendable {
     public var groupID: UUID?
     /// A locked element cannot be moved, resized or deleted on the picture (0.12).
     public var locked: Bool?
+    /// A motion that keeps going while it is on screen (0.16.5).
+    public var loop: ElementLoop?
 
     public init(id: UUID = UUID(), text: String, start: MediaTime, end: MediaTime, fontName: String = "Helvetica-Bold", sizeFraction: Double = 0.06,
                 colorHex: String = "#FFFFFF", backgroundHex: String? = nil, alignment: TextAlignmentChoice = .center,
@@ -397,8 +399,10 @@ public struct Project: Codable, Identifiable, Equatable, Sendable {
             case .video(let sid, let a, let b): guard let p = resolve(sid) else { return nil }; kind = .video(path: p, sourceStart: a, sourceEnd: b)
             case .image(let path, _): kind = .image(path: path)
             }
-            return LayerSpec(id: c.id, kind: kind, lane: c.lane, start: c.start, duration: c.duration, transform: c.transform, keyframes: c.keyframes,
-                             audio: c.audio, fadeIn: c.fadeIn, fadeOut: c.fadeOut, animationIn: c.animationIn, animationOut: c.animationOut)
+            var spec = LayerSpec(id: c.id, kind: kind, lane: c.lane, start: c.start, duration: c.duration, transform: c.transform, keyframes: c.keyframes,
+                                 audio: c.audio, fadeIn: c.fadeIn, fadeOut: c.fadeOut, animationIn: c.animationIn, animationOut: c.animationOut)
+            spec.loop = c.loop
+            return spec
         }
     }
 

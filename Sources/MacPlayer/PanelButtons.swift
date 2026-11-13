@@ -97,3 +97,46 @@ struct CardGroupBoxStyle: GroupBoxStyle {
         .background(RoundedRectangle(cornerRadius: 10).fill(Color.secondary.opacity(0.1)))
     }
 }
+
+// MARK: Tabs inside a settings pane (0.17.1)
+
+/// One group of settings in a pane, shown as a tab: a long pane of stacked cards became one card at a time.
+struct PaneSection: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let icon: String
+    /// Something in it differs from the defaults (a dot on the tab).
+    var changed = false
+}
+
+/// The tabs of a pane: an icon over a short name, the chosen one in the accent colour, wrapping onto a second line when narrow.
+struct SectionTabBar: View {
+    let sections: [PaneSection]
+    @Binding var selection: String
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 64), spacing: 4)], spacing: 4) {
+            ForEach(sections) { s in
+                let on = s.id == selection
+                Button { selection = s.id } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: s.icon).font(.system(size: 13, weight: on ? .semibold : .regular))
+                        Text(s.title).font(.system(size: 10, weight: on ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.75)
+                    }
+                    .foregroundColor(on ? .white : .primary)
+                    .frame(maxWidth: .infinity).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(on ? Color.accentColor : Color.secondary.opacity(0.12)))
+                    .overlay(alignment: .topTrailing) {
+                        if s.changed { Circle().fill(on ? Color.white : Color.accentColor).frame(width: 6, height: 6).padding(4).accessibilityHidden(true) }
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 7))
+                }
+                .buttonStyle(.plain)
+                .help(s.title)
+                .accessibilityLabel(s.changed ? s.title + ", " + L("changed") : s.title)
+                .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+            }
+        }
+        .accessibilityElement(children: .contain).accessibilityLabel(L("Settings groups"))
+    }
+}

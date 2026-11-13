@@ -2,6 +2,7 @@ import AVFoundation
 import AppKit
 import CoreImage
 import Combine
+import SwiftUI
 import MacPlayerCore
 import MacPlayerMedia
 
@@ -127,6 +128,62 @@ final class EditorSession: NSObject, ObservableObject {
     var photoFrameBases: [CIImage] = []
     @Published var photoFrames: [CGImage] = []
     @Published var photoPlaying = true
+    /// The pixels of the picture's area on screen (0.17.2): the preview is drawn at this size, so it is sharp. Set by the picture's view.
+    var previewScreenPixels: CGSize?
+    /// What the current preview was drawn for.
+    var previewBuiltForPixels: CGSize?
+    private var pixelsRebuild: DispatchWorkItem?
+    private var pixelsRebuildWaiting = false
+
+    /// The picture's area changed size (the window, a panel): when the preview was drawn for a size quite different, it is drawn again
+    /// for the new one, once the resizing has stopped.
+    func screenPixelsChanged(_ px: CGSize) {
+        guard px.width > 64, px.height > 64, !devSharpOff else { return }
+        previewScreenPixels = px
+        // No preview yet: the first one is drawn at this size.
+        guard isProject, let built = previewBuiltForPixels else { return }
+        if abs(px.width - built.width) / max(1, built.width) < 0.12, abs(px.height - built.height) / max(1, built.height) < 0.12 { return }
+        pixelsRebuild?.cancel()
+        let job = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.rebuildForScreenPixels() } }
+        pixelsRebuild = job
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: job)
+    }
+
+    /// A rebuild stops the picture for about half a second: never while playing (the window shown or resized during playback made the
+    /// self-test's song play 0.2 s in 1 s). Kept for the next pause instead.
+    private func rebuildForScreenPixels() {
+        if player.isPlaying { pixelsRebuildWaiting = true; return }
+        pixelsRebuildWaiting = false
+        rebuildReasons.append("screen size")
+        schedulePreviewRefresh()
+    }
+
+    /// Called when playback stops: the rebuild for a new window size that was held back while playing.
+    func pausedRebuildIfWaiting() {
+        // Called from `$isPlaying`, which tells before the value changes: looked at on the next turn, once `isPlaying` is false.
+        DispatchQueue.main.async { [weak self] in MainActor.assumeIsolated { self?.rebuildIfStillWaiting() } }
+    }
+
+    private func rebuildIfStillWaiting() {
+        guard pixelsRebuildWaiting, !player.isPlaying else { return }
+        if let px = previewScreenPixels, let built = previewBuiltForPixels,
+           abs(px.width - built.width) / max(1, built.width) < 0.12, abs(px.height - built.height) / max(1, built.height) < 0.12 { pixelsRebuildWaiting = false; return }
+        rebuildForScreenPixels()
+    }
+
+    /// The tab chosen in each settings pane (0.17.1), by pane; kept while the selection changes, so the same kind of setting stays in view.
+    @Published var paneTabs: [String: String] = [:]
+
+    /// The chosen tab of `pane` among `sections` (the first one when none was chosen, or the chosen one is not offered here).
+    func paneTab(_ pane: String, _ sections: [PaneSection]) -> Binding<String> {
+        Binding(get: { [weak self] in
+            let chosen = self?.paneTabs[pane]
+            return sections.contains { $0.id == chosen } ? chosen! : (sections.first?.id ?? "")
+        }, set: { [weak self] v in self?.paneTabs[pane] = v })
+    }
+
+    /// The text being typed in on the picture, lifted off it meanwhile (0.16.5).
+    var typingLifted: UUID?
     /// How many older cover videos were made again when the project opened (0.16.3; for the self-test).
     var upgradedCovers = 0
     /// The last file "Export Sound Only" wrote (for the self-test).
@@ -329,7 +386,12 @@ final class EditorSession: NSObject, ObservableObject {
             self.lastTimeTick = now
             self.objectWillChange.send()
         }.store(in: &cancellables)
-        player.$isPlaying.removeDuplicates().sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &cancellables)
+        player.$isPlaying.removeDuplicates().sink { [weak self] playing in
+            self?.objectWillChange.send()
+            // Paused, the editor shows things as they are once they have arrived (0.16.5): drawn again now, in full.
+            ElementLive.paused = !playing
+            if !playing, let self, self.role == .editor { if self.isPhoto { self.renderPhoto() } else { self.player.refreshFrame(); self.pausedRebuildIfWaiting() } }
+        }.store(in: &cancellables)
         $selectedClipIDs.dropFirst().sink { [weak self] ids in self?.syncActiveClip(ids) }.store(in: &cancellables)
         $activeTool.dropFirst().sink { [weak self] tool in self?.updateCropEditing(tool: tool) }.store(in: &cancellables)
         $photoCropAdjusting.dropFirst().sink { [weak self] on in self?.updateCropEditing(adjusting: on) }.store(in: &cancellables)
@@ -425,6 +487,30 @@ final class EditorSession: NSObject, ObservableObject {
 
     func undo() { guard canEdit else { return }; LayerLive.clear(); var h = history; if let l = h.undo() { history = h; markChanged(); schedulePreviewRefresh(); flash(LF("Undid “%@”", L(l))) } }
     func redo() { guard canEdit else { return }; LayerLive.clear(); var h = history; if let l = h.redo() { history = h; markChanged(); schedulePreviewRefresh(); flash(LF("Redid “%@”", L(l))) } }
+    /// Goes back `steps` edits at once (the history list, 0.16.5): one rebuild of the preview, one message.
+    func undo(steps: Int) {
+        guard canEdit, steps > 0 else { return }
+        if steps == 1 { undo(); return }
+        LayerLive.clear()
+        var h = history, n = 0
+        while n < steps, h.undo() != nil { n += 1 }
+        guard n > 0 else { return }
+        history = h; markChanged(); schedulePreviewRefresh()
+        flash(LF("Went back %d steps", n))
+    }
+
+    /// Goes forward `steps` edits at once.
+    func redo(steps: Int) {
+        guard canEdit, steps > 0 else { return }
+        if steps == 1 { redo(); return }
+        LayerLive.clear()
+        var h = history, n = 0
+        while n < steps, h.redo() != nil { n += 1 }
+        guard n > 0 else { return }
+        history = h; markChanged(); schedulePreviewRefresh()
+        flash(LF("Went forward %d steps", n))
+    }
+
     var undoTitle: String { history.undoLabel.map { LF("Undo %@", L($0)) } ?? L("Undo") }
     var redoTitle: String { history.redoLabel.map { LF("Redo %@", L($0)) } ?? L("Redo") }
 

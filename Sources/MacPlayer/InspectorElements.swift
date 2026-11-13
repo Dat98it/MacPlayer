@@ -16,7 +16,14 @@ struct TextPane: View {
                            "❤️", "💔", "🔥", "💯", "⭐️", "✨", "🎉", "🎁",
                            "✅", "❌", "⚠️", "❓", "❗️", "🔔", "📌", "📍", "💬", "💡",
                            "➡️", "⬅️", "⬆️", "⬇️", "🔝", "🆕",
-                           "🎬", "🎥", "📷", "🎵", "🎤", "⏰", "📅", "🛒", "💰", "🏆", "🥇", "⚽️", "🏀", "🏃", "☀️", "🌈", "⚡️", "❄️"]
+                           "🎬", "🎥", "📷", "🎵", "🎤", "⏰", "📅", "🛒", "💰", "🏆", "🥇", "⚽️", "🏀", "🏃", "☀️", "🌈", "⚡️", "❄️",
+                           // 0.16.5
+                           "🥰", "😘", "😉", "😜", "🤗", "🤭", "😇", "🥺", "😤", "😡", "🤯", "😮", "🙄", "😅", "🤣", "😋",
+                           "👋", "🤙", "👌", "🫶", "🙌", "👀", "💃", "🕺",
+                           "💖", "💕", "💙", "💚", "💛", "💜", "🧡", "🖤", "🤍", "💥", "💫", "🌟", "🎶", "🎧", "🎸", "🥁",
+                           "🎂", "🍰", "🍕", "🍔", "🍜", "☕️", "🧋", "🍉", "🍓", "🌸", "🌹", "🌻", "🍀", "🌙", "🌊", "🔆",
+                           "🎈", "🎊", "🪩", "🎮", "📱", "💻", "✈️", "🚗", "🏖️", "⛰️", "🏠", "🐶", "🐱", "🦋", "🐼", "🦄",
+                           "💎", "👑", "🎯", "🚀", "📈", "🔊", "▶️", "⏸️", "🔁", "🆒", "🆗", "🔴", "🟢", "🔵", "⭕️", "💤"]
 
     static func templateName(_ t: TextTemplate) -> String {
         switch t {
@@ -24,6 +31,11 @@ struct TextPane: View {
         case .typewriter: return L("Typewriter"); case .lowerThird: return L("Lower third"); case .highlight: return L("Highlight"); case .pill: return L("Pill")
         case .headline: return L("Headline"); case .subtitleBox: return L("Subtitle box"); case .quote: return L("Quote"); case .retro: return L("Retro")
         case .elegant: return L("Elegant"); case .handwritten: return L("Handwritten"); case .hashtag: return L("Hashtag"); case .sale: return L("Sale"); case .minimal: return L("Minimal")
+        case .impact: return L("Impact"); case .marker: return L("Marker"); case .chalk: return L("Chalk"); case .stickerText: return L("Sticker text")
+        case .gold: return L("Gold"); case .pastel: return L("Pastel"); case .tech: return L("Tech"); case .warning: return L("Warning")
+        case .news: return L("News"); case .wedding: return L("Wedding"); case .kids: return L("Kids"); case .spooky: return L("Spooky")
+        case .vintage: return L("Vintage"); case .glow: return L("Glow"); case .yellowCaption: return L("Yellow caption"); case .inverse: return L("Inverse")
+        case .serif: return L("Serif"); case .condensed: return L("Condensed")
         }
     }
     static func shapeIcon(_ k: ShapeKind) -> String {
@@ -32,6 +44,11 @@ struct TextPane: View {
         case .star: return "star.fill"; case .heart: return "heart.fill"; case .arrow: return "arrow.right"; case .line: return "minus"
         case .diamond: return "diamond.fill"; case .pentagon: return "pentagon.fill"; case .hexagon: return "hexagon.fill"; case .speechBubble: return "bubble.left.fill"
         case .burst: return "seal.fill"; case .checkmark: return "checkmark"; case .cross: return "plus"; case .ring: return "circle"
+        case .octagon: return "octagon.fill"; case .parallelogram: return "parallelogram.fill"; case .trapezoid: return "trapezoid.and.line.horizontal"
+        case .crescent: return "moon.fill"; case .lightning: return "bolt.fill"; case .droplet: return "drop.fill"; case .sparkle: return "sparkle"
+        case .star6: return "staroflife.fill"; case .doubleArrow: return "arrow.left.and.right"; case .chevron: return "chevron.right"; case .capsule: return "capsule.fill"
+        case .frame: return "square"; case .ribbon: return "flag.fill"; case .tag: return "tag.fill"; case .shield: return "shield.fill"; case .cloud: return "cloud.fill"
+        case .semicircle: return "circle.bottomhalf.filled"
         }
     }
     static func shapeName(_ k: ShapeKind) -> String {
@@ -40,6 +57,10 @@ struct TextPane: View {
         case .star: return L("Star"); case .heart: return L("Heart"); case .arrow: return L("Arrow"); case .line: return L("Line")
         case .diamond: return L("Diamond"); case .pentagon: return L("Pentagon"); case .hexagon: return L("Hexagon"); case .speechBubble: return L("Speech bubble")
         case .burst: return L("Badge"); case .checkmark: return L("Tick"); case .cross: return L("Plus"); case .ring: return L("Ring")
+        case .octagon: return L("Octagon"); case .parallelogram: return L("Parallelogram"); case .trapezoid: return L("Trapezoid"); case .crescent: return L("Moon")
+        case .lightning: return L("Lightning"); case .droplet: return L("Drop"); case .sparkle: return L("Sparkle"); case .star6: return L("Six-point star")
+        case .doubleArrow: return L("Double arrow"); case .chevron: return L("Chevron"); case .capsule: return L("Capsule"); case .frame: return L("Frame")
+        case .ribbon: return L("Ribbon"); case .tag: return L("Tag"); case .shield: return L("Shield"); case .cloud: return L("Cloud"); case .semicircle: return L("Half circle")
         }
     }
     static func animationName(_ k: ElementAnimationKind) -> String {
@@ -59,11 +80,14 @@ struct TextPane: View {
                     .font(.callout).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                     .padding(10).background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.08)))
             }
-            ToolCard(title: LF("On the picture (%d)", overlays.count), icon: "list.bullet") {
-                if overlays.isEmpty { Text(L("Nothing yet.")).foregroundColor(.secondary) }
-                ForEach(overlays) { o in row(o) }
-            }
-            if let o = selectedText { editor(o) }
+            if let o = selectedText { editor(o, count: overlays.count) } else { list(overlays) }
+        }
+    }
+
+    private func list(_ overlays: [TextOverlay]) -> some View {
+        ToolCard(title: LF("On the picture (%d)", overlays.count), icon: "list.bullet") {
+            if overlays.isEmpty { Text(L("Nothing yet.")).foregroundColor(.secondary) }
+            ForEach(overlays) { o in row(o) }
         }
     }
 
@@ -134,15 +158,46 @@ struct TextPane: View {
 
     // MARK: The selected item
 
-    @ViewBuilder private func editor(_ o: TextOverlay) -> some View {
-        ToolCard(title: o.isShape ? L("Shape") : L("Text"), icon: "slider.horizontal.3") {
-            if o.isShape { shapeControls(o) } else { textControls(o) }
-            if !session.isPhoto { timingControls(o) }
+    /// The settings of the selected thing, one group at a time (0.17.1: five cards stacked made a long scroll).
+    private func sections(_ o: TextOverlay, count: Int) -> [PaneSection] {
+        var sections = [PaneSection(id: "look", title: o.isShape ? L("Figure") : L("Text"), icon: o.isShape ? "star.square" : "textformat"),
+                        PaneSection(id: "place", title: L("Position"), icon: "arrow.up.left.and.arrow.down.right",
+                                    changed: (o.scale ?? 1) != 1 || (o.rotation ?? 0) != 0)]
+        if !o.isShape {
+            let f = o.flair ?? TextFlair()
+            sections.insert(PaneSection(id: "flair", title: L("Style"), icon: "wand.and.stars.inverse",
+                                        changed: (f.outlineWidth ?? 0) != 0 || f.shadow || f.letterSpacing != 0 || f.uppercase), at: 1)
         }
-        ToolCard(title: L("Position and size"), icon: "arrow.up.left.and.arrow.down.right") { placementControls(o) }
+        if !session.isPhoto { sections.insert(PaneSection(id: "time", title: L("Time"), icon: "clock"), at: o.isShape ? 1 : 2) }
         if !session.isPhoto {
-            ToolCard(title: L("Animation"), icon: "sparkles") { animationControls(o) }
-            ToolCard(title: L("Keyframes"), icon: "diamond") { keyframeControls(o) }
+            sections += [PaneSection(id: "anim", title: L("In and out"), icon: "sparkles", changed: o.animationIn != nil || o.animationOut != nil),
+                         PaneSection(id: "motion", title: L("Motion"), icon: "wand.and.rays", changed: o.loop != nil),
+                         PaneSection(id: "keys", title: L("Keyframes"), icon: "diamond", changed: !(o.keyframes ?? []).isEmpty)]
+        }
+        sections.append(PaneSection(id: "list", title: LF("All (%d)", count), icon: "list.bullet"))
+        return sections
+    }
+
+    @ViewBuilder private func editor(_ o: TextOverlay, count: Int) -> some View {
+        let sections = sections(o, count: count)
+        let tab = session.paneTab("element", sections)
+        SectionTabBar(sections: sections, selection: tab)
+        switch tab.wrappedValue {
+        case "place": ToolCard(title: L("Position and size"), icon: "arrow.up.left.and.arrow.down.right") { placementControls(o) }
+        case "anim": ToolCard(title: L("Arrive and leave"), icon: "sparkles") { animationControls(o) }
+        case "motion":
+            ToolCard(title: L("Motion"), icon: "wand.and.rays") {
+                LoopMotionControls(loop: o.loop, set: { l, coalesce in update(o.id, "Motion", key: coalesce ? "loop" : nil) { $0.loop = l } },
+                                   preview: { session.previewFrom(o.start) })
+            }
+        case "keys": ToolCard(title: L("Keyframes"), icon: "diamond") { keyframeControls(o) }
+        case "list": list(session.project.overlays)
+        case "flair": ToolCard(title: L("Style"), icon: "wand.and.stars.inverse") { flairControls(o) }
+        case "time": ToolCard(title: L("Time"), icon: "clock") { timingControls(o) }
+        default:
+            ToolCard(title: o.isShape ? L("Figure") : L("Text"), icon: "slider.horizontal.3") {
+                if o.isShape { shapeControls(o) } else { textControls(o) }
+            }
         }
     }
 
@@ -174,6 +229,10 @@ struct TextPane: View {
         Picker(L("Align"), selection: Binding(get: { o.alignment }, set: { a in update(o.id, "Text alignment") { $0.alignment = a } })) {
             Text(L("Left")).tag(TextAlignmentChoice.left); Text(L("Centre")).tag(TextAlignmentChoice.center); Text(L("Right")).tag(TextAlignmentChoice.right)
         }.pickerStyle(.segmented)
+    }
+
+    /// Outline, shadow, spacing, capitals: the "Style" tab of a text (0.17.1).
+    @ViewBuilder private func flairControls(_ o: TextOverlay) -> some View {
         let f = o.flair ?? TextFlair()
         Toggle(L("Outline"), isOn: Binding(get: { f.outlineWidth != 0 && (f.outlineHex != nil || o.backgroundHex == nil) }, set: { on in
             update(o.id, "Text outline") { var fl = $0.flair ?? TextFlair(); fl.outlineWidth = on ? 0.06 : 0; if on, fl.outlineHex == nil { fl.outlineHex = "#000000" }; $0.flair = fl }

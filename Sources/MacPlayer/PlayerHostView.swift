@@ -54,6 +54,8 @@ final class PlayerHostView: NSView {
         playerView.frame = CGRect(x: (bounds.width - w) / 2, y: (bounds.height - h) / 2, width: w, height: h)
         message.frame = bounds.insetBy(dx: 40, dy: bounds.height / 2 - 40)
         manipulator.frame = bounds; elements.frame = bounds
+        // The preview is drawn at the screen's pixels of this area (0.17.2).
+        if let s = manipulator.attachedSession { s.screenPixelsChanged(CGSize(width: bounds.width * (window?.backingScaleFactor ?? 2), height: bounds.height * (window?.backingScaleFactor ?? 2))) }
         manipulator.window?.invalidateCursorRects(for: manipulator)
         elements.window?.invalidateCursorRects(for: elements)
     }

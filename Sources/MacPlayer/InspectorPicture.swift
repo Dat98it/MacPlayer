@@ -140,10 +140,27 @@ struct PicturePane: View {
         }
     }
 
+    /// The groups of the Basic tab, one at a time (0.17.1).
+    private var pictureSections: [PaneSection] {
+        let l = session.project.activeLook
+        var s = [PaneSection(id: "crop", title: L("Crop"), icon: "crop", changed: !l.crop.isFull),
+                 PaneSection(id: "rotate", title: L("Rotate"), icon: "rotate.right", changed: l.rotation != 0 || l.flipHorizontal || l.flipVertical),
+                 PaneSection(id: "canvas", title: L("Canvas"), icon: "aspectratio")]
+        if !session.isPhoto {
+            s += [PaneSection(id: "zoom", title: L("Zoom"), icon: "plus.magnifyingglass", changed: !l.motion.isEmpty),
+                  PaneSection(id: "stable", title: L("Stabilize"), icon: "hand.raised", changed: l.stabilize > 0)]
+        }
+        s.append(PaneSection(id: "colour", title: L("Colour"), icon: "sun.max", changed: l.color.brightness != 0 || l.color.contrast != 0 || l.color.saturation != 0 || l.color.temperature != 0))
+        return s
+    }
+
     var body: some View {
         let v = session.info?.primaryVideo
+        let tab = session.paneTab("picture", pictureSections).wrappedValue
         VStack(alignment: .leading, spacing: 10) {
             if v == nil { Text(L("This file has no picture.")).foregroundColor(.secondary) } else {
+                SectionTabBar(sections: pictureSections, selection: session.paneTab("picture", pictureSections))
+                if tab == "crop" {
                 if session.isPhoto { photoCropCard } else {
                 GroupBox(L("Crop")) {
                     VStack(alignment: .leading, spacing: 6) {
@@ -160,6 +177,8 @@ struct PicturePane: View {
                     }.padding(4)
                 }
                 }
+                }
+                if tab == "rotate" {
                 GroupBox(L("Rotate and flip")) {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
@@ -170,6 +189,8 @@ struct PicturePane: View {
                         Toggle(L("Flip ↕"), isOn: look("Flip vertically", { $0.flipVertical }, { $0.flipVertical = $1 }))
                     }.padding(4)
                 }
+                }
+                if tab == "canvas" {
                 GroupBox(L("Canvas")) {
                     VStack(alignment: .leading, spacing: 6) {
                         // A video project has one frame for the whole video: changed here, it changes for every clip (the export takes it from the first).
@@ -190,7 +211,10 @@ struct PicturePane: View {
                         }
                     }.padding(4)
                 }
-                if !session.isPhoto { motionCard; stabilizeCard }
+                }
+                if tab == "zoom" { motionCard }
+                if tab == "stable" { stabilizeCard }
+                if tab == "colour" {
                 GroupBox(L("Colour")) {
                     VStack(alignment: .leading, spacing: 6) {
                         dbl(L("Brightness"), "c-b", range: -1...1, \.color.brightness)
@@ -199,6 +223,7 @@ struct PicturePane: View {
                         dbl(L("Temperature"), "c-t", range: -1...1, \.color.temperature)
                         Button(L("Reset colour")) { session.edit("Reset colour") { $0.activeLook.color = ColorAdjust() } }.font(.caption)
                     }.padding(4)
+                }
                 }
                 if v?.isHDR == true {
                     Label(L("This video is HDR. Exports keep HDR (10-bit HEVC). Colour changes are applied to the HDR picture as stored, without tone mapping, so check the result."), systemImage: "exclamationmark.triangle").font(.caption).foregroundColor(.orange)

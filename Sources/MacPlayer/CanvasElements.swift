@@ -16,7 +16,8 @@ extension EditorSession {
     /// What an element shows now: where it is, how big and how turned (a photo: as it is saved, with no animation). Nil when it is not on screen.
     func elementState(_ o: TextOverlay) -> ElementState? {
         if isPhoto { return ElementState(x: o.x, y: o.y, scale: o.scale ?? 1, rotation: o.rotation ?? 0) }
-        return ElementAnimator.state(of: o, at: player.currentTime.seconds)
+        // Paused: as it is once it has arrived, like the picture draws it then (0.16.5).
+        return ElementAnimator.state(of: o, at: player.currentTime.seconds, settled: !player.isPlaying)
     }
 
     /// Moves and sizes an element of `p` from where it was when the drag began (`origin`): by `dx`, `dy` (fractions of the picture) and `k`
@@ -166,6 +167,21 @@ extension EditorSession {
         let st = OverlayEditor.editableState(c, at: t)
         let r = OverlayDrag.rect(st, outputAspect: Double(pic.width / pic.height), layerAspect: layerAspect(c))
         return (CGPoint(x: pic.minX + (r.x0 + r.width / 2) * pic.width, y: pic.maxY - (r.y1 - r.height / 2) * pic.height), r.width)
+    }
+
+    /// Typing in a text on the picture (0.16.5): the text is left out of the picture while its field is open, so its words show once.
+    func beginInlineTyping(_ id: UUID) {
+        typingLifted = id
+        CanvasLift.set(CanvasLift.ids.union([id]))
+        if isPhoto { renderPhoto() } else { player.refreshFrame() }
+    }
+
+    /// The field closed: the text is drawn on the picture again, with its new words (one rebuild, not one per key).
+    func endInlineTyping(_ id: UUID) {
+        guard typingLifted == id else { return }
+        typingLifted = nil
+        CanvasLift.set(CanvasLift.ids.subtracting([id]))
+        if isPhoto { renderPhoto() } else { rebuildReasons.append("Edit text"); schedulePreviewRefresh() }
     }
 
     /// The player draws the current frame again at most once per screen refresh, however many mouse moves come in.
@@ -587,17 +603,30 @@ final class ElementManipulatorView: NSView {
         f.frame = CGRect(x: item.frame.midX - w / 2, y: item.frame.midY - h / 2, width: w, height: h).intersection(bounds.insetBy(dx: 2, dy: 2))
         addSubview(f)
         inlineField = f; typingID = id; typingOriginal = o.text
+        fitTypingField(f)
+        s.beginInlineTyping(id)
         window?.makeFirstResponder(f)
         f.currentEditor()?.selectAll(nil)
         needsDisplay = true
+    }
+
+    /// The field grows with what is typed (0.16.5: a second line was cut at the top), staying centred where the text is.
+    func fitTypingField(_ f: NSTextField) {
+        let maxW = max(160, bounds.width - 8)
+        let width = min(maxW, max(f.frame.width, 160))
+        let need = f.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: 10_000)) ?? f.frame.size
+        let h = min(bounds.height - 4, max(need.height + 6, f.frame.height))
+        let c = CGPoint(x: f.frame.midX, y: f.frame.midY)
+        f.frame = CGRect(x: c.x - width / 2, y: c.y - h / 2, width: width, height: h).intersection(bounds.insetBy(dx: 2, dy: 2))
     }
 
     /// Ends the typing: keeps what was typed (one undo step), or puts the words back (Esc).
     func finishTyping(keep: Bool) {
         guard let f = inlineField, let id = typingID, let s = session else { return }
         inlineField = nil; typingID = nil
-        if !keep, f.stringValue != typingOriginal { s.edit("Edit text", coalesce: "inline-\(id)") { p in if let i = p.overlays.firstIndex(where: { $0.id == id }) { p.overlays[i].text = self.typingOriginal } } }
+        if !keep, f.stringValue != typingOriginal { s.edit("Edit text", coalesce: "inline-\(id)", refreshPreview: false) { p in if let i = p.overlays.firstIndex(where: { $0.id == id }) { p.overlays[i].text = self.typingOriginal } } }
         s.endCoalescing()
+        s.endInlineTyping(id)
         f.delegate = nil
         f.removeFromSuperview()
         window?.makeFirstResponder(self)
@@ -622,7 +651,10 @@ extension ElementManipulatorView: NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
         guard let f = inlineField, let id = typingID, let s = session else { return }
         let text = f.stringValue
-        s.edit("Edit text", coalesce: "inline-\(id)") { p in if let i = p.overlays.firstIndex(where: { $0.id == id }) { p.overlays[i].text = text } }
+        fitTypingField(f)
+        // Only the field shows the words while they are typed (the text is lifted off the picture): no preview is rebuilt at each key
+        // (0.16.5: every key rebuilt the whole preview, and the picture's copy of the text showed under the field, a little off — like a shadow).
+        s.edit("Edit text", coalesce: "inline-\(id)", refreshPreview: false) { p in if let i = p.overlays.firstIndex(where: { $0.id == id }) { p.overlays[i].text = text } }
     }
 
     /// Return ends the typing; ⌥Return starts a new line; Esc puts the words back.

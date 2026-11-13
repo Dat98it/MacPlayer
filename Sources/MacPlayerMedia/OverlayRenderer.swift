@@ -145,7 +145,7 @@ enum OverlayRenderer {
         let bw = max(1, spec.width * size.width), bh = max(1, spec.height * size.height)
         let rect = CGRect(x: centerX * size.width - bw / 2, y: (1 - centerY) * size.height - bh / 2, width: bw, height: bh)
         let path = shapePath(spec.kind, in: rect)
-        if let fill = spec.fillHex { ctx.setFillColor(color(hex: fill)); ctx.addPath(path); ctx.fillPath(using: spec.kind == .ring ? .evenOdd : .winding) }
+        if let fill = spec.fillHex { ctx.setFillColor(color(hex: fill)); ctx.addPath(path); ctx.fillPath(using: spec.kind.isHollow ? .evenOdd : .winding) }
         if let stroke = spec.strokeHex, spec.strokeWidth > 0 {
             ctx.setStrokeColor(color(hex: stroke)); ctx.setLineWidth(max(1, spec.strokeWidth * size.height)); ctx.setLineJoin(.round)
             ctx.addPath(path); ctx.strokePath()
@@ -207,6 +207,48 @@ enum OverlayRenderer {
             // Filled with the even-odd rule: the inner circle stays empty.
             p.addEllipse(in: r)
             p.addEllipse(in: r.insetBy(dx: r.width * 0.16, dy: r.height * 0.16))
+        case .octagon: regular(8, rotation: Double.pi / 8)
+        case .parallelogram: poly([(0.22, 0), (1, 0), (0.78, 1), (0, 1)])
+        case .trapezoid: poly([(0.22, 0), (0.78, 0), (1, 1), (0, 1)])
+        case .crescent:
+            let outer = CGPath(ellipseIn: r, transform: nil)
+            let cut = CGPath(ellipseIn: r.offsetBy(dx: r.width * 0.32, dy: r.height * 0.1), transform: nil)
+            return outer.subtracting(cut)
+        case .lightning: poly([(0.58, 0), (0.12, 0.56), (0.44, 0.56), (0.34, 1), (0.88, 0.4), (0.56, 0.4), (0.72, 0)])
+        case .droplet:
+            p.move(to: pt(0.5, 0))
+            p.addCurve(to: pt(0.5, 1), control1: pt(0.82, 0.36), control2: pt(1.04, 1))
+            p.addCurve(to: pt(0.5, 0), control1: pt(-0.04, 1), control2: pt(0.18, 0.36))
+            p.closeSubpath()
+        case .sparkle, .star6:
+            let n = kind == .sparkle ? 8 : 12, inner = kind == .sparkle ? 0.14 : 0.27
+            for i in 0..<n {
+                let a = -Double.pi / 2 + Double(i) * 2 * Double.pi / Double(n), rad = i % 2 == 0 ? 0.5 : inner
+                let q = pt(0.5 + cos(a) * rad, 0.5 + sin(a) * rad)
+                i == 0 ? p.move(to: q) : p.addLine(to: q)
+            }
+            p.closeSubpath()
+        case .doubleArrow: poly([(0, 0.5), (0.25, 0.04), (0.25, 0.3), (0.75, 0.3), (0.75, 0.04), (1, 0.5), (0.75, 0.96), (0.75, 0.7), (0.25, 0.7), (0.25, 0.96)])
+        case .chevron: poly([(0.08, 0), (0.55, 0), (1, 0.5), (0.55, 1), (0.08, 1), (0.53, 0.5)])
+        case .capsule: let c = min(r.width, r.height) / 2; p.addRoundedRect(in: r, cornerWidth: c, cornerHeight: c)
+        case .frame:
+            // A square outline (even-odd: the middle stays empty).
+            p.addRect(r)
+            p.addRect(r.insetBy(dx: min(r.width, r.height) * 0.12, dy: min(r.width, r.height) * 0.12))
+        case .ribbon: poly([(0, 0.12), (1, 0.12), (0.88, 0.5), (1, 0.88), (0, 0.88), (0.12, 0.5)])
+        case .tag: poly([(0, 0), (0.74, 0), (1, 0.5), (0.74, 1), (0, 1)])
+        case .shield:
+            p.move(to: pt(0.5, 0)); p.addLine(to: pt(0.96, 0.14)); p.addLine(to: pt(0.96, 0.48))
+            p.addCurve(to: pt(0.5, 1), control1: pt(0.96, 0.78), control2: pt(0.72, 0.92))
+            p.addCurve(to: pt(0.04, 0.48), control1: pt(0.28, 0.92), control2: pt(0.04, 0.78))
+            p.addLine(to: pt(0.04, 0.14)); p.closeSubpath()
+        case .cloud:
+            func circle(_ x: Double, _ y: Double, _ w: Double, _ h: Double) { p.addEllipse(in: CGRect(x: pt(x, y + h).x, y: pt(x, y + h).y, width: CGFloat(w) * r.width, height: CGFloat(h) * r.height)) }
+            circle(0.02, 0.4, 0.38, 0.55); circle(0.22, 0.08, 0.5, 0.7); circle(0.55, 0.3, 0.43, 0.62)
+            p.addRect(CGRect(x: pt(0.2, 0.95).x, y: pt(0.2, 0.95).y, width: 0.6 * r.width, height: 0.3 * r.height))
+        case .semicircle:
+            let full = CGPath(ellipseIn: CGRect(x: r.minX, y: r.minY - r.height, width: r.width, height: r.height * 2), transform: nil)
+            return full.intersection(CGPath(rect: r, transform: nil))
         }
         return p
     }
@@ -231,4 +273,9 @@ enum OverlayRenderer {
 public enum ElementGeometry {
     /// The box of an element before its animation moves, scales or turns it: fractions of the picture, from the top-left.
     public static func baseRect(_ o: TextOverlay, pictureSize: CGSize) -> CGRect? { OverlayRenderer.elementRect(o, size: pictureSize) }
+}
+
+/// The outline of a shape, for drawing it outside the renderer (the library's tiles, 0.16.5).
+public enum ShapeOutlines {
+    public static func path(_ kind: ShapeKind, in r: CGRect) -> CGPath { OverlayRenderer.shapePath(kind, in: r) }
 }

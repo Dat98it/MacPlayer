@@ -292,6 +292,12 @@ extension EditorSession {
 
     // MARK: Preview
 
+    #if DEBUG
+    var devSharpOff: Bool { ProcessInfo.processInfo.environment["MACPLAYER_DEV_NOSHARP"] != nil }
+    #else
+    var devSharpOff: Bool { false }
+    #endif
+
     func loadProjectPreview(at start: MediaTime?, since generation: Int? = nil) async {
         LayerLive.clear() // the rebuilt preview carries the current values itself
         EffectsLive.clear(); ColorLive.clear(); TransitionLive.clear(); ElementLive.clear(); colorCompare = false
@@ -304,7 +310,9 @@ extension EditorSession {
         guard let first = pieces.first else { player.unload(); return }
         let layers = project.layerSpecs(resolve: { sourceURLs[$0]?.path })
         let built = try? await CompositionBuilder.build(pieces: pieces, overlays: project.overlays, cues: project.subtitles.cues,
-                                                        subtitleStyle: project.subtitles.style, maxHeight: Self.previewMaxHeight, includeAudio: true, layers: layers, soundClips: resolvedSounds(), frameAccurate: false)
+                                                        subtitleStyle: project.subtitles.style, maxHeight: Self.previewMaxHeight, includeAudio: true, layers: layers, soundClips: resolvedSounds(), frameAccurate: false,
+                                                        screenPixels: devSharpOff ? nil : previewScreenPixels)
+        previewBuiltForPixels = previewScreenPixels ?? CGSize(width: 1, height: 1)
         previewHasCompositor = built?.videoComposition != nil
         await player.load(url: first.sourceURL, preview: built, at: start, since: generation)
     }

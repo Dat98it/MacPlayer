@@ -21,6 +21,8 @@ public struct OverlayTransform: Codable, Equatable, Sendable {
     public var isolateSubject = false
     /// Degrees, clockwise.
     public var rotation = 0.0
+    /// How much taller (above 1) or flatter (below 1) the layer is drawn than its own shape: a picture stretched freely (0.16.5).
+    public var stretch = 1.0
     public init() {}
 
     /// Keeps every value in a range that cannot produce an invisible or absurd layer.
@@ -30,12 +32,13 @@ public struct OverlayTransform: Codable, Equatable, Sendable {
         t.width = min(max(width, 0.02), 2); t.opacity = min(max(opacity, 0), 1); t.borderWidth = min(max(borderWidth, 0), 0.05)
         t.mask = mask?.clamped()
         t.rotation = min(max(rotation, -720), 720)
+        t.stretch = min(max(stretch, 0.1), 10)
         return t
     }
 }
 
 extension OverlayTransform {
-    enum CodingKeys: String, CodingKey { case centerX, centerY, width, opacity, borderWidth, borderHex, chromaKey, mask, blend, isolateSubject, rotation }
+    enum CodingKeys: String, CodingKey { case centerX, centerY, width, opacity, borderWidth, borderHex, chromaKey, mask, blend, isolateSubject, rotation, stretch }
 
     /// Projects saved before masks and blending existed have none of those keys: they open with none.
     public init(from decoder: Decoder) throws {
@@ -52,7 +55,11 @@ extension OverlayTransform {
         blend = try c.decodeIfPresent(LayerBlend.self, forKey: .blend) ?? .normal
         isolateSubject = try c.decodeIfPresent(Bool.self, forKey: .isolateSubject) ?? false
         rotation = try c.decodeIfPresent(Double.self, forKey: .rotation) ?? 0
+        stretch = try c.decodeIfPresent(Double.self, forKey: .stretch) ?? 1
     }
+
+    /// The layer's shape as drawn (width / height): its own shape, stretched.
+    public func drawnAspect(_ own: Double) -> Double { own / min(max(stretch, 0.1), 10) }
 }
 
 /// The animated values at one instant (what the compositor draws).
@@ -102,6 +109,8 @@ public protocol OverlayAnimating {
     /// How the layer arrives and leaves (slide, zoom, pop...), on top of its keyframes. Nil = none.
     var animationIn: ElementAnimation? { get }
     var animationOut: ElementAnimation? { get }
+    /// A motion that keeps going while it is on screen (0.16.5).
+    var loop: ElementLoop? { get }
 }
 
 extension OverlayAnimating {
@@ -109,7 +118,9 @@ extension OverlayAnimating {
 
     /// Values at timeline time `t`, or nil when the layer is not on screen then. Between keyframes the values change in a
     /// straight line; before the first and after the last they hold. Fades multiply the opacity.
-    public func state(at t: MediaTime) -> OverlayState? {
+    /// `settled`: as it is once it has arrived — no fade, no arriving or leaving move (an editor that is paused, 0.16.5: a layer added at
+    /// the playhead was drawn see-through, at the very start of its fade).
+    public func state(at t: MediaTime, settled: Bool = false) -> OverlayState? {
         guard t >= start, t < end else { return nil }
         let rel = (t - start).seconds
         var s = OverlayState(centerX: transform.centerX, centerY: transform.centerY, width: transform.width, opacity: transform.opacity, rotation: transform.rotation)
@@ -126,14 +137,20 @@ extension OverlayAnimating {
                                  rotation: mix(a.rotation, b.rotation))
             }
         }
-        var fade = 1.0
-        if fadeIn > 0 { fade = min(fade, rel / fadeIn) }
-        if fadeOut > 0 { fade = min(fade, (duration.seconds - rel) / fadeOut) }
-        s.opacity = min(max(s.opacity * max(0, min(1, fade)), 0), 1)
-        // Arriving and leaving: the same moves text uses, applied to the layer's place, size, turn and opacity.
-        let total = duration.seconds
-        if let a = animationIn, a.kind != .none, a.kind != .typewriter, a.duration > 0, rel < a.duration { Self.animate(a.kind, progress: rel / a.duration, leaving: false, on: &s) }
-        if let a = animationOut, a.kind != .none, a.kind != .typewriter, a.duration > 0, total - rel < a.duration { Self.animate(a.kind, progress: (total - rel) / a.duration, leaving: true, on: &s) }
+        if !settled {
+            var fade = 1.0
+            if fadeIn > 0 { fade = min(fade, rel / fadeIn) }
+            if fadeOut > 0 { fade = min(fade, (duration.seconds - rel) / fadeOut) }
+            s.opacity = min(max(s.opacity * max(0, min(1, fade)), 0), 1)
+            // Arriving and leaving: the same moves text uses, applied to the layer's place, size, turn and opacity.
+            let total = duration.seconds
+            if let a = animationIn, a.kind != .none, a.kind != .typewriter, a.duration > 0, rel < a.duration { Self.animate(a.kind, progress: rel / a.duration, leaving: false, on: &s) }
+            if let a = animationOut, a.kind != .none, a.kind != .typewriter, a.duration > 0, total - rel < a.duration { Self.animate(a.kind, progress: (total - rel) / a.duration, leaving: true, on: &s) }
+        }
+        if let l = loop {
+            let o = l.offsets(at: rel)
+            s.centerX += o.dx; s.centerY += o.dy; s.width *= o.scale; s.rotation += o.rotation; s.opacity *= o.alpha
+        }
         s.opacity = min(max(s.opacity, 0), 1)
         return s
     }
@@ -178,6 +195,8 @@ public struct OverlayClip: Codable, Identifiable, Equatable, Sendable, OverlayAn
     public var fadeOut: Double
     public var animationIn: ElementAnimation?
     public var animationOut: ElementAnimation?
+    /// A motion that keeps going while it is on screen (0.16.5).
+    public var loop: ElementLoop?
     /// Layers and elements with the same group move and get selected together (0.12).
     public var groupID: UUID?
     /// A locked layer cannot be moved, resized or deleted on the picture (0.12).
@@ -215,6 +234,7 @@ public struct LayerSpec: Codable, Equatable, Sendable, OverlayAnimating {
     public var fadeOut: Double
     public var animationIn: ElementAnimation?
     public var animationOut: ElementAnimation?
+    public var loop: ElementLoop?
 
     public init(id: UUID = UUID(), kind: Kind, lane: Int, start: MediaTime, duration: MediaTime, transform: OverlayTransform = OverlayTransform(),
                 keyframes: [OverlayKeyframe] = [], audio: AudioSettings = AudioSettings(), fadeIn: Double = 0, fadeOut: Double = 0,
@@ -293,7 +313,7 @@ public enum OverlayEditor {
 
     /// The values to show for editing at `t` without fades: base transform, or the interpolated keyframes.
     public static func editableState(_ clip: OverlayClip, at t: MediaTime) -> OverlayState {
-        var plain = clip; plain.fadeIn = 0; plain.fadeOut = 0; plain.animationIn = nil; plain.animationOut = nil
+        var plain = clip; plain.fadeIn = 0; plain.fadeOut = 0; plain.animationIn = nil; plain.animationOut = nil; plain.loop = nil
         let inside = min(max(t, clip.start), clip.end - MediaTime(value: 1, timescale: 6000))
         return plain.state(at: inside) ?? OverlayState(centerX: clip.transform.centerX, centerY: clip.transform.centerY, width: clip.transform.width, opacity: clip.transform.opacity, rotation: clip.transform.rotation)
     }
@@ -368,6 +388,29 @@ public enum OverlayDrag {
         s.centerX = anchor.x + sx * w / 2
         s.centerY = anchor.y + sy * h / 2
         return s
+    }
+
+    public enum Edge: CaseIterable, Sendable { case left, right, top, bottom }
+
+    /// Drags one edge to `point` (0.16.5): the opposite edge stays, and only the width (left, right) or only the height (top, bottom)
+    /// changes — the picture is stretched freely. `layerAspect` is the layer's own shape; returns the new state and stretch.
+    public static func stretch(_ start: OverlayState, stretch s0: Double, edge: Edge, to point: (x: Double, y: Double), outputAspect: Double, layerAspect: Double,
+                               minSize: Double = 0.03) -> (state: OverlayState, stretch: Double) {
+        let own = max(0.01, layerAspect)
+        let r = rect(start, outputAspect: outputAspect, layerAspect: own / max(0.1, s0))
+        var x0 = r.x0, x1 = r.x1, y0 = r.y0, y1 = r.y1
+        switch edge {
+        case .left: x0 = min(point.x, x1 - minSize)
+        case .right: x1 = max(point.x, x0 + minSize)
+        case .top: y0 = min(point.y, y1 - minSize)
+        case .bottom: y1 = max(point.y, y0 + minSize)
+        }
+        var s = start
+        s.width = min(x1 - x0, 2)
+        s.centerX = (x0 + x1) / 2; s.centerY = (y0 + y1) / 2
+        // Drawn shape = width / height on screen; stretch = own shape / drawn shape.
+        let drawn = (s.width * outputAspect) / max(1e-6, y1 - y0)
+        return (s, min(max(own / max(1e-6, drawn), 0.1), 10))
     }
 
     public struct Snapped: Equatable, Sendable {
