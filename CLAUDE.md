@@ -9,7 +9,8 @@ It is kept in the repository on purpose, at the maintainer's request. When you c
 all on the Mac: no account, no telemetry, and no network use except opening a web link the person pastes (0.15, File ▸ Open Link…; the only network code is
 `LinkFetcher`/`Download` and AVPlayer playing that link). It is built with **SwiftPM only (no Xcode project, no Xcode installation, only the
 Command Line Tools)**, Swift 6 toolchain with `swiftLanguageVersions: [.v5]`, macOS 15+, arm64 tested (Intel is not tested). No third-party libraries
-(Apple frameworks only: AVFoundation, AVKit, CoreImage, Vision, Speech, SwiftUI, AppKit).
+(Apple frameworks only: AVFoundation, AVKit, CoreImage, CoreML, Accelerate, Vision, Speech, SwiftUI, AppKit).
+Since 0.18, MIT-licensed UVR MDX-Net model data is bundled in `Resources/Models` (no third-party Swift/Python runtime).
 
 - Remote: `git@github.com-dat98it:Dat98it/MacPlayer.git`, branch `main`.
 - The current version is in `Resources/Info.plist` (`CFBundleShortVersionString`, plus `CFBundleVersion`). Installed copy: `/Applications/MacPlayer.app`.
@@ -223,6 +224,23 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.18.0 Instrumental extraction.** File ▸ Remove Vocals, the solo-file header and Audio inspector open `VocalRemovalWindow`.
+This is a file-to-file tool: it never edits a project or source. `VocalRemover` decodes audio in fixed-size stereo 44.1 kHz chunks,
+`VocalSTFT` implements MDX's centred periodic-Hann complex STFT (6144 / 1024 / 256), Core ML predicts the instrumental directly,
+and sign-inversion denoise removes network bias (silence otherwise produced noise). Context is trimmed before adjacent chunks are written.
+The AAC 256 kb/s result goes through `SafeSaver`, duration verification, then a move into place. Cancellation propagates to the worker;
+closing the tool or quitting waits for cleanup. Heavy processing runs off the main actor. Original and existing destination files are refused.
+`Resources/Models/Instrumental.mlpackage` is UVR Inst HQ 3, Core ML conversion by Gyoom (MIT), pinned at revision
+`aa27ab16896fdb298cdb73cceb76c950e7580c00` of `https://huggingface.co/gyoom/UVR-MDX-CoreML`; provenance and license are alongside it.
+`Scripts/compile_vocal_model.swift` verifies SHA-256 pins and compiles it into the app's `Resources/Models/Instrumental.mlmodelc` at build time.
+The installed app never downloads a model or uploads audio. Debug builds/tests can compile the source package; release builds require the bundle.
+Media `VocalRemovalTests` cover STFT phase/amplitude/boundaries, known voice versus known music, silence, mono/48 kHz/chunk boundaries,
+cancellation cleanup, no-audio input and protection of originals/existing files. The small voice fixture is locally synthesised, not user audio.
+Default `Scripts/test.sh` runs the Core ML suite separately from the rest: sharing the GPU made the existing <5 s export check take
+6.25 s instead of 0.32 s. All tests still run; speed thresholds are unchanged. Explicit filters retain their normal behaviour.
+Self-test **G11**: `MACPLAYER_ONLY_VOCALS=1 MACPLAYER_VOCAL_SOURCE=<read-only song/video>` (optional `MACPLAYER_VOCAL_OUTPUT`,
+`MACPLAYER_VOCAL_SNAPSHOT`) with `--sandbox <dir> --selftest <media-dir>` exercises the real UI save/cancel path and SHA-256 checks.
+CLI: `macplayer-probe instrumental <source> <new-output.m4a> [model]`. Quality varies with the mix; dense/reverberant vocals can remain.
 **0.17.4 Clip frames.** `PicturePane.canvasShapeBinding/canvasFitBinding` edit only `Project.activeLook`; the old video bindings called
 `setFrame`, overwriting every clip. Optional `VideoLook.clipCanvas` gives the selected clip its own frame, rendered by `RecipeCompositor.mainPicture`
 inside the fixed output canvas (including when the first clip is selected). Nil keeps legacy rendering. `canvas` still determines the finished

@@ -117,6 +117,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             a.addButton(withTitle: L("Quit")); a.addButton(withTitle: L("Cancel"))
             if a.runModal() != .alertFirstButtonReturn { return .terminateCancel }
         }
+        if VocalRemovalWindow.shared.isRunning {
+            Task { await VocalRemovalWindow.shared.cancelAndWait(); NSApp.reply(toApplicationShouldTerminate: true) }
+            return .terminateLater
+        }
         return .terminateNow
     }
 
@@ -799,6 +803,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         add(file, L("Open Folder as Playlist…"), #selector(openFolderAsPlaylist(_:)), "o", [.command, .shift])
         file.addItem(.separator())
         add(file, L("Edit This File…"), #selector(editCurrentFile(_:)), "e")
+        add(file, L("Remove Vocals…"), #selector(removeVocals(_:)))
         add(file, L("Rename File…"), #selector(renameCurrentFile(_:)))
         add(file, L("Move File to Trash…"), #selector(trashCurrentFile(_:)))
         file.addItem(.separator())

@@ -23,6 +23,9 @@ cp "$BIN" "$APP/Contents/MacOS/MacPlayer"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 [[ -f Resources/AppIcon.icns ]] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp -R Resources/en.lproj Resources/vi.lproj "$APP/Contents/Resources/"
+mkdir -p "$APP/Contents/Resources/Models"
+swift Scripts/compile_vocal_model.swift Resources/Models/Instrumental.mlpackage "$APP/Contents/Resources/Models/Instrumental.mlmodelc"
+cp Resources/Models/LICENSE-UVR-MDX.txt Resources/Models/Instrumental.source.json "$APP/Contents/Resources/Models/"
 
 # Ad-hoc signature: enough to run on the machine that built it. Distribution needs a Developer ID and notarization.
 codesign --force --sign - "$APP"

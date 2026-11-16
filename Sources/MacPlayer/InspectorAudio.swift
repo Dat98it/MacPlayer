@@ -75,6 +75,8 @@ struct AudioPane: View {
                 NoiseControl(strength: session.project.activeAudio.denoise, progress: session.denoiseProgress[.main]) { session.setDenoise($0, for: .main) }
                 Divider()
                 SoundFXControl(fx: session.project.activeAudio.fx, progress: session.fxProgress[.main]) { session.setSoundFX($0, for: .main) }
+                Button { VocalRemovalWindow.shared.show(source: session.vocalRemovalSource) } label: { Label(L("Remove Vocals…"), systemImage: "waveform.badge.minus") }
+                    .help(L("Save an instrumental copy of this song or video's audio."))
                 if !session.isProject {
                     Divider()
                     HStack {
@@ -142,6 +144,8 @@ struct AudioPane: View {
         let id = c.id
         let fileLength = (c.fileDuration ?? c.sourceStart + c.duration).seconds
         Divider()
+        Button { VocalRemovalWindow.shared.show(source: session.vocalRemovalSource) } label: { Label(L("Remove Vocals…"), systemImage: "waveform.badge.minus") }
+            .help(L("Save an instrumental copy of this song or video's audio."))
         TextField(L("Name"), text: Binding(get: { c.name }, set: { n in session.updateSound(id, "Rename sound", coalesce: "name") { $0.name = n } })).textFieldStyle(.roundedBorder)
         HStack {
             Text(LF("Starts at %@", Timecode.format(c.start))).font(.caption.monospacedDigit())

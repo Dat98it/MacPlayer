@@ -1,0 +1,14 @@
+{
+  "model": "UVR-MDX-NET Inst HQ 3",
+  "author": "Kimberley Jensen / UVR",
+  "coreMLConversion": "Gyoom",
+  "source": "https://huggingface.co/gyoom/UVR-MDX-CoreML",
+  "revision": "aa27ab16896fdb298cdb73cceb76c950e7580c00",
+  "license": "MIT",
+  "stem": "instrumental",
+  "sampleRate": 44100,
+  "nFFT": 6144,
+  "hop": 1024,
+  "frames": 256,
+  "weightSHA256": "0a687c627a66e8dc3dc6947e31d35526164f234757208624506ff2aaf47bd1a5"
+}

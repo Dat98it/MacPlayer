@@ -16,6 +16,15 @@ guard args.count >= 2 else { fail("usage: macplayer-probe gen|info|spike ...") }
 
 func run() async throws {
     switch args[1] {
+    case "instrumental":
+        guard args.count >= 4 else { fail("instrumental <song-or-video> <new-output.m4a> [model.mlpackage|mlmodelc]") }
+        let source = URL(fileURLWithPath: args[2]), output = URL(fileURLWithPath: args[3])
+        let start = Date()
+        try await VocalRemover.writeInstrumental(source: source, to: output, modelURL: args.count > 4 ? URL(fileURLWithPath: args[4]) : nil) { progress in
+            print(String(format: "separating %.0f%%", progress * 100))
+        }
+        let info = try await MediaProbe.probe(url: output)
+        print(String(format: "instrumental: %.3f s, processed in %.2f s", info.duration.seconds, Date().timeIntervalSince(start)))
     case "gen":
         guard args.count >= 3 else { fail("gen <out> [h264|hevc] [seconds] [fps] [gop] [WxH]") }
         var s = SyntheticMedia.Spec()

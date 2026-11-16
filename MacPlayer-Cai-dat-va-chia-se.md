@@ -1,4 +1,4 @@
-# MacPlayer 0.17.4: cài đặt và chia sẻ
+# MacPlayer 0.18.0: cài đặt và chia sẻ
 
 **MacPlayer** (trước đây tên MacVideo) là app miễn phí cho macOS để xem và chỉnh sửa video lẫn ảnh: cắt, ghép, chỉnh màu chuyên nghiệp, tách nền và mặt nạ, chuyển cảnh, hiệu ứng giọng, chữ, hình dán, rồi xuất ngay trên Mac. Mọi thứ chạy trên máy bạn: không tài khoản, không kết nối mạng, không gửi video đi đâu, không thu thập dữ liệu.
 
@@ -9,7 +9,7 @@ Giấy phép MIT: dùng, sao chép và chia sẻ tự do (xem mục cuối).
 - Đã kiểm thử trên Mac chip Apple (M1 trở đi). **Mac Intel chưa được thử**, không cam kết chạy.
 
 ## Cài đặt
-1. Tải `MacPlayer-0.17.4.dmg` (hoặc `.zip`) từ nơi người chia sẻ cho bạn.
+1. Tải `MacPlayer-0.18.0.dmg` (hoặc `.zip`) từ nơi người chia sẻ cho bạn.
 2. Mở file `.dmg`, kéo **MacPlayer** vào thư mục **Applications**.
 3. Lần đầu mở, macOS báo không xác minh được nhà phát triển. Đây là bình thường: app chưa được Apple công chứng vì việc đó cần tài khoản nhà phát triển trả phí. Chọn một cách:
    - Chuột phải vào MacPlayer trong Applications, chọn **Mở**, rồi bấm **Mở** lần nữa; hoặc
@@ -24,15 +24,16 @@ Giấy phép MIT: dùng, sao chép và chia sẻ tự do (xem mục cuối).
 So mã SHA-256 của file với mã dưới đây. Khác nhau nghĩa là file đã bị đổi hoặc tải lỗi: đừng cài.
 
 ```bash
-shasum -a 256 MacPlayer-0.17.4.dmg
+shasum -a 256 MacPlayer-0.18.0.dmg
 ```
 
 ```
-93d16e4016867caba85a6bcf14a47a1e2af1256bbd18bb9d06bee7af2062222c  MacPlayer-0.17.4.dmg
-753f925898851818629482be7c213b8fc516262001d791c2d7e485edd4c3fbf2  MacPlayer-0.17.4.zip
+debc32c098c239e8dc211c17d2ad8b831004a2a4d540489020e75ab4b9647503  MacPlayer-0.18.0.dmg
+76f004b3f7d87fe1e7769aa379b4b0274fab106b7eec8a915ef52edf5ed55746  MacPlayer-0.18.0.zip
 ```
 
 ## Dùng nhanh
+- **Tách lời lấy nhạc nền:** mở bài hát hoặc video, bấm **Tách lời** (hoặc **Tệp ▸ Tách lời…**), rồi **Tách và lưu nhạc nền…**. Lưu file `.m4a` mới, chạy ngay trên Mac và giữ nguyên file gốc; có tiến trình và Hủy. Chất lượng phụ thuộc bản phối.
 - **Mở video:** kéo file vào cửa sổ, hoặc bấm đúp / chuột phải ▸ Mở bằng ▸ MacPlayer. Thả một **thư mục** để tạo danh sách phát.
 - **Cắt đoạn:** đặt điểm In và Out, rồi xuất. Bước từng khung bằng phím mũi tên.
 - **Ghép nhiều video:** thêm video vào dòng thời gian, sắp xếp, xuất thành một file. Có thể đặt thêm video hoặc ảnh làm lớp phủ lên trên.

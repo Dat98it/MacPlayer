@@ -55,6 +55,10 @@ struct SoloHeader: View {
     // MARK: A file of the person's
 
     @ViewBuilder private var fileActions: some View {
+        if !session.isPhoto, session.info?.hasAudio == true {
+            Button { VocalRemovalWindow.shared.show(source: session.vocalRemovalSource) } label: { Label(L("Remove vocals"), systemImage: "waveform.badge.minus") }
+                .controlSize(.small).help(L("Save an instrumental copy of this song or video's audio."))
+        }
         // The bar's main action, in the accent colour, with an icon of what editing it means (see `EditButtonIcon`).
         Button(action: onEdit) { Label(L("Edit"), systemImage: EditButtonIcon.name(for: session)).labelStyle(.titleAndIcon) }
             .buttonStyle(.borderedProminent).controlSize(.small)

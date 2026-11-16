@@ -17,7 +17,7 @@ let package = Package(
         // Command line tool for media spikes and verification. Never modifies the files it reads.
         .executableTarget(name: "macplayer-probe", dependencies: ["MacPlayerCore", "MacPlayerMedia"], path: "Sources/macplayer-probe"),
         .testTarget(name: "MacPlayerCoreTests", dependencies: ["MacPlayerCore"], path: "Tests/MacPlayerCoreTests"),
-        .testTarget(name: "MacPlayerMediaTests", dependencies: ["MacPlayerCore", "MacPlayerMedia"], path: "Tests/MacPlayerMediaTests"),
+        .testTarget(name: "MacPlayerMediaTests", dependencies: ["MacPlayerCore", "MacPlayerMedia"], path: "Tests/MacPlayerMediaTests", resources: [.copy("Fixtures")]),
     ],
     swiftLanguageVersions: [.v5]
 )

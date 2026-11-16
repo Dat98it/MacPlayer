@@ -43,6 +43,11 @@ enum SelfTest {
         try? fm.copyItem(at: mediaDir.appendingPathComponent("demo.mp4"), to: demo)
         let original = (try? Data(contentsOf: demo)) ?? Data()
 
+        if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_VOCALS"] != nil {
+            await vocalRemovalFlow(env: env, work: work, app: app)
+            print("\(failures) FAILED"); exit(failures == 0 ? 0 : 1)
+        }
+
         if ProcessInfo.processInfo.environment["MACPLAYER_ONLY_CLIP_CANVAS"] != nil {
             await clipCanvasFlow(env: env, work: work, app: app)
             print("\(failures) FAILED"); exit(failures == 0 ? 0 : 1)
