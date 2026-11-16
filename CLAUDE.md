@@ -224,6 +224,15 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.19.0 Quick cuts on the timeline.** Core `TimelineCuts.swift`: `TimelineCuts.trim(_:clip:at:removing:ripple:)` (Q = `.beforePlayhead`,
+W = `.afterPlayhead`; source time of the frame shown, snapped like `splitAtPlayhead`; nil within a frame of an edge), `delete(_:clips:ripple:)`,
+`range(in:from:to:)` (⇧-click). `TimelineRipple.remove(span)/insert(at:length:)/followTrim(of:leftEdge:before:)` move texts, layers (video
+layers advance their source start, keyframes shift), sounds (sourceStart + volume curve), markers and subtitle cues: things across a cut get
+shorter and play on, things starting inside start at the cut minus their head, things wholly inside are kept at the cut (subtitle cues wholly inside
+are dropped). App: `EditorSession.trimAtPlayhead(_:)`, `timelineFollows` (UserDefaults `MacPlayerTimelineFollows`, default on; toolbar toggle
+"Follow"), `deleteTimelineClips` uses `TimelineCuts.delete`, `trimClip` restarts every move from `trimBase` (the project at the press; cleared by
+`endCoalescing`) — the left edge used to accumulate each move. Keys Q/W in `MainWindowController.handleKey` (no ⌘⌥⌃). Debug aid
+`MACPLAYER_DEV_KEYS="3:q,4600:w,trim:1:L:1/2/3"` (keys through `testKey`, edge drags through `trimClip`; prints `DEV_CUT` lines). Core `TimelineCutsTests`.
 **0.18.0 Instrumental extraction.** File ▸ Remove Vocals, the solo-file header and Audio inspector open `VocalRemovalWindow`.
 This is a file-to-file tool: it never edits a project or source. `VocalRemover` decodes audio in fixed-size stereo 44.1 kHz chunks,
 `VocalSTFT` implements MDX's centred periodic-Hann complex STFT (6144 / 1024 / 256), Core ML predicts the instrumental directly,

@@ -134,6 +134,8 @@ final class EditorSession: NSObject, ObservableObject {
     var previewBuiltForPixels: CGSize?
     private var pixelsRebuild: DispatchWorkItem?
     private var pixelsRebuildWaiting = false
+    /// The project as it was when the drag of a clip's edge began (0.19).
+    var trimBase: (key: String, project: Project)?
 
     /// The picture's area changed size (the window, a panel): when the preview was drawn for a size quite different, it is drawn again
     /// for the new one, once the resizing has stopped.
@@ -483,7 +485,7 @@ final class EditorSession: NSObject, ObservableObject {
         if refreshPreview { rebuildReasons.append(label); schedulePreviewRefresh() }
     }
 
-    func endCoalescing() { var h = history; h.endCoalescing(); history = h }
+    func endCoalescing() { var h = history; h.endCoalescing(); history = h; trimBase = nil }
 
     func undo() { guard canEdit else { return }; LayerLive.clear(); var h = history; if let l = h.undo() { history = h; markChanged(); schedulePreviewRefresh(); flash(LF("Undid “%@”", L(l))) } }
     func redo() { guard canEdit else { return }; LayerLive.clear(); var h = history; if let l = h.redo() { history = h; markChanged(); schedulePreviewRefresh(); flash(LF("Redid “%@”", L(l))) } }

@@ -954,3 +954,20 @@ Ghi nhận thêm: chữ luôn được vẽ trên mọi ảnh/lớp (thứ tự 
 - **Bản đóng gói release:** chạy lại G11 trên toàn bộ bài hát thật, 10/10 kiểm tra qua; 195,193 giây nhạc được xử lý trong 17,27 giây. Mô hình được nạp từ bundle (bản release không có đường dự phòng tới mã nguồn). Đã cài 0.18.0 (36) vào `/Applications/MacPlayer.app` và xác minh chữ ký, binary khớp gói ZIP.
 - **Bộ kiểm thử đầy đủ:** 688 bài qua (425 Core, 255 Media khác và 8 tách lời). Nhóm Core ML chạy riêng vì dùng chung GPU làm bài đo xuất video tăng từ 0,32 lên 6,25 giây; không thay đổi ngưỡng hiệu năng hay bỏ bài nào. Kiểm tra bản dịch: 0 thiếu, 0 sai tham số.
 - **Giới hạn:** chưa đánh giá nghe chủ quan trên nhiều thể loại hoặc thử trên Intel/macOS 15. Tùy bản phối có thể còn giọng hát hoặc giảm nhạc cụ; UI nói rõ điều này. Công cụ xử lý toàn bộ file nguồn, không tự thay âm thanh trong dự án.
+
+
+## Bản 0.19.0 — Cắt nhanh trên timeline (16/11/2026)
+
+**Yêu cầu:** tính năng biên tập hay dùng như CapCut/Final Cut, bắt đầu bằng "Cắt nhanh trên timeline".
+
+**Đã làm:**
+- **Q / W** (và nút **Bỏ trước / Bỏ sau**): bỏ phần của đoạn dưới đầu phát nằm trước/sau đầu phát, cắt đúng khung đang hiện như lệnh Tách (S). Sau Q, đầu phát nằm ở đầu đoạn, đúng khung hình vừa xem. Đầu phát sát mép đoạn (dưới 1 khung) thì báo, không cắt.
+- **Kéo theo** (bật sẵn, nhớ giữa các lần mở): khi đoạn chính ngắn đi, dài ra hay bị xóa, chữ/hình/nhãn dán, lớp ảnh/video, âm thanh, điểm đánh dấu và phụ đề phía sau dịch theo. Thứ chạy ngang qua phần bị bỏ (ví dụ nhạc nền) ngắn lại và phát tiếp, không nhảy. Thứ bắt đầu trong phần bị bỏ bắt đầu ở chỗ cắt, bỏ phần đầu (âm thanh và lớp video tua tới đúng chỗ, keyframe và đường âm lượng dịch theo). Chữ, lớp, âm thanh nằm trọn trong phần bị bỏ **được giữ lại** ở chỗ cắt với độ dài cũ; riêng dòng phụ đề nằm trọn trong đó bị xóa (là lời của hình đã bỏ). Hoàn tác trả lại tất cả.
+- **⇧-click** trên đoạn chính chọn mọi đoạn ở giữa; ⌫ xóa cùng lúc (một bước hoàn tác, "Xóa các đoạn").
+- **Sửa lỗi cũ:** kéo mép trái của đoạn cộng dồn từng lần nhích chuột (kéo 1→2→3 giây cắt 6 giây). Nay mỗi lần kéo tính lại từ trạng thái lúc bấm chuột; kéo ra ngoài để lấy lại phần đầu cũng được.
+
+**Kiểm thử:**
+- Core `TimelineCutsTests` (9 bài): bỏ trước/sau, đầu phát ở mép, tắt Kéo theo, xóa nhiều đoạn, âm thanh/lớp video bắt đầu trong phần bị bỏ, kéo mép ra/vào, ⇧-click. Toàn bộ: Core 434, Media 255, tách lời 8 — đều qua. Bản dịch: 0 thiếu.
+- Cửa sổ thật trên dự án thật "TỔNG HỢP NHẠC REMIX HAY" (8 đoạn; sao lưu ngay trước, chép trả và so mã băm sau mỗi lần): phím Q ở 0:03 qua đúng đường xử lý phím của cửa sổ → đoạn 1 ngắn 3,00 s, chữ "Trích dẫn" 4,30–7,30 → 1,30–4,30; W ở 1:16:40 → đoạn 2 còn 58 s, các đoạn sau dồn lên; kéo mép trái 1→2→3 s → cắt đúng 3,00 s, 1 bước hoàn tác; kéo mép phải tới 4100 s → đúng 4100,00 s.
+
+**Chưa làm/chưa kiểm chứng:** kéo nhiều đoạn đã chọn để đổi chỗ cùng lúc; đổi tốc độ đoạn hoặc đổi thứ tự đoạn chưa kéo theo chữ/lớp/âm thanh; nút "hút vào nhịp nhạc" thuộc tính năng "Theo nhịp nhạc" (chưa làm); bấm chuột thật vào các nút.

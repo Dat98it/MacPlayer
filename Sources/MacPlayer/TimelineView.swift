@@ -565,7 +565,9 @@ final class TimelineView: NSView {
         case .main:
             if let (id, left) = projectEdge(at: p) { drag = .edge(id, left: left); s.select(.clip(id)); return }
             if let c = projectClip(at: time(p.x)) {
-                if e.modifierFlags.contains(.command) { s.selectedClipIDs = s.selectedClipIDs.symmetricDifference([c.id]) } else if !s.selectedClipIDs.contains(c.id) || s.selectedClipIDs.count > 1 { s.select(.clip(c.id)) }
+                if e.modifierFlags.contains(.shift), let anchor = s.project.timeline.first(where: { s.selectedClipIDs.contains($0.id) })?.id {
+                    s.selectedClipIDs = Set(TimelineCuts.range(in: s.project.timeline, from: anchor, to: c.id))   // ⇧-click: every clip between (0.19)
+                } else if e.modifierFlags.contains(.command) { s.selectedClipIDs = s.selectedClipIDs.symmetricDifference([c.id]) } else if !s.selectedClipIDs.contains(c.id) || s.selectedClipIDs.count > 1 { s.select(.clip(c.id)) }
                 drag = .moveClip(c.id, startX: p.x); movedFar = false
                 s.player.scrub(to: MediaTime(seconds: clampTime(time(p.x)), timescale: 600))
                 return

@@ -1619,3 +1619,17 @@
 "Separate and Save Instrumental…" = "Tách và lưu nhạc nền…";
 "Save an instrumental copy of this song or video's audio." = "Lưu phần nhạc nền của bài hát hoặc video thành file mới.";
 "Choose File…" = "Chọn file…";
+
+/* 0.19 Quick cuts on the timeline */
+"Cut before" = "Bỏ trước";
+"Cut after" = "Bỏ sau";
+"Remove the part of the clip before the playhead (Q)" = "Xóa phần của đoạn nằm trước đầu phát (Q)";
+"Remove the part of the clip after the playhead (W)" = "Xóa phần của đoạn nằm sau đầu phát (W)";
+"Follow" = "Kéo theo";
+"When a clip gets shorter, longer or is deleted, the texts, layers, sounds and markers after it move with the pictures" = "Khi một đoạn bị cắt ngắn, kéo dài hay bị xóa, chữ, lớp ảnh, âm thanh và điểm đánh dấu phía sau dịch theo hình";
+"Texts, layers and sounds follow the clips" = "Chữ, lớp ảnh và âm thanh đi theo các đoạn";
+"Move the playhead inside a clip, away from its edges, to cut it." = "Đưa đầu phát vào trong một đoạn, cách xa mép, để cắt.";
+"Drag to move · drag the edges to trim · S splits · Q/W cut before/after the playhead · ⇧-click picks several" = "Kéo để di chuyển · kéo mép để cắt bớt · S tách · Q/W bỏ phần trước/sau đầu phát · ⇧-click chọn nhiều đoạn";
+"Delete clips" = "Xóa các đoạn";
+"Remove before playhead" = "Bỏ phần trước đầu phát";
+"Remove after playhead" = "Bỏ phần sau đầu phát";

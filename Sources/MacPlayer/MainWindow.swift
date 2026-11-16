@@ -856,6 +856,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
         switch ch.lowercased() {
         case " ": s.player.togglePlay(); return true
         case "s": if s.isProject { s.splitAtPlayhead(); return true }; return false
+        case "q", "w":                                                    // remove the part before / after the playhead (0.19)
+            guard s.isProject, e.modifierFlags.intersection([.command, .option, .control]).isEmpty else { return false }
+            s.trimAtPlayhead(ch.lowercased() == "q" ? .beforePlayhead : .afterPlayhead); return true
         case "m": if s.isProject { s.addMarker(); return true }; return false
         case ",": s.player.step(frames: -1); return true
         case ".": s.player.step(frames: 1); return true

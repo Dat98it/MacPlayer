@@ -89,6 +89,14 @@ struct TimelineToolbar: View {
             tool("arrow.uturn.forward", L("Redo"), session.redoTitle + " (⇧⌘Z)", enabled: session.history.canRedo) { session.redo() }
             Divider().frame(height: 18).padding(.horizontal, 4)
             tool("scissors", L("Split"), L("Split the clip at the playhead (S)"), enabled: canSplit) { session.splitAtPlayhead() }
+            tool("arrow.left.to.line", L("Cut before"), L("Remove the part of the clip before the playhead (Q)"), enabled: canSplit) { session.trimAtPlayhead(.beforePlayhead) }
+            tool("arrow.right.to.line", L("Cut after"), L("Remove the part of the clip after the playhead (W)"), enabled: canSplit) { session.trimAtPlayhead(.afterPlayhead) }
+            Toggle(isOn: Binding(get: { session.timelineFollows }, set: { session.timelineFollows = $0 })) {
+                HStack(spacing: 4) { Image(systemName: "link").font(.system(size: 12)); Text(L("Follow")).font(.system(size: 11.5)) }
+            }
+            .toggleStyle(.button).controlSize(.small)
+            .help(L("When a clip gets shorter, longer or is deleted, the texts, layers, sounds and markers after it move with the pictures"))
+            .accessibilityLabel(L("Texts, layers and sounds follow the clips"))
             tool("plus.square.on.square", L("Duplicate"), L("Duplicate what is selected"), enabled: sel != .none) { session.duplicateSelection() }
             tool("trash", L("Delete"), L("Delete what is selected (⌫)"), enabled: sel != .none) { session.deleteSelection() }
             Divider().frame(height: 18).padding(.horizontal, 4)
@@ -112,7 +120,7 @@ struct TimelineToolbar: View {
     private func hint(_ sel: EditSelection) -> String {
         switch sel {
         case .none: return session.project.timeline.isEmpty ? L("Drag videos from the library onto the timeline") : L("Click a clip to edit it · drag to move · drag its edges to trim")
-        case .clip: return L("Drag the clip to move it · drag its white edges to trim · S splits at the playhead")
+        case .clip: return L("Drag to move · drag the edges to trim · S splits · Q/W cut before/after the playhead · ⇧-click picks several")
         case .layer, .text, .sound: return L("Drag to move it in time · drag its edges to make it longer or shorter")
         }
     }

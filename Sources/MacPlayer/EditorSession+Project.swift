@@ -262,9 +262,39 @@ extension EditorSession {
 
     func deleteTimelineClips(_ ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
-        edit("Delete clip") { TimelineEditor.rippleDelete(&$0.timeline, ids: ids) }
+        let follow = timelineFollows
+        edit(ids.count > 1 ? "Delete clips" : "Delete clip") { TimelineCuts.delete(&$0, clips: ids, ripple: follow) }
         selectedClipIDs.subtract(ids)
     }
+
+    /// Removes the part of the clip under the playhead before it (Q) or after it (W) (0.19). The cut lands on the frame shown, as a split does.
+    func trimAtPlayhead(_ side: TimelineCuts.Side) {
+        guard isProject, let loc = TimelineMap.locate(project.timeline, at: player.currentTime) else { return }
+        Task {
+            var t = loc.sourceTime
+            let sid = project.timeline[loc.index].sourceID
+            if project.source(sid)?.isMade != true, let url = sourceURLs[sid], let f = try? await FrameLocator.frame(url: url, at: t + MediaTime(value: 1, timescale: 6000)) { t = f.time }
+            var span: TimeSpan?
+            let follow = timelineFollows
+            edit(side == .beforePlayhead ? "Remove before playhead" : "Remove after playhead") { p in
+                span = TimelineCuts.trim(&p, clip: loc.clipID, at: t, removing: side, ripple: follow)
+            }
+            guard let span else {
+                flash(L("Move the playhead inside a clip, away from its edges, to cut it."), error: true)
+                return
+            }
+            selectedClipIDs = [loc.clipID]
+            // The picture that was under the playhead now starts the clip: the playhead stays on it.
+            await player.seek(to: span.start)
+        }
+    }
+
+    /// Whether texts, layers, sounds, markers and subtitles follow when a clip gets shorter, longer or is deleted (0.19; on by default).
+    var timelineFollows: Bool {
+        get { UserDefaults.standard.object(forKey: Self.followsKey) as? Bool ?? true }
+        set { objectWillChange.send(); UserDefaults.standard.set(newValue, forKey: Self.followsKey) }
+    }
+    static let followsKey = "MacPlayerTimelineFollows"
 
     func duplicateTimelineClips(_ ids: Set<UUID>) {
         var last: UUID?
@@ -283,10 +313,21 @@ extension EditorSession {
     func trimClip(_ id: UUID, leftEdge: Bool, toTimelineTime t: MediaTime) {
         guard let c = project.timeline.first(where: { $0.id == id }), let start = TimelineEditor.starts(project.timeline)[id],
               let srcDur = infos[c.sourceID]?.duration else { return }
-        let src = c.sourceStart + MediaTime(seconds: max(0, (t - start).seconds) * max(VideoLook.minimumSpeed, c.look.speed), timescale: 6000)
+        // Every move of one drag starts again from the project as it was at the press (0.19): the left edge used to add each move to
+        // the previous one (it trimmed faster than the mouse), and what lies over the timeline follows the whole change once.
+        let key = "trim-\(id)-\(leftEdge)"
+        if trimBase?.key != key { trimBase = (key, project) }
+        guard let base = trimBase?.project, let b = base.timeline.first(where: { $0.id == id }) else { return }
+        let k = max(VideoLook.minimumSpeed, c.look.speed)
+        let src: MediaTime
+        if leftEdge { src = b.sourceStart + MediaTime(seconds: (t - start).seconds * k, timescale: 6000) }
+        else { src = b.sourceStart + MediaTime(seconds: max(0, (t - start).seconds) * k, timescale: 6000) }
+        let follow = timelineFollows
         edit("Trim clip", coalesce: "trim-\(id)") { p in
-            if leftEdge { TimelineEditor.trim(&p.timeline, clipID: id, start: src, sourceDuration: srcDur) }
+            p = base
+            if leftEdge { TimelineEditor.trim(&p.timeline, clipID: id, start: max(.zero, src), sourceDuration: srcDur) }
             else { TimelineEditor.trim(&p.timeline, clipID: id, end: src, sourceDuration: srcDur) }
+            if follow { TimelineRipple.followTrim(of: id, leftEdge: leftEdge, before: base.timeline, in: &p) }
         }
     }
 

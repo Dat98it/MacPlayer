@@ -379,6 +379,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                     if let shape = shapes[parts[0]] { pane.canvasShapeBinding.wrappedValue = shape }
                     if parts.count > 1 { pane.canvasFitBinding.wrappedValue = parts[1] == "fill" ? .fill : .fit }
                 }
+                // MACPLAYER_DEV_KEYS="20:q,40:w,60:s": at each time, a key sent through the window's own key handling (0.19), then what the
+                // timeline holds is printed (DEV_CUT lines).
+                if let keys = ProcessInfo.processInfo.environment["MACPLAYER_DEV_KEYS"], let w {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    @MainActor func dump(_ tag: String) {
+                        let starts = TimelineEditor.starts(s.project.timeline)
+                        let clips = s.project.timeline.map { c in String(format: "%.2f+%.2f", starts[c.id]?.seconds ?? -1, c.duration.seconds) }
+                        let texts = s.project.overlays.map { String(format: "%@ %.2f–%.2f", String($0.text.prefix(12)), $0.start.seconds, $0.end.seconds) }
+                        print("DEV_CUT \(tag) clips \(clips.joined(separator: " ")) | texts \(texts) | markers \(s.project.markers.map { String(format: "%.2f", $0.time.seconds) }) | total \(String(format: "%.2f", s.project.timeline.reduce(0) { $0 + $1.duration.seconds }))")
+                    }
+                    dump("before")
+                    // "trim:<clip>:L|R:<d1>/<d2>/…": one drag of that clip's edge through those offsets (seconds from the clip's start).
+                    for pair in keys.split(separator: ",") where pair.hasPrefix("trim:") {
+                        let f = pair.split(separator: ":"); guard f.count == 4, let n = Int(f[1]), s.project.timeline.indices.contains(n - 1) else { continue }
+                        let id = s.project.timeline[n - 1].id, left = f[2] == "L"
+                        let start = TimelineEditor.starts(s.project.timeline)[id] ?? .zero
+                        let undoBefore = s.history.undoLabels.count
+                        for d in f[3].split(separator: "/").compactMap({ Double($0) }) { s.trimClip(id, leftEdge: left, toTimelineTime: start + MediaTime(seconds: d, timescale: 600)) }
+                        s.endCoalescing()
+                        dump("after drag \(pair) undo steps +\(s.history.undoLabels.count - undoBefore)")
+                    }
+                    for pair in keys.split(separator: ",") where !pair.hasPrefix("trim:") {
+                        let kv = pair.split(separator: ":"); guard kv.count == 2, let t = Double(kv[0]) else { continue }
+                        await s.player.seek(to: MediaTime(seconds: t, timescale: 600))
+                        try? await Task.sleep(nanoseconds: 400_000_000)
+                        let ch = String(kv[1])
+                        if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: w.window?.windowNumber ?? 0,
+                                                    context: nil, characters: ch, charactersIgnoringModifiers: ch, isARepeat: false, keyCode: 0) {
+                            print("DEV_CUT key \(ch) at \(t): handled \(w.testKey(e))")
+                        }
+                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                        dump("after \(ch)@\(t) playhead \(String(format: "%.2f", s.player.currentTime.seconds))")
+                    }
+                }
                 // MACPLAYER_DEV_SEEK=<s>: the playhead at that time of the timeline.
                 if let t = ProcessInfo.processInfo.environment["MACPLAYER_DEV_SEEK"].flatMap(Double.init) {
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
