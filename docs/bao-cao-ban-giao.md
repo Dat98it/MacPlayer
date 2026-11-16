@@ -971,3 +971,51 @@ Ghi nhận thêm: chữ luôn được vẽ trên mọi ảnh/lớp (thứ tự 
 - Cửa sổ thật trên dự án thật "TỔNG HỢP NHẠC REMIX HAY" (8 đoạn; sao lưu ngay trước, chép trả và so mã băm sau mỗi lần): phím Q ở 0:03 qua đúng đường xử lý phím của cửa sổ → đoạn 1 ngắn 3,00 s, chữ "Trích dẫn" 4,30–7,30 → 1,30–4,30; W ở 1:16:40 → đoạn 2 còn 58 s, các đoạn sau dồn lên; kéo mép trái 1→2→3 s → cắt đúng 3,00 s, 1 bước hoàn tác; kéo mép phải tới 4100 s → đúng 4100,00 s.
 
 **Chưa làm/chưa kiểm chứng:** kéo nhiều đoạn đã chọn để đổi chỗ cùng lúc; đổi tốc độ đoạn hoặc đổi thứ tự đoạn chưa kéo theo chữ/lớp/âm thanh; nút "hút vào nhịp nhạc" thuộc tính năng "Theo nhịp nhạc" (chưa làm); bấm chuột thật vào các nút.
+
+
+## Bản 0.20.0 — Thứ tự lớp, Theo nhịp nhạc, phụ đề kiểu TikTok (16/11/2026)
+
+**Yêu cầu:** làm tiếp "Theo nhịp nhạc", "Phụ đề tự động kiểu TikTok", "Thứ tự lớp", và các mục còn lại của 0.19 (kéo nhiều đoạn, đổi tốc độ/thứ tự kéo theo, hút vào nhịp, bấm chuột thật).
+
+**Đã làm:**
+- **Thứ tự lớp:** chữ/hình/nhãn dán và ảnh/video lớp chung một chồng (trước đây chữ luôn nằm trên mọi ảnh lớp). 4 lệnh ở menu Sửa, menu chuột phải trên hình, thẻ Vị trí và kích thước; phím ⌥⌘] ⌥⌘[ (thêm ⇧: lên/xuống hẳn). Chỉ tính những thứ hiện cùng lúc. Thứ thêm sau luôn nằm trên. Bấm chuột trên hình chọn thứ nằm trên cùng. Ảnh (dự án ảnh) cũng theo thứ tự này.
+- **Theo nhịp nhạc (Âm thanh ▸ Nhịp):** tìm nhịp ngay trên máy (bài 3 phút ~0,7 s), vạch nhịp trên bài nhạc ở timeline, kéo thả và kéo mép bám vào nhịp và điểm đánh dấu, **Cắt khớp nhịp** (mỗi 1/2/4/8 nhịp; chỉ dời một chỗ cắt về nhịp cách nó không quá một nhịp; chỉ kéo dài đoạn nếu video còn hình), **Đánh dấu nhịp**, **Bỏ nhịp**. Bài nhạc giữ nguyên độ dài.
+- **Phụ đề kiểu TikTok (Phụ đề ▸ Kiểu phụ đề):** Nổi bật, Hộp màu, Nảy, Từng từ, Chữ đậm; màu từ, chữ in hoa, phông (có đủ dấu tiếng Việt), cỡ, độ cao; chọn kiểu thì bật in vào hình khi xuất. Tạo phụ đề từ giọng nói (tiếng Việt chạy được trên máy) cho câu ngắn ≤3 từ, giữ thời điểm từng từ; dòng gõ tay/nhập file chia theo độ dài từ; nút chia dòng dài thành câu ngắn. Cắt bỏ phần đầu một dòng thì bỏ cả các từ nói trong đó.
+- **Kéo nhiều đoạn đã chọn** (⌘/⇧-click) để đổi chỗ cùng lúc, giữ thứ tự; bấm không kéo thì chỉ chọn đoạn đó.
+- **Kéo theo khi đổi thứ tự:** chữ, lớp, âm thanh, điểm đánh dấu, phụ đề nằm trọn trên một đoạn đi cùng đoạn đó; nhạc chạy qua nhiều đoạn đứng yên. **Khi đổi tốc độ:** thứ nằm trên đoạn co giãn theo hình, thứ phía sau dịch theo độ dài mới; kéo thanh trượt tốc độ là một bước hoàn tác.
+
+**Kiểm thử:**
+- Test mới: Core `LayerOrderTests` (7), `BeatSyncTests` (9, có trường hợp đoạn 1 giờ dưới bài 2 phút), `CaptionTests` (5), `TimelineCutsTests` +3 (đổi thứ tự, nhiều đoạn, tốc độ); Media `BeatDetectorTests` (vòng trống 128 và 100 bpm tạo sẵn: đúng tempo, mọi nhịp lệch < 30 ms; âm đơn không có nhịp), `CaptionRenderTests` (4, đo điểm ảnh), `PhotoLogoTests` +1 (hình nằm trên/dưới logo). Toàn bộ: Core 457, Media 264, tách lời 8 — đều qua. Bản dịch 0 thiếu.
+- Bài thật (chỉ đọc): "Đến khi nào remix - Nhạc nền" 69,8 nhịp/phút (bằng một nửa nhịp thật ~140: vạch vẫn trúng nhịp nhưng thưa gấp đôi), "Liên khúc… cỏ 3 lá" 139,5, "Vết Thương Remix" 138,2 (video 36 phút, 3,4 s).
+- Cửa sổ thật, trên **bản sao** của dự án "TỔNG HỢP NHẠC REMIX HAY" (MacPlayer của người bảo trì đang mở nên không chạm file gốc), thêm bài nhạc thật, một ảnh thật làm lớp và 3 dòng phụ đề: **bấm chuột thật** (sự kiện chuột hệ thống) vào tab Nhịp, Tìm nhịp (140 nhịp trong 2 phút), Cắt khớp nhịp, Hoàn tác, kéo thanh thu phóng. Lần bấm Cắt khớp nhịp đầu tiên **lộ lỗi**: đoạn 1 giờ 15 phút bị cắt còn 2 phút (dời về nhịp cuối của bài) — đã sửa và thêm test. Sau đó các bước còn lại chạy qua hook debug `MACPLAYER_DEV_DO` trên bản sao mới (4 lần tách ở 10–55 s): cắt khớp nhịp dời 4 chỗ cắt, phụ đề trong đoạn dịch theo; tốc độ 2× đoạn 2: 15,42 → 7,71 s, phụ đề 11,10 → 10,60; dời đoạn 3–4 lên đầu: chữ 4,30 → 34,30, lớp 4,00 → 34,00, nhạc đứng yên; hoàn tác trả lại; đưa ảnh lớp lên/xuống: ảnh chụp cửa sổ cho thấy ảnh che chữ "Trích dẫn" rồi chữ nằm trên ảnh; phụ đề Hộp màu tô đúng từ "CÁC" ở 9,2 s.
+
+**Sự cố khi kiểm thử:** để đóng bản thử, một phím ⌘Q được gửi bằng sự kiện bàn phím hệ thống; bản thử không nhận, và MacPlayer của người bảo trì (đang mở) đã không còn chạy sau đó — rất có thể phím đã tới nó. Thoát bình thường, dự án tự lưu. Từ đó chỉ bấm chuột vào cửa sổ bản thử và dừng bản thử bằng tiến trình của nó.
+
+**Chưa làm/chưa kiểm chứng:** bấm chuột thật vào nút thứ tự lớp, kiểu phụ đề và ⇧/⌘-click kéo nhiều đoạn (máy đang được dùng, Chrome ở trước, nên dừng bấm chuột tự động; các lệnh này đã chạy qua hook debug và test); nghe bằng tai độ khớp nhịp; nhịp với bài đổi tempo; phụ đề cắt ngang ranh giới hai đoạn không đi theo khi đổi thứ tự (đứng yên như nhạc nền); "Nổi bật" dùng chung chữ dịch với nút cũ.
+
+
+## Bản 0.20.1 — làm nốt phần "chưa kiểm chứng" của 0.20.0 (16/11/2026)
+
+**Đã làm:**
+- **Bấm chuột thật** (sự kiện chuột hệ thống, cửa sổ bản thử nổi trên các app khác bằng `MACPLAYER_DEV_FLOAT`, công cụ bấm từ chối mọi điểm có cửa sổ khác che và không gửi phím), trên bản sao mới của dự án "TỔNG HỢP NHẠC REMIX HAY" (thêm bài nhạc thật, một ảnh thật làm lớp, 3 dòng phụ đề; tách 3 lần ở 10–40 s):
+  - chuột phải lên ảnh lớp → menu có 4 lệnh thứ tự (Xuống một lớp/Dưới cùng mờ đúng vì ảnh đang dưới cùng) → **Đưa lên trên cùng**: ảnh che chữ "Trích dẫn";
+  - nút **Xuống một lớp** trong thẻ Vị trí: chữ lại nằm trên ảnh; hai nút dưới mờ, hai nút trên sáng;
+  - Phụ đề ▸ Kiểu phụ đề ▸ **Tô từ**, nhảy tới dòng đầu (8 s): "XIN" tô vàng, "CHÀO CÁC" trắng;
+  - bấm đoạn 3, **⌘-click** đoạn 4, kéo cả hai lên trước đoạn 2: thứ tự lưu trong file thành 1, 3, 4, 2, cả hai vẫn được chọn.
+- **Thay cho nghe bằng tai:** đo trên 3 bài thật xem nhịp có rơi vào tiếng gõ mạnh (trong 40 ms): 581/666, 2631/2767, 227/227; cùng lưới dời nửa nhịp chỉ 450, 2257, 184.
+- **Bài đổi tempo:** nhịp tìm lại theo từng đoạn 12 s; test 100 → 130 nhịp/phút: mọi nhịp trước và sau chỗ đổi đều trúng.
+- **Nhịp gấp đôi:** khi phách giữa mạnh gần bằng phách chính thì lấy gấp đôi. "Đến khi nào remix" vẫn 70 nhịp/phút vì phách giữa chỉ mạnh bằng 30 % (trống chính thật sự ở 70); thêm **Mỗi nửa nhịp** để có lưới 140.
+- **Đổi thứ tự đoạn:** chữ và phụ đề nằm ít nhất 60 % trên một đoạn đi theo đoạn đó (cắt gọn theo đoạn); tiêu đề trải nhiều đoạn và nhạc nền đứng yên.
+- Kiểu phụ đề "Nổi bật" có chữ riêng: **Tô từ**.
+
+- **Chọn ngôn ngữ** (yêu cầu thêm trong lúc làm): MacPlayer ▸ **Ngôn ngữ · Language** (Theo máy Mac / English / Tiếng Việt) và mục đầu tiên của Cài đặt. Đổi là có hiệu lực ngay: thanh menu, tiêu đề, mọi bảng, thanh công cụ timeline, cửa sổ Cài đặt/Hàng đợi/Xuất/Mở liên kết/Tách lời. Tên mục có cả hai thứ tiếng để luôn tìm thấy.
+  - Lỗi tìm ra khi thử: đổi ngôn ngữ làm app sập vài giây sau (bộ hẹn giờ tự lưu). Nguyên nhân: dựng lại thanh menu chuyển menu "Mở gần đây" dùng chung sang menu mới rồi bỏ menu đó đi. Đã sửa (giữ menu đang dùng, chỉ đổi chữ); 3 lần chạy đổi en → vi → en liên tiếp không còn sập.
+  - Ảnh chụp cửa sổ bản thử sau khi đổi sang Tiếng Việt khi đang mở dự án: toàn bộ bảng, thanh công cụ, tab, timeline ("Lớp 2", "Đoạn 2") đều tiếng Việt; phụ đề Tô từ vẫn hiện đúng.
+
+**Kiểm thử:** Core 459, Media 264, tách lời 8 — đều qua; bản dịch 0 thiếu.
+
+**Bổ sung sau (cùng ngày):**
+- **Bấm chuột thật** (bản debug đóng trong một gói app, mở bằng Launch Services để nó thật sự đứng trước; công cụ bấm tìm vị trí mục menu qua Trợ năng rồi bấm bằng chuột hệ thống, và dừng nếu app khác lên trước): MacPlayer ▸ **Language · Ngôn ngữ ▸ Tiếng Việt** → thanh menu thành "Tệp Sửa Phát Đoạn Xem Cửa sổ Trợ giúp", bảng bên phải thành "Cắt khung / Trái / Trên…"; MacPlayer ▸ **Cài đặt…** → ô **Ngôn ngữ · Language** → **English**: cửa sổ Cài đặt (cả tiêu đề), thanh menu và cửa sổ chính chuyển sang tiếng Anh ngay. Giá trị ngôn ngữ mà lần thử ghi vào cài đặt của app thật đã được xoá.
+- **Nghe bằng tai:** máy không nghe được. Đã làm 3 file 1 phút (bài thật, chỉ đọc) có tiếng "tách" đặt đúng các nhịp tìm được (tiếng cao hơn ở mỗi nhịp thứ 4) trong `build/nghe-thu-nhip/` để người bảo trì nghe: "Đến khi nào remix" 70, "Liên khúc… cỏ 3 lá" 140, "Vết Thương Remix" 138 nhịp/phút.
+
+**Người bảo trì đã nghe 3 file trên: khớp nhịp.** (chỉ đo); menu Sửa trên thanh menu (chỉ bấm menu chuột phải và nút trong bảng); phụ đề 16:9 mặc định nằm ở 80 % chiều cao nên có thể đè chữ có sẵn trong video (chỉnh bằng "Độ cao trên khung hình").

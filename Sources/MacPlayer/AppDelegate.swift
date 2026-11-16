@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         if let i = launchArgs.firstIndex(of: "--crash-export"), i + 3 < launchArgs.count { runCrashExport(source: launchArgs[i + 1], outDir: launchArgs[i + 2], mode: launchArgs[i + 3]); return }
         if let i = launchArgs.firstIndex(of: "--crash-autosave"), i + 2 < launchArgs.count { runCrashAutosave(source: launchArgs[i + 1], dir: launchArgs[i + 2]); return }
         NSApp.mainMenu = buildMenu()
+        NotificationCenter.default.addObserver(self, selector: #selector(languageChanged), name: .appLanguageChanged, object: nil)
 
         // An older MacPlayer may have left a "replace the original" half done: the original is put back before anything else.
         let reports = env.saver.recoverLegacyReplaceJournals()
@@ -413,6 +414,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                         dump("after \(ch)@\(t) playhead \(String(format: "%.2f", s.player.currentTime.seconds))")
                     }
                 }
+                // MACPLAYER_DEV_DO="beats|fit:2|speed:3:2|move:2,3>0|front:layer|back:text|caption:box" (0.20): editor actions in turn, each
+                // followed by a DEV_DO line with what the project holds (clips, texts, layers, sounds, cues, the stack, the last undo name).
+                if let steps = ProcessInfo.processInfo.environment["MACPLAYER_DEV_DO"] {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    @MainActor func dump(_ tag: String) {
+                        let p = s.project, starts = TimelineEditor.starts(p.timeline)
+                        let clips = p.timeline.map { c in String(format: "%@ %.2f+%.2f", String(c.name.suffix(4)), starts[c.id]?.seconds ?? -1, c.duration.seconds) }
+                        let stack = LayerOrder.stack(p).map { $0.isText ? "T" : "L" }.joined()
+                        print("DEV_DO \(tag) | clips \(clips.joined(separator: ", ")) | texts \(p.overlays.map { String(format: "%.2f–%.2f z%@", $0.start.seconds, $0.end.seconds, $0.z.map { String($0) } ?? "-") })"
+                              + " | layers \(p.overlayClips.map { String(format: "%.2f z%@", $0.start.seconds, $0.z.map { String($0) } ?? "-") }) | sounds \(p.soundClips.map { String(format: "%.2f+%.2f beats %d", $0.start.seconds, $0.duration.seconds, $0.beats?.times.count ?? 0) })"
+                              + " | cues \(p.subtitles.cues.map { String(format: "%.2f", $0.start.seconds) }) caption \(p.subtitles.style.caption?.look.rawValue ?? "-") burn \(p.subtitles.burnIn) | stack \(stack) | markers \(p.markers.count) | undo \(s.history.undoLabel ?? "-")")
+                    }
+                    dump("before")
+                    for step in steps.split(separator: "|").map(String.init) {
+                        let f = step.split(separator: ":").map(String.init)
+                        switch f[0] {
+                        case "beats": if let id = s.project.soundClips.first?.id { s.findBeats(id); for _ in 0..<60 where s.beatsWorking.contains(id) { try? await Task.sleep(nanoseconds: 200_000_000) } }
+                        case "fit": s.beatEvery = Int(f.count > 1 ? f[1] : "1") ?? 1; s.fitClipsToBeats()
+                        case "markers": s.addBeatMarkers()
+                        case "speed": if f.count == 3, let n = Int(f[1]), let v = Double(f[2]), s.project.timeline.indices.contains(n - 1) { s.select(.clip(s.project.timeline[n - 1].id)); s.setClipSpeed(v) }
+                        case "move":
+                            let parts = f[1].split(separator: ">"); let idx = parts[0].split(separator: ",").compactMap { Int($0) }
+                            let ids = Set(idx.compactMap { s.project.timeline.indices.contains($0 - 1) ? s.project.timeline[$0 - 1].id : nil })
+                            s.selectedClipIDs = ids; s.moveClips(ids, toIndex: Int(parts[1]) ?? 0)
+                        case "front", "back", "forward", "backward":
+                            let id = f[1] == "layer" ? s.project.overlayClips.first?.id : s.project.overlays.first?.id
+                            if let id { s.canvasSelection = [id] }
+                            s.arrange(["front": .toFront, "back": .toBack, "forward": .forward, "backward": .backward][f[0]]!)
+                        case "caption": s.edit("Caption style") { var c = $0.subtitles.style.caption ?? CaptionStyle(); c.look = CaptionLook(rawValue: f[1]) ?? .highlight; $0.subtitles.style.caption = c; $0.subtitles.burnIn = true }
+                        case "seek": await s.player.seek(to: MediaTime(seconds: Double(f[1]) ?? 0, timescale: 600))
+                        case "undo": s.undo()
+                        case "lang": LanguageState.shared.set(AppLanguage(rawValue: f[1]) ?? .system)
+                        case "wait": try? await Task.sleep(nanoseconds: UInt64((Double(f[1]) ?? 1) * 1e9))
+                        default: break
+                        }
+                        try? await Task.sleep(nanoseconds: 1_000_000_000)
+                        dump(step)
+                    }
+                }
+                // MACPLAYER_DEV_FLOAT=1 (0.20.1): the window floats over other apps' windows, so a test that clicks with the real mouse
+                // only ever lands on it.
+                if ProcessInfo.processInfo.environment["MACPLAYER_DEV_FLOAT"] != nil { w?.window?.level = .floating; NSApp.activate(ignoringOtherApps: true) }
                 // MACPLAYER_DEV_SEEK=<s>: the playhead at that time of the timeline.
                 if let t = ProcessInfo.processInfo.environment["MACPLAYER_DEV_SEEK"].flatMap(Double.init) {
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -759,6 +802,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     @objc func skipBack(_ sender: Any?) { activeSession?.player.skip(seconds: -env.prefs.skipSeconds) }
     @objc func skipForward(_ sender: Any?) { activeSession?.player.skip(seconds: env.prefs.skipSeconds) }
     @objc func addMarker(_ sender: Any?) { activeEditor?.addMarker() }
+    private static func copyTitles(from fresh: NSMenu, to menu: NSMenu) {
+        menu.title = fresh.title
+        for (a, b) in zip(fresh.items, menu.items) {
+            if !b.isSeparatorItem { b.title = a.title; b.state = a.state }
+            if let fa = a.submenu, let fb = b.submenu { copyTitles(from: fa, to: fb) }
+        }
+    }
+    @objc func chooseLanguage(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let lang = AppLanguage(rawValue: raw) else { return }
+        LanguageState.shared.set(lang)
+    }
+    /// The menus are made again in the new language; windows and panels redraw themselves (each listens for the change).
+    @objc func languageChanged() {
+        // The menus in place get the new titles, copied from a set made in the new language (the Window menu stays the one AppKit
+        // fills with the open windows).
+        if let current = NSApp.mainMenu { Self.copyTitles(from: buildMenu(install: false), to: current) }
+        settingsWindow?.title = L("Settings")
+    }
+    @objc func arrangeToFront(_ sender: Any?) { activeEditor?.arrange(.toFront) }
+    @objc func arrangeForward(_ sender: Any?) { activeEditor?.arrange(.forward) }
+    @objc func arrangeBackward(_ sender: Any?) { activeEditor?.arrange(.backward) }
+    @objc func arrangeToBack(_ sender: Any?) { activeEditor?.arrange(.toBack) }
     @objc func nextVideo(_ sender: Any?) { playlists.advance(auto: false) }
     @objc func previousVideo(_ sender: Any?) { playlists.previous() }
     @objc func toggleFullScreen(_ sender: Any?) { active?.window?.toggleFullScreen(nil) }
@@ -769,7 +834,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     @objc func showQueue(_ sender: Any?) { QueueWindow.shared.show() }
     @objc func showSettings(_ sender: Any?) {
         if settingsWindow == nil {
-            let w = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(env: env)))
+            let w = NSWindow(contentViewController: NSHostingController(rootView: LanguageRoot(SettingsView(env: env))))
             w.title = L("Settings"); w.styleMask = [.titled, .closable]; w.isReleasedWhenClosed = false
             settingsWindow = w
         }
@@ -795,6 +860,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         case #selector(duplicateSelected(_:)): return e != nil && e?.selection != EditSelection.none
         case #selector(groupSelected(_:)): return (e?.canvasSelection.count ?? 0) > 1
         case #selector(ungroupSelected(_:)): return e?.canvasHasGroup ?? false
+        case #selector(arrangeToFront(_:)): return e?.canArrange(.toFront) ?? false
+        case #selector(arrangeForward(_:)): return e?.canArrange(.forward) ?? false
+        case #selector(arrangeBackward(_:)): return e?.canArrange(.backward) ?? false
+        case #selector(arrangeToBack(_:)): return e?.canArrange(.toBack) ?? false
         case #selector(lockSelected(_:)):
             item.title = e?.canvasAllLocked == true ? L("Unlock") : L("Lock")
             return !(e?.canvasSelection.isEmpty ?? true)
@@ -821,7 +890,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     // MARK: Menu
 
-    private func buildMenu() -> NSMenu {
+    /// `install`: also make its Window menu the app's (a set made only to copy titles from must not: AppKit keeps that pointer, 0.20.1).
+    private func buildMenu(install: Bool = true) -> NSMenu {
         let main = NSMenu()
         /// `firstResponder`: the item goes to whatever has the keyboard (a text field for Cut/Copy/Paste, the window for Close).
         /// Without it the item goes to `target`, by default this app delegate. (Until 0.15.2 `target: nil` was meant this way but
@@ -838,6 +908,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         add(app, L("About MacPlayer"), #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: NSApp)
         app.addItem(.separator())
         add(app, L("Settings…"), #selector(showSettings(_:)), ",")
+        // Language (0.20.1): both names in their own language, and the item's own title in both, so it can be found either way.
+        let langMenu = NSMenu(title: "Language")
+        for lang in AppLanguage.allCases {
+            let i = langMenu.addItem(withTitle: lang.title, action: #selector(chooseLanguage(_:)), keyEquivalent: "")
+            i.target = self; i.representedObject = lang.rawValue; i.state = AppLanguage.current == lang ? .on : .off
+        }
+        let langItem = app.addItem(withTitle: L("Language") == "Language" ? "Language · Ngôn ngữ" : L("Language") + " · Language", action: nil, keyEquivalent: "")
+        app.setSubmenu(langMenu, for: langItem)
         app.addItem(.separator())
         add(app, L("Hide MacPlayer"), #selector(NSApplication.hide(_:)), "h", target: NSApp)
         add(app, L("Quit MacPlayer"), #selector(NSApplication.terminate(_:)), "q", target: NSApp)
@@ -849,7 +927,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         file.addItem(.separator())
         add(file, L("Open…"), #selector(openDocument(_:)), "o")
         add(file, L("Open Link…"), #selector(openLink(_:)), "u")
-        let recent = NSMenuItem(title: L("Open Recent"), action: nil, keyEquivalent: ""); recentMenu.delegate = self; file.addItem(recent); file.setSubmenu(recentMenu, for: recent)
+        // The one Open Recent menu belongs to the installed menu bar; a set made only to copy titles from gets an empty stand-in (moving
+        // the real one into it, then dropping it, left AppKit pointing at freed memory: the app crashed, 0.20.1).
+        let recent = NSMenuItem(title: L("Open Recent"), action: nil, keyEquivalent: ""); file.addItem(recent)
+        if install { recentMenu.delegate = self; file.setSubmenu(recentMenu, for: recent) } else { file.setSubmenu(NSMenu(title: "Open Recent"), for: recent) }
         add(file, L("Open Folder as Playlist…"), #selector(openFolderAsPlaylist(_:)), "o", [.command, .shift])
         file.addItem(.separator())
         add(file, L("Edit This File…"), #selector(editCurrentFile(_:)), "e")
@@ -885,6 +966,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         add(edit, L("Group"), #selector(groupSelected(_:)), "g")
         add(edit, L("Ungroup"), #selector(ungroupSelected(_:)), "g", [.command, .shift])
         add(edit, L("Lock"), #selector(lockSelected(_:)), "l")
+        edit.addItem(.separator())
+        add(edit, L("Bring to Front"), #selector(arrangeToFront(_:)), "]", [.command, .option, .shift])
+        add(edit, L("Bring Forward"), #selector(arrangeForward(_:)), "]", [.command, .option])
+        add(edit, L("Send Backward"), #selector(arrangeBackward(_:)), "[", [.command, .option])
+        add(edit, L("Send to Back"), #selector(arrangeToBack(_:)), "[", [.command, .option, .shift])
 
         let play = top(L("Playback"))
         add(play, L("Play / Pause   Space"), #selector(playPause(_:)))
@@ -914,7 +1000,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
         let window = top(L("Window"))
         add(window, L("Minimize"), #selector(NSWindow.performMiniaturize(_:)), "m", firstResponder: true)
-        NSApp.windowsMenu = window
+        if install { NSApp.windowsMenu = window }
         let help = top(L("Help"))
         add(help, L("Keyboard Shortcuts"), #selector(showShortcuts(_:)))
         return main

@@ -23,8 +23,10 @@ public struct PhotoLogo: @unchecked Sendable {
 
     /// On a photo a layer is always shown and does not move.
     static func still(_ c: OverlayClip, path: String) -> LayerSpec {
-        LayerSpec(id: c.id, kind: .image(path: path), lane: c.lane, start: .zero, duration: MediaTime(seconds: 200_000), transform: c.transform, keyframes: [],
-                  audio: AudioSettings(), fadeIn: 0, fadeOut: 0, animationIn: nil, animationOut: nil)
+        var spec = LayerSpec(id: c.id, kind: .image(path: path), lane: c.lane, start: .zero, duration: MediaTime(seconds: 200_000), transform: c.transform, keyframes: [],
+                             audio: AudioSettings(), fadeIn: 0, fadeOut: 0, animationIn: nil, animationOut: nil)
+        spec.z = LayerOrder.key(c)
+        return spec
     }
 }
 
@@ -63,16 +65,20 @@ public enum PhotoRenderer {
         plan.subjectMode = .photo
         var picture = RecipeCompositor.mainPicture(base: b, plan: plan, time: stillTime, outputSize: out)
         let frame = CGRect(origin: .zero, size: out)
+        // Logos and texts in the stack's order (0.20), as a video frame draws them.
+        var stack: [(z: Double, seq: Int, draw: (CIImage) -> CIImage)] = []
         for logo in logos {
-            picture = RecipeCompositor.drawLayer(RecipeCompositor.normalized(logo.image), spec: logo.spec, border: logo.border, time: 1, subjectMode: .photo, over: picture, frame: frame)
+            stack.append((logo.spec.z ?? Double(logo.spec.lane), stack.count, {
+                RecipeCompositor.drawLayer(RecipeCompositor.normalized(logo.image), spec: logo.spec, border: logo.border, time: 1, subjectMode: .photo, over: $0, frame: frame) }))
         }
         let layer = OverlayLayer(overlays: stilled(overlays), cues: [], style: SubtitleStyle())
         if !layer.isEmpty {
-            for (overlay, alpha) in layer.visible(at: stillTime, size: out) {
+            for (overlay, alpha, z) in layer.visible(at: stillTime, size: out) {
                 let o = alpha >= 1 ? overlay : overlay.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: alpha)])
-                picture = o.composited(over: picture)
+                stack.append((z, stack.count, { o.composited(over: $0) }))
             }
         }
+        for item in stack.sorted(by: { $0.z != $1.z ? $0.z < $1.z : $0.seq < $1.seq }) { picture = item.draw(picture) }
         return picture.cropped(to: CGRect(origin: .zero, size: out))
     }
 

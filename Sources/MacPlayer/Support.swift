@@ -4,8 +4,9 @@ import MacPlayerCore
 import MacPlayerMedia
 
 /// Localised string: the key is the English text; Vietnamese lives in Resources/vi.lproj/Localizable.strings.
-func L(_ key: String) -> String { NSLocalizedString(key, comment: "") }
-func LF(_ key: String, _ args: CVarArg...) -> String { String(format: NSLocalizedString(key, comment: ""), arguments: args) }
+/// The language follows the person's choice (`AppLanguage`, 0.20.1).
+func L(_ key: String) -> String { localized(key) }
+func LF(_ key: String, _ args: CVarArg...) -> String { String(format: localized(key), arguments: args) }
 
 final class DefaultsStore: PreferenceStoring {
     private let d: UserDefaults

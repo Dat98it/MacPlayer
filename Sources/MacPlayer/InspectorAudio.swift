@@ -17,6 +17,7 @@ struct AudioPane: View {
         var s = [PaneSection(id: "own", title: L("Clip sound"), icon: "speaker.wave.2", changed: !needsClip && !session.project.activeAudio.isNeutral)]
         if session.canHaveSounds {
             s += [PaneSection(id: "music", title: L("Music"), icon: "music.note.list", changed: !session.project.soundClips.isEmpty),
+                  PaneSection(id: "beat", title: L("Beat"), icon: "metronome", changed: session.project.soundClips.contains { $0.beats != nil }),
                   PaneSection(id: "voice", title: L("Voice-over"), icon: "mic")]
         }
         if let c = session.timingClip, session.infos[c.sourceID]?.hasAudio == true { s.append(PaneSection(id: "save", title: L("Save sound"), icon: "square.and.arrow.down")) }
@@ -32,12 +33,52 @@ struct AudioPane: View {
             switch tab {
             case "music": soundsCard
             case "voice": voiceCard
+            case "beat": beatCard
             case "save":
                 ToolCard(title: L("Save the sound alone"), icon: "square.and.arrow.down") {
                     Button(L("Export Audio Only (.m4a)…")) { exportAudio() }
                     Text(L("The sound of the selected clip, as a new file.")).font(.caption).foregroundColor(.secondary)
                 }
             default: ownSoundCard
+            }
+        }
+    }
+
+    // MARK: Cutting to the beat (0.20)
+
+    private var beatCard: some View {
+        ToolCard(title: L("Cut to the beat"), icon: "metronome") {
+            if let song = session.beatSound {
+                HStack(spacing: 6) {
+                    Image(systemName: "music.note").foregroundColor(.green)
+                    Text(song.name).lineLimit(1).font(.callout.weight(.medium))
+                    Spacer()
+                    if let g = song.beats { Text(LF("%@ beats a minute", String(format: "%.0f", g.bpm))).font(.caption.monospacedDigit()).foregroundColor(.secondary) }
+                }
+                if song.beats == nil {
+                    LazyVGrid(columns: panelColumns(120), spacing: 4) {
+                        PanelButton(title: session.beatsWorking.contains(song.id) ? L("Listening…") : L("Find the beat"), icon: "waveform.badge.magnifyingglass",
+                                    help: L("Listens to the song on this Mac and marks its beats on the timeline")) { session.findBeats(song.id) }
+                            .disabled(session.beatsWorking.contains(song.id))
+                    }
+                    if session.beatsWorking.contains(song.id) { ProgressView().controlSize(.small) }
+                    Text(L("Select a song on the timeline to use another one.")).font(.caption).foregroundColor(.secondary)
+                } else {
+                    Picker(L("Use"), selection: Binding(get: { session.beatEvery }, set: { session.beatEvery = $0 })) {
+                        Text(L("Every half beat")).tag(0); Text(L("Every beat")).tag(1); Text(L("Every 2 beats")).tag(2); Text(L("Every 4 beats")).tag(4); Text(L("Every 8 beats")).tag(8)
+                    }
+                    LazyVGrid(columns: panelColumns(110), spacing: 4) {
+                        PanelButton(title: L("Cuts on the beat"), icon: "scissors", help: L("Moves every cut between clips onto the nearest beat (only the selected clips when several are selected)")) { session.fitClipsToBeats() }
+                        PanelButton(title: L("Beat markers"), icon: "flag", help: L("Puts a marker on the beats, to cut by hand: [ and ] jump between them")) { session.addBeatMarkers() }
+                        PanelButton(title: L("Remove beats"), icon: "xmark.circle", help: L("Forget the beats of this song")) { session.clearBeats(song.id) }
+                    }
+                    Text(L("The beats show as ticks on the song in the timeline. Dragged things cling to them. A clip is only made longer if its video has more to show; photos can be any length."))
+                        .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                Text(L("Add a song first (Music ▸ Add music). Its beats can then be found, and the cuts put on them."))
+                    .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                PanelButton(title: L("Add music"), icon: "music.note") { session.chooseSounds(kind: .music) }
             }
         }
     }

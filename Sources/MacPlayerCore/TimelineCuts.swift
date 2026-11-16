@@ -59,6 +59,13 @@ public enum TimelineRipple {
         p.subtitles.cues = p.subtitles.cues.compactMap { c in
             if c.end <= a { return c }
             var n = c; n.start = map(c.start); n.end = map(c.end)
+            // Words said over the removed pictures go; the rest keep their times from the line's new start (0.20 captions).
+            if c.words != nil, c.start > a, c.start < b {
+                let cut = (min(b, c.end) - c.start).seconds
+                let kept = c.timedWords.filter { $0.end > cut + 0.01 }.map { CaptionWord(text: $0.text, start: max(0, $0.start - cut), end: $0.end - cut) }
+                if kept.count < c.timedWords.count, !kept.isEmpty { n.text = kept.map(\.text).joined(separator: " ") }
+                n.words = kept.isEmpty ? nil : kept
+            }
             return n.end - n.start < minLength ? nil : n
         }
     }
@@ -73,6 +80,72 @@ public enum TimelineRipple {
         p.soundClips = sounds
         for i in p.markers.indices where p.markers[i].time >= t { p.markers[i].time = p.markers[i].time + length }
         for i in p.subtitles.cues.indices where p.subtitles.cues[i].start >= t { p.subtitles.cues[i].start = p.subtitles.cues[i].start + length; p.subtitles.cues[i].end = p.subtitles.cues[i].end + length }
+    }
+
+    /// The main track was put in a new order (0.20): what lies wholly over one clip goes with that clip, at the same place on its pictures.
+    /// What runs over several clips (a song under everything) stays where it is.
+    public static func followReorder(before: [TimelineClip], in p: inout Project) {
+        let oldStarts = TimelineEditor.starts(before), newStarts = TimelineEditor.starts(p.timeline)
+        let spans = before.compactMap { c in oldStarts[c.id].map { (id: c.id, a: $0, b: $0 + c.duration) } }
+        /// How far a thing that lies wholly over one clip moves, or nil.
+        func shift(_ s: MediaTime, _ e: MediaTime) -> MediaTime? {
+            let eps = MediaTime(value: 1, timescale: 600)
+            guard let c = spans.first(where: { s >= $0.a && s < $0.b }), e <= c.b + eps, let n = newStarts[c.id] else { return nil }
+            return n - c.a
+        }
+        /// Words on screen (texts, subtitles) that run a little into the next clip belong to the clip under their middle (0.20.1): they go
+        /// with it, cut to its length, instead of staying over pictures that moved away.
+        func byMiddle(_ s: MediaTime, _ e: MediaTime) -> (MediaTime, MediaTime)? {
+            if let d = shift(s, e) { return (s + d, e + d) }
+            let mid = MediaTime(seconds: (s.seconds + e.seconds) / 2, timescale: 6000)
+            guard let c = spans.first(where: { mid >= $0.a && mid < $0.b }), let n = newStarts[c.id] else { return nil }
+            // Only what is mostly over one clip: a title over several stays.
+            guard (min(e, c.b) - max(s, c.a)).seconds >= (e - s).seconds * 0.6 else { return nil }
+            let d = n - c.a
+            return (max(s, c.a) + d, min(e, c.b) + d)
+        }
+        for i in p.overlays.indices { if let (a, b) = byMiddle(p.overlays[i].start, p.overlays[i].end) { p.overlays[i].start = a; p.overlays[i].end = b } }
+        for i in p.overlayClips.indices { if let d = shift(p.overlayClips[i].start, p.overlayClips[i].end) { p.overlayClips[i].start = p.overlayClips[i].start + d } }
+        var sounds = p.soundClips
+        for i in sounds.indices { if let d = shift(sounds[i].start, sounds[i].end) { sounds[i].start = sounds[i].start + d } }
+        p.soundClips = sounds
+        for i in p.markers.indices { if let d = shift(p.markers[i].time, p.markers[i].time) { p.markers[i].time = p.markers[i].time + d } }
+        for i in p.subtitles.cues.indices {
+            let c = p.subtitles.cues[i]
+            guard let (a, b) = byMiddle(c.start, c.end) else { continue }
+            if let w = c.words, a - c.start != b - c.end {
+                // Cut at the clip's start: the words said before it stay with the earlier pictures' time.
+                let cut = max(0, (a.seconds - c.start.seconds) - (b.seconds - c.end.seconds))
+                p.subtitles.cues[i].words = w.map { CaptionWord(text: $0.text, start: max(0, $0.start - cut), end: max(0, $0.end - cut)) }
+            }
+            p.subtitles.cues[i].start = a; p.subtitles.cues[i].end = b
+        }
+    }
+
+    /// Clip `id` plays at a new speed (0.20): what starts over it stays over the same pictures (texts and subtitles also end with them),
+    /// and what comes after it moves by the change in its length. `before` is the timeline as it was.
+    public static func followSpeed(of id: UUID, before: [TimelineClip], in p: inout Project) {
+        guard let old = before.first(where: { $0.id == id }), let new = p.timeline.first(where: { $0.id == id }),
+              let a = TimelineEditor.starts(before)[id], old.duration > .zero, new.duration != old.duration else { return }
+        let b = a + old.duration, r = new.duration.seconds / old.duration.seconds, d = new.duration - old.duration
+        func map(_ t: MediaTime) -> MediaTime {
+            if t < a { return t }
+            if t >= b { return t + d }
+            return a + MediaTime(seconds: (t - a).seconds * r, timescale: 6000)
+        }
+        /// An end: inside the clip it is scaled; at or after its end it moves by the change.
+        func mapEnd(_ e: MediaTime) -> MediaTime { e <= a ? e : (e > b ? e + d : map(e)) }
+        for i in p.overlays.indices { let o = p.overlays[i]; p.overlays[i].start = map(o.start); p.overlays[i].end = max(map(o.start) + MediaTime(value: 1, timescale: 30), mapEnd(o.end)) }
+        for i in p.overlayClips.indices { p.overlayClips[i].start = map(p.overlayClips[i].start) }
+        var sounds = p.soundClips
+        for i in sounds.indices { sounds[i].start = map(sounds[i].start) }
+        p.soundClips = sounds
+        for i in p.markers.indices { p.markers[i].time = map(p.markers[i].time) }
+        for i in p.subtitles.cues.indices {
+            let c = p.subtitles.cues[i]
+            p.subtitles.cues[i].start = map(c.start); p.subtitles.cues[i].end = max(map(c.start) + MediaTime(value: 1, timescale: 30), mapEnd(c.end))
+            if c.start >= a, c.start < b, let w = c.words { p.subtitles.cues[i].words = w.map { CaptionWord(text: $0.text, start: $0.start * r, end: $0.end * r) } }
+        }
     }
 
     /// After clip `id` was trimmed (its start or end in the source moved), moves what lies over the timeline by the change. `before` is the

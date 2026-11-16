@@ -224,6 +224,36 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.20.1 Language switch.** `App/Language.swift`: `AppLanguage` (system/en/vi, UserDefaults `MacPlayerLanguage`), `L()`/`LF()` read the chosen
+`.lproj` (lock-guarded cache; a debug build reads `Resources/*.lproj` from the source folder), `LanguageState` posts `.appLanguageChanged`:
+each window's `ContentViewController.reloadForLanguage()` rebuilds its screen, `LanguageRoot(...)` wraps the other hosted windows (sidebar,
+Settings, Queue, export sheet, link panel, vocal removal), and the menu bar gets new titles copied in place from `buildMenu(install: false)`.
+Gotchas found: `buildMenu` used to move the one shared Open Recent menu into the new menu, and `NSApp.windowsMenu` was reassigned — dropping
+such a menu left AppKit pointing at freed memory (crash a moment later in an unrelated timer). Never replace `NSApp.mainMenu` for this.
+The debug binary shares the app's defaults domain (`local.macplayer.app`): delete any key a test run sets.
+**0.20.1** `BeatTracker`: local period per 12 s window (±45 % of the overall, smooth), double tempo when the halfway points are ≥0.6 of the
+beats (`lastHalfwayRatio` for measuring), bpm from the mean gap; `timelineBeats(every: 0)` = half beats ("Every half beat").
+`followReorder`: texts and cues follow the clip under their middle when ≥60 % lies over it (clamped to it). Debug: `MACPLAYER_DEV_FLOAT=1`
+keeps the test window above other apps (real-mouse tests); the scratch click tool must check the window under each point and never send keys.
+Real-song check aid: `MACPLAYER_BEAT_FILES=a|b Scripts/test.sh --filter tempoOfRealSongs` (tempo, beats on onsets vs half-beat-shifted).
+
+**0.20.0 Layer order, beat sync, captions.** Core `LayerOrder.swift`: one stack for texts (`TextOverlay.z`) and layers (`OverlayClip.z`, copied to
+`LayerSpec.z`); key = z, else lane (0–2) for layers and 1000 for texts; `move(_:_:in:timed:)` writes places −n…−1 so things added later land on top;
+`RecipeCompositor.render` and `PhotoRenderer.render` draw layers and texts merged by key (subtitles always on top); `CanvasElementsView.hit` picks by the
+stack. App: `EditorSession.arrange/canArrange`, Edit menu + canvas menu (⌥⌘] ⌥⌘[ ±⇧), `ArrangeRow` in the element and layer panels.
+Core `BeatSync.swift`: `BeatGrid` on `SoundClip.beats` (file seconds), `SoundClip.timelineBeats`, `BeatTracker.track` (autocorrelation tempo weighted
+around 120 bpm + Ellis DP), `BeatSync.fitClips` (moves each clip's end to the nearest beat within one beat step — never further: a real 1-hour clip under a
+2-minute song was cut to 2 minutes before that limit; extends only up to the source; keeps the song's own length), `addMarkers`. Media `BeatDetector`
+(11.025 kHz mono, 1024/256 STFT, band-weighted spectral flux — low bands ×2 or hi-hats win — beat times + ¾ window). App `EditorSession+Beats.swift`,
+Audio ▸ Beat tab, timeline ticks on songs, snapping of moves and edges to beats/markers (`TimelineView.snapPoints`, `snappedEdge`).
+Core `Captions.swift`: `CaptionWord` (`SubtitleCue.words`, seconds from the cue start), `CaptionStyle`/`CaptionLook` on `SubtitleStyle.caption`,
+`timedWords` (stored when the word count still matches, else by length), `activeWord(at:)`, `SubtitleBuilder.captionCues`, `splitIntoCaptions`.
+Media: `OverlayRenderer.captionBox` (highlight range, box, scale; `ringPercent` = heavy outline drawn behind the letters), `OverlayLayer.captionState`
+(word + pop scale, also in `StillFrameKey`). Fonts must cover Vietnamese: AvenirNext-Heavy does not (default AvenirNext-Bold).
+`TimelineRipple.followReorder` (things wholly over one clip go with it) and `followSpeed` (scaled inside the clip, shifted after); `moveClips`,
+`setClipSpeed` (slider coalescing with `trimBase`). Debug: `MACPLAYER_DEV_DO="beats|fit:2|speed:3:2|move:2,3>0|front:layer|caption:box|seek:9|wait:5|undo"`.
+Never send key events (CGEvent) to "the test app" from a shell: they go to whatever app is in front (a ⌘Q may have quit the maintainer's MacPlayer, 0.20).
+
 **0.19.0 Quick cuts on the timeline.** Core `TimelineCuts.swift`: `TimelineCuts.trim(_:clip:at:removing:ripple:)` (Q = `.beforePlayhead`,
 W = `.afterPlayhead`; source time of the frame shown, snapped like `splitAtPlayhead`; nil within a frame of an edge), `delete(_:clips:ripple:)`,
 `range(in:from:to:)` (⇧-click). `TimelineRipple.remove(span)/insert(at:length:)/followTrim(of:leftEdge:before:)` move texts, layers (video

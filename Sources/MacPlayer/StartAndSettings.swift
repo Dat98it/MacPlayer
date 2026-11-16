@@ -71,6 +71,12 @@ struct SettingsView: View {
         let _ = r.objectWillChange
         TabView {
             Form {
+                // Language (0.20.1): the label in both languages, so it can be found whichever one shows.
+                Picker(L("Language") == "Language" ? "Language · Ngôn ngữ" : L("Language") + " · Language",
+                       selection: Binding(get: { AppLanguage.current }, set: { LanguageState.shared.set($0); r.bump() })) {
+                    ForEach(AppLanguage.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                Divider()
                 Stepper(value: Binding(get: { p.skipSeconds }, set: { p.skipSeconds = $0; r.bump() }), in: 1...60, step: 1) { Text(LF("Arrow key skips %d seconds", Int(p.skipSeconds))) }
                 Stepper(value: Binding(get: { p.bigSkipSeconds }, set: { p.bigSkipSeconds = $0; r.bump() }), in: 5...300, step: 5) { Text(LF("Shift+arrow skips %d seconds", Int(p.bigSkipSeconds))) }
                 Stepper(value: Binding(get: { p.photoSlideSeconds }, set: { p.photoSlideSeconds = $0; r.bump() }), in: 1...60, step: 1) { Text(LF("A photo stays %d seconds in a slideshow", Int(p.photoSlideSeconds))) }

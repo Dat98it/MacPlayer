@@ -410,6 +410,39 @@ extension EditorSession {
         edit(lock ? "Lock" : "Unlock") { CanvasSelection.setLocked(lock, ids, in: &$0) }
     }
 
+    // MARK: Layer order (0.20)
+
+    /// What Bring Forward / Send Backward acts on: what is selected on the picture, else the text or layer chosen on the timeline.
+    var arrangeTargets: Set<UUID> {
+        if !canvasSelection.isEmpty { return canvasSelection }
+        if let id = selectedTextID { return [id] }
+        if let id = selectedOverlayID { return [id] }
+        return []
+    }
+
+    func canArrange(_ m: LayerOrder.Move) -> Bool {
+        let ids = arrangeTargets
+        return !ids.isEmpty && LayerOrder.canMove(ids, m, in: project, timed: !isPhoto)
+    }
+
+    func arrange(_ m: LayerOrder.Move) {
+        let ids = arrangeTargets
+        guard !ids.isEmpty else { flash(L("Select a text, sticker, shape or layer on the picture first.")); return }
+        let label: String
+        switch m {
+        case .toFront: label = "Bring to Front"
+        case .forward: label = "Bring Forward"
+        case .backward: label = "Send Backward"
+        case .toBack: label = "Send to Back"
+        }
+        var p = project
+        guard LayerOrder.move(ids, m, in: &p, timed: !isPhoto) else {
+            flash(m == .toFront || m == .forward ? L("Already on top of what is on screen with it.") : L("Already below what is on screen with it."))
+            return
+        }
+        edit(label) { $0 = p }
+    }
+
     var canvasHasGroup: Bool { CanvasSelection.items(of: project).contains { canvasSelection.contains($0.id) && $0.group != nil } }
     var canvasAllLocked: Bool { !canvasSelection.isEmpty && canvasSelection.allSatisfy(isLocked) }
 }

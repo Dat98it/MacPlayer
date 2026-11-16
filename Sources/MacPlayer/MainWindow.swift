@@ -50,6 +50,9 @@ final class ContentViewController: NSViewController {
         rebuild()
     }
 
+    /// The language changed (0.20.1): the screen is made again, so every caption, menu and panel speaks the new one.
+    func reloadForLanguage() { rebuild() }
+
     private var app: AppDelegate? { NSApp.delegate as? AppDelegate }
 
     private func rebuild() {
@@ -197,7 +200,7 @@ final class ContentViewController: NSViewController {
     /// choice, where to save. It is the only place to export from (0.14).
     func showExport() {
         guard let s = session, exportSheet == nil else { return }
-        let host = NSHostingController(rootView: ExportSheet(session: s, close: { [weak self] in self?.closeExport() }))
+        let host = NSHostingController(rootView: LanguageRoot(ExportSheet(session: s, close: { [weak self] in self?.closeExport() })))
         host.preferredContentSize = NSSize(width: 580, height: s.isPhoto ? 600 : 680)
         exportSheet = host
         presentAsSheet(host)
@@ -347,11 +350,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, Playlist
         w.title = "MacPlayer"; w.minSize = NSSize(width: 900, height: 560); w.isReleasedWhenClosed = false
         w.collectionBehavior.insert(.fullScreenPrimary)      // the green button and F both need this to enter full screen
         super.init(window: w)
+        NotificationCenter.default.addObserver(forName: .appLanguageChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.content.reloadForLanguage(); self?.updateTitle() }
+        }
         w.delegate = self
         w.shortcutHandler = { [weak self] e in self?.handleKey(e) ?? false }
 
         let split = NSSplitViewController()
-        let side = NSHostingController(rootView: PlaylistSidebar(model: playlists, openURL: { u in (NSApp.delegate as? AppDelegate)?.open(urls: [u]) }))
+        let side = NSHostingController(rootView: LanguageRoot(PlaylistSidebar(model: playlists, openURL: { u in (NSApp.delegate as? AppDelegate)?.open(urls: [u]) })))
         // What the panels show must never decide how big the window is. By default a hosting controller passes the size its SwiftUI content would
         // like up to the window, so changing the tool (or the video) made the window wider or taller, and on a small screen pushed its top out of sight.
         side.sizingOptions = []

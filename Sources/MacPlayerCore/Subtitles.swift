@@ -5,6 +5,8 @@ public struct SubtitleCue: Codable, Identifiable, Equatable, Sendable {
     public var start: MediaTime
     public var end: MediaTime
     public var text: String
+    /// When each word is said (0.20), from speech recognition; nil for typed or imported subtitles. See `timedWords`.
+    public var words: [CaptionWord]?
 
     public init(id: UUID = UUID(), start: MediaTime, end: MediaTime, text: String) {
         self.id = id; self.start = start; self.end = end; self.text = text
@@ -29,6 +31,8 @@ public struct SubtitleStyle: Codable, Equatable, Sendable {
     public var alignment: TextAlignmentChoice = .center
     /// Distance of the text's bottom edge from the bottom of the picture, as a fraction of its height.
     public var bottomMargin = 0.07
+    /// Captions in the style of short-video apps (0.20): big words, the one being said marked. Nil: classic subtitles.
+    public var caption: CaptionStyle?
     public init() {}
 
     /// Vertical 9:16 video: larger text, and kept clear of the area that apps cover with their own buttons.

@@ -254,6 +254,9 @@ public struct TextOverlay: Codable, Identifiable, Equatable, Sendable {
     public var groupID: UUID?
     /// A locked element cannot be moved, resized or deleted on the picture (0.12).
     public var locked: Bool?
+    /// Place in the stack of things over the picture, set by Bring Forward / Send Backward (0.20). Nil: the usual place (above every layer,
+    /// in the order the texts were added). Set places are below zero, so what is added later still lands on top.
+    public var z: Double?
     /// A motion that keeps going while it is on screen (0.16.5).
     public var loop: ElementLoop?
 
@@ -405,6 +408,7 @@ public struct Project: Codable, Identifiable, Equatable, Sendable {
             var spec = LayerSpec(id: c.id, kind: kind, lane: c.lane, start: c.start, duration: c.duration, transform: c.transform, keyframes: c.keyframes,
                                  audio: c.audio, fadeIn: c.fadeIn, fadeOut: c.fadeOut, animationIn: c.animationIn, animationOut: c.animationOut)
             spec.loop = c.loop
+            spec.z = LayerOrder.key(c)
             return spec
         }
     }

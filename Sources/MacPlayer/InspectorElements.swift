@@ -183,7 +183,7 @@ struct TextPane: View {
         let tab = session.paneTab("element", sections)
         SectionTabBar(sections: sections, selection: tab)
         switch tab.wrappedValue {
-        case "place": ToolCard(title: L("Position and size"), icon: "arrow.up.left.and.arrow.down.right") { placementControls(o) }
+        case "place": ToolCard(title: L("Position and size"), icon: "arrow.up.left.and.arrow.down.right") { placementControls(o); ArrangeRow(session: session) }
         case "anim": ToolCard(title: L("Arrive and leave"), icon: "sparkles") { animationControls(o) }
         case "motion":
             ToolCard(title: L("Motion"), icon: "wand.and.rays") {

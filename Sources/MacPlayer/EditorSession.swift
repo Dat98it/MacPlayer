@@ -102,6 +102,10 @@ final class EditorSession: NSObject, ObservableObject {
     /// Everything selected on the picture (texts, shapes, stickers, layers, logos): one or more; a group comes whole (0.12).
     @Published var canvasSelection: Set<UUID> = []
     @Published var denoiseProgress: [DenoiseTarget: Double] = [:]
+    /// Sounds whose beat is being looked for (0.20).
+    @Published var beatsWorking: Set<UUID> = []
+    /// Which beats a fit or the markers use: every 1, 2, 4 or 8 (0.20).
+    @Published var beatEvery = 1
     @Published var fxProgress: [DenoiseTarget: Double] = [:]
     let recorder = VoiceRecorder()
     var voiceStart = MediaTime.zero

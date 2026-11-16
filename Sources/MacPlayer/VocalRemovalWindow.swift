@@ -21,7 +21,7 @@ final class VocalRemovalWindow: NSObject, ObservableObject, NSWindowDelegate {
     func show(source: URL? = nil) {
         if !isRunning, let source { self.source = source; result = nil; error = nil }
         if window == nil {
-            let view = NSHostingController(rootView: VocalRemovalView(model: self))
+            let view = NSHostingController(rootView: LanguageRoot(VocalRemovalView(model: self)))
             let w = NSWindow(contentViewController: view)
             w.title = L("Remove vocals")
             w.styleMask = [.titled, .closable, .miniaturizable, .resizable]

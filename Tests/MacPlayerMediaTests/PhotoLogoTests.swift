@@ -39,6 +39,20 @@ import MacPlayerCore
         #expect(TestPhoto.pixel(without, 50, 25).r > 230, "no logo, no green")
     }
 
+    /// 0.20: a shape is drawn over a logo until the logo is brought to the front.
+    @Test func layerOrderDecidesWhetherAShapeOrALogoIsOnTop() throws {
+        let photo = try TestPhoto.write("logo-order", width: 200, height: 100)
+        let base = try PhotoLoader.full(url: photo).image
+        var p = Project(name: "order", kind: .photo)
+        p.overlayClips = [clip(try greenLogo())]
+        p.overlays = [TextOverlay.shape(ShapeSpec(kind: .rectangle, width: 0.1, height: 0.1, fillHex: "#FFFFFF"), start: .zero, end: MediaTime(seconds: 200_000), x: 0.25, y: 0.25)]
+        let before = TestPhoto.pixel(PhotoRenderer.render(base: base, look: VideoLook(), overlays: p.overlays, logos: PhotoLogo.load(p.overlayClips)), 50, 25)
+        #expect(before.r > 230 && before.g > 230 && before.b > 230, "the shape is over the logo, as before 0.20: \(before)")
+        #expect(LayerOrder.move([p.overlayClips[0].id], .toFront, in: &p, timed: false))
+        let after = TestPhoto.pixel(PhotoRenderer.render(base: base, look: VideoLook(), overlays: p.overlays, logos: PhotoLogo.load(p.overlayClips)), 50, 25)
+        #expect(after.g > 230 && after.r < 25 && after.b < 25, "the logo now covers the shape: \(after)")
+    }
+
     @Test func theSavedPhotoHasTheLogoAndTheOriginalAndTheLogoFileAreUntouched() throws {
         let photo = try TestPhoto.write("logo-save", width: 200, height: 100)
         let logo = try greenLogo()

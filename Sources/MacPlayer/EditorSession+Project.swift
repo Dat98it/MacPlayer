@@ -303,10 +303,38 @@ extension EditorSession {
     }
 
     /// Moves a clip so it sits before the clip that is now at `index` (0...count).
-    func moveClip(_ id: UUID, toIndex index: Int) {
-        guard let from = project.timeline.firstIndex(where: { $0.id == id }) else { return }
-        guard index != from, index != from + 1 else { return }
-        edit("Move clip") { TimelineEditor.move(&$0.timeline, fromOffsets: [from], toOffset: index) }
+    func moveClip(_ id: UUID, toIndex index: Int) { moveClips([id], toIndex: index) }
+
+    /// Moves clips (several selected ones together, in their order) to a place in the timeline (0.20). With Follow on, what lies over each
+    /// clip goes with it.
+    func moveClips(_ ids: Set<UUID>, toIndex index: Int) {
+        let offsets = IndexSet(project.timeline.indices.filter { ids.contains(project.timeline[$0].id) })
+        guard !offsets.isEmpty else { return }
+        var moved = project.timeline
+        TimelineEditor.move(&moved, fromOffsets: offsets, toOffset: index)
+        guard moved.map(\.id) != project.timeline.map(\.id) else { return }
+        let follow = timelineFollows
+        edit(ids.count > 1 ? "Move clips" : "Move clip") { p in
+            let before = p.timeline
+            p.timeline = moved
+            if follow { TimelineRipple.followReorder(before: before, in: &p) }
+        }
+    }
+
+    /// The speed of the clip being edited (0.20: with Follow on, what lies over it stays on its pictures and what comes after moves).
+    /// A slider's moves all start again from the project as it was when it was first moved.
+    func setClipSpeed(_ v: Double, coalesce: String? = nil) {
+        guard let id = project.activeClipID ?? project.timeline.first?.id else { edit("Clip speed", coalesce: coalesce) { $0.activeLook.speed = v }; return }
+        let key = "speed-\(id)"
+        if coalesce == nil || trimBase?.key != key { trimBase = (key, project) }
+        guard let base = trimBase?.project else { return }
+        let follow = timelineFollows
+        edit("Clip speed", coalesce: coalesce) { p in
+            p = base
+            p.activeLook.speed = v
+            if follow { TimelineRipple.followSpeed(of: id, before: base.timeline, in: &p) }
+        }
+        if coalesce == nil { trimBase = nil }
     }
 
     /// Drag an edge to a timeline time: trims the clip's source range (the picture, not the clip's place).

@@ -28,6 +28,8 @@ public struct SoundClip: Codable, Identifiable, Equatable, Sendable {
     public var volumeCurve: [VolumePoint]?
     /// How long the whole file is (for the length control; the builder reads the real file).
     public var fileDuration: MediaTime?
+    /// The beats found in the file (0.20), nil until they are looked for. Times in the file, so trimming the sound keeps them right.
+    public var beats: BeatGrid?
 
     public init(id: UUID = UUID(), name: String, path: String, bookmark: Data? = nil, kind: SoundKind = .music, start: MediaTime, sourceStart: MediaTime = .zero,
                 duration: MediaTime, gainDB: Double = 0, fadeIn: Double = 0, fadeOut: Double = 0, muted: Bool = false, ducking: Bool = false, duckDepthDB: Double = -14, denoise: Double? = nil, fileDuration: MediaTime? = nil) {

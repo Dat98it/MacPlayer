@@ -348,8 +348,13 @@ final class ElementManipulatorView: NSView {
         if let sel = handled(items) {
             for (c, pt) in corners(sel.frame) where hypot(p.x - pt.x, p.y - pt.y) <= handle { return .corner(sel.o, c) }
         }
-        for item in items.reversed() where item.frame.contains(p) { return .body(item.o) }
-        for l in layerFrames().reversed() where l.frame.contains(p) { return .layer(l.id) }
+        // The topmost thing under the mouse, as the stack draws them (0.20: a layer may lie over a text).
+        let texts = Dictionary(items.map { ($0.o.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let layers = Dictionary(layerFrames().map { ($0.id, $0.frame) }, uniquingKeysWith: { a, _ in a })
+        for it in LayerOrder.stack(s.canvasProject).reversed() {
+            if let t = texts[it.id], t.frame.contains(p) { return .body(t.o) }
+            if let f = layers[it.id], f.contains(p) { return .layer(it.id) }
+        }
         return pictureRect().contains(p) ? .empty : .none
     }
 
@@ -693,6 +698,11 @@ func canvasMenu(_ s: EditorSession) -> NSMenu? {
     add(L("Group"), "g", enabled: s.canvasSelection.count > 1) { s.groupCanvas() }
     add(L("Ungroup"), "g", [.command, .shift], enabled: s.canvasHasGroup) { s.ungroupCanvas() }
     add(s.canvasAllLocked ? L("Unlock") : L("Lock"), "l") { s.toggleLockCanvas() }
+    m.addItem(.separator())
+    add(L("Bring to Front"), "]", [.command, .option, .shift], enabled: s.canArrange(.toFront)) { s.arrange(.toFront) }
+    add(L("Bring Forward"), "]", [.command, .option], enabled: s.canArrange(.forward)) { s.arrange(.forward) }
+    add(L("Send Backward"), "[", [.command, .option], enabled: s.canArrange(.backward)) { s.arrange(.backward) }
+    add(L("Send to Back"), "[", [.command, .option, .shift], enabled: s.canArrange(.toBack)) { s.arrange(.toBack) }
     return m
 }
 

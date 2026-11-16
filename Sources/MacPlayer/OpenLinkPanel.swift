@@ -340,7 +340,7 @@ final class LinkPanel: NSObject, NSWindowDelegate {
         let m = LinkPanelModel()
         if let t = text { m.text = t }
         model = m
-        let host = NSHostingController(rootView: OpenLinkView(model: m, close: { [weak self] in self?.close() }))
+        let host = NSHostingController(rootView: LanguageRoot(OpenLinkView(model: m, close: { [weak self] in self?.close() })))
         // The window follows its content (a longer message, the recent links, the help opened).
         host.sizingOptions = [.preferredContentSize]
         let w = NSWindow(contentViewController: host)

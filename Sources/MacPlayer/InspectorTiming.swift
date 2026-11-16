@@ -48,10 +48,10 @@ struct TimingPane: View {
                 SectionTabBar(sections: sections, selection: session.paneTab("timing", sections))
                 if tab == "speed" {
                 ToolCard(title: L("Speed"), icon: "speedometer") {
-                    SliderRow(title: L("Speed"), value: session.binding("Clip speed", coalesce: "spd-timing", get: { $0.activeLook.speed }, set: { $0.activeLook.speed = $1 }), range: 0.25...4, format: "%.2f×", onDone: { session.endCoalescing() })
+                    SliderRow(title: L("Speed"), value: Binding(get: { session.project.activeLook.speed }, set: { session.setClipSpeed($0, coalesce: "spd-timing") }), range: 0.25...4, format: "%.2f×", onDone: { session.endCoalescing() })
                     HStack(spacing: 6) {
                         ForEach([0.5, 1.0, 2.0, 4.0], id: \.self) { v in
-                            Button(String(format: "%g×", v)) { session.edit("Clip speed") { $0.activeLook.speed = v } }.buttonStyle(.bordered).controlSize(.small)
+                            Button(String(format: "%g×", v)) { session.setClipSpeed(v) }.buttonStyle(.bordered).controlSize(.small)
                         }
                     }
                 }

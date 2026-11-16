@@ -201,6 +201,8 @@ public struct OverlayClip: Codable, Identifiable, Equatable, Sendable, OverlayAn
     public var groupID: UUID?
     /// A locked layer cannot be moved, resized or deleted on the picture (0.12).
     public var locked: Bool?
+    /// Place in the stack of things over the picture (0.20); nil = by lane. See `LayerOrder`.
+    public var z: Double?
 
     public init(id: UUID = UUID(), name: String, kind: OverlayKind, lane: Int = 0, start: MediaTime, duration: MediaTime,
                 transform: OverlayTransform = OverlayTransform(), keyframes: [OverlayKeyframe] = [], audio: AudioSettings = AudioSettings(),
@@ -235,6 +237,8 @@ public struct LayerSpec: Codable, Equatable, Sendable, OverlayAnimating {
     public var animationIn: ElementAnimation?
     public var animationOut: ElementAnimation?
     public var loop: ElementLoop?
+    /// Place in the stack (0.20): drawn in this order with the texts. Nil (export jobs saved before): by lane, under every text.
+    public var z: Double?
 
     public init(id: UUID = UUID(), kind: Kind, lane: Int, start: MediaTime, duration: MediaTime, transform: OverlayTransform = OverlayTransform(),
                 keyframes: [OverlayKeyframe] = [], audio: AudioSettings = AudioSettings(), fadeIn: Double = 0, fadeOut: Double = 0,

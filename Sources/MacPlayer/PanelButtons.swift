@@ -1,3 +1,4 @@
+import MacPlayerCore
 import SwiftUI
 import AppKit
 
@@ -138,5 +139,27 @@ struct SectionTabBar: View {
             }
         }
         .accessibilityElement(children: .contain).accessibilityLabel(L("Settings groups"))
+    }
+}
+
+/// Bring to front / forward / backward / to back for what is selected on the picture (0.20).
+struct ArrangeRow: View {
+    @ObservedObject var session: EditorSession
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(L("Layer order")).font(.caption).foregroundColor(.secondary)
+            LazyVGrid(columns: panelColumns(56), spacing: 4) {
+                item(L("To front"), "square.3.layers.3d.top.filled", .toFront, help: L("Bring to Front (⌥⇧⌘])"))
+                item(L("Forward"), "square.2.layers.3d.top.filled", .forward, help: L("Bring Forward (⌥⌘])"))
+                item(L("Backward"), "square.2.layers.3d.bottom.filled", .backward, help: L("Send Backward (⌥⌘[)"))
+                item(L("To back"), "square.3.layers.3d.bottom.filled", .toBack, help: L("Send to Back (⌥⇧⌘[)"))
+            }
+        }
+    }
+
+    private func item(_ title: String, _ icon: String, _ m: LayerOrder.Move, help: String) -> some View {
+        PanelButton(title: title, icon: icon, help: help) { session.arrange(m) }
+            .disabled(!session.canArrange(m)).opacity(session.canArrange(m) ? 1 : 0.4)
     }
 }

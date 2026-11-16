@@ -146,6 +146,7 @@ struct LayersPane: View {
                 SliderRow(title: L("Vertical position"), value: Binding(get: { st.centerY }, set: { v in session.setOverlayValue(c.id, "y") { $0.centerY = v } }), range: -0.2...1.2, onDone: { session.endCoalescing() })
                 SliderRow(title: L("Opacity"), value: Binding(get: { st.opacity }, set: { v in session.setOverlayValue(c.id, "opacity") { $0.opacity = v } }), range: 0...1, onDone: { session.endCoalescing() })
                 SliderRow(title: L("Turn (degrees)"), value: Binding(get: { st.rotation }, set: { v in session.setOverlayValue(c.id, "turn") { $0.rotation = v } }), range: -180...180, format: "%.0f°", onDone: { session.endCoalescing() })
+                ArrangeRow(session: session)
             }.padding(4)
         }
     }

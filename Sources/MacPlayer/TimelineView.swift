@@ -367,6 +367,21 @@ final class TimelineView: NSView {
             let base: NSColor = s.isMissing(c) ? .systemRed : (c.kind == .voice ? .systemCyan : .systemGreen)
             let icon = c.kind == .voice ? "🎙 " : (c.kind == .music ? "♪ " : "🔊 ")
             bar(ctx, r, base: base, selected: s.selectedSoundID == c.id, title: icon + c.name + (c.muted ? "  🔇" : ""))
+            // Beats (0.20): a tick on the song for each, longer every fourth; thinned out when they would crowd together.
+            let beats = c.timelineBeats
+            if !beats.isEmpty {
+                let px = beats.count > 1 ? (x(beats[min(4, beats.count - 1)].seconds) - x(beats[0].seconds)) / CGFloat(min(4, beats.count - 1)) : 99
+                let step = px >= 5 ? 1 : (px * 4 >= 5 ? 4 : 16)
+                ctx.saveGState(); ctx.clip(to: r)
+                ctx.setFillColor(NSColor.white.withAlphaComponent(0.85).cgColor)
+                for (i, b) in beats.enumerated() where i % step == 0 {
+                    let bx = x(b.seconds)
+                    guard bx >= r.minX - 1, bx <= r.maxX + 1 else { continue }
+                    let h: CGFloat = i % 4 == 0 ? 9 : 5
+                    ctx.fill(CGRect(x: bx - 0.75, y: r.maxY - h, width: 1.5, height: h))
+                }
+                ctx.restoreGState()
+            }
         }
     }
 
@@ -534,12 +549,35 @@ final class TimelineView: NSView {
         return s.project.soundClips.last { x($0.start.seconds) - 3 <= p.x && p.x <= max(x($0.end.seconds), x($0.start.seconds) + 4) + 3 }
     }
 
+    /// What a moved thing or a dragged edge clings to: the ends, the playhead, the cuts, the markers and the beats of songs (0.20).
+    /// A clip pressed inside a selection of several: selected alone on release unless it was dragged.
+    private var collapseOnUp: UUID?
+
+    private func snapPoints(_ s: EditorSession, cuts: Bool = true) -> [Double] {
+        var points = [0.0, s.player.currentTime.seconds]
+        if cuts {
+            points.append(total)
+            var pos = 0.0
+            for c in s.project.timeline { pos += c.duration.seconds; points.append(pos) }
+        }
+        points += s.project.markers.map(\.time.seconds)
+        points += BeatSync.timelineBeats(s.project).map(\.seconds)
+        return points
+    }
+
+    /// A dragged edge clings to the nearest of those points when within a few pixels.
+    private func snappedEdge(_ t: Double, cuts: Bool = true) -> Double {
+        guard let s = session else { return t }
+        let reach = Double(8 / max(1, bounds.width)) * visibleLength
+        let near = snapPoints(s, cuts: cuts).min { abs($0 - t) < abs($1 - t) }
+        if let near, abs(near - t) < reach { return near }
+        return t
+    }
+
     /// Moving something in time: its start (or end) clings to the playhead, the cuts and the ends of the timeline when close to them.
     private func snapped(start: Double, length: Double) -> Double {
         guard let s = session else { return start }
-        var points = [0.0, total, s.player.currentTime.seconds]
-        var pos = 0.0
-        for c in s.project.timeline { pos += c.duration.seconds; points.append(pos) }
+        var points = snapPoints(s)
         let reach = Double(8 / max(1, bounds.width)) * visibleLength
         var best: (Double, Double)?
         for p in points {
@@ -567,7 +605,7 @@ final class TimelineView: NSView {
             if let c = projectClip(at: time(p.x)) {
                 if e.modifierFlags.contains(.shift), let anchor = s.project.timeline.first(where: { s.selectedClipIDs.contains($0.id) })?.id {
                     s.selectedClipIDs = Set(TimelineCuts.range(in: s.project.timeline, from: anchor, to: c.id))   // ⇧-click: every clip between (0.19)
-                } else if e.modifierFlags.contains(.command) { s.selectedClipIDs = s.selectedClipIDs.symmetricDifference([c.id]) } else if !s.selectedClipIDs.contains(c.id) || s.selectedClipIDs.count > 1 { s.select(.clip(c.id)) }
+                } else if e.modifierFlags.contains(.command) { s.selectedClipIDs = s.selectedClipIDs.symmetricDifference([c.id]) } else if !s.selectedClipIDs.contains(c.id) { s.select(.clip(c.id)) } else if s.selectedClipIDs.count > 1 { collapseOnUp = c.id }   // kept for a drag of them all (0.20)
                 drag = .moveClip(c.id, startX: p.x); movedFar = false
                 s.player.scrub(to: MediaTime(seconds: clampTime(time(p.x)), timescale: 600))
                 return
@@ -595,20 +633,22 @@ final class TimelineView: NSView {
         func mt(_ v: Double) -> MediaTime { MediaTime(seconds: v, timescale: 600) }
         switch drag {
         case .playhead: s.player.scrub(to: mt(t))
-        case .edge(let id, let left): s.trimClip(id, leftEdge: left, toTimelineTime: mt(t))
+        case .edge(let id, let left):
+            // The right edge of a clip clings to beats, markers and the playhead (not to the cuts: its own would only hold it in place).
+            s.trimClip(id, leftEdge: left, toTimelineTime: mt(left ? t : snappedEdge(t, cuts: false)))
         case .overlayMove(let id, let grab):
             let lane: Int? = { if case .lane(let l) = track(at: p.y) { return l }; return nil }()
             let len = s.project.overlayClips.first { $0.id == id }?.duration.seconds ?? 0
             s.moveOverlay(id, toStart: mt(snapped(start: max(0, t - grab), length: len)), lane: lane)
-        case .overlayEdge(let id, let left): s.trimOverlay(id, leftEdge: left, toTimelineTime: mt(t))
+        case .overlayEdge(let id, let left): s.trimOverlay(id, leftEdge: left, toTimelineTime: mt(snappedEdge(t)))
         case .textMove(let id, let grab):
             let len = s.project.overlays.first { $0.id == id }.map { ($0.end - $0.start).seconds } ?? 0
             s.moveText(id, toStart: mt(snapped(start: max(0, t - grab), length: len)))
-        case .textEdge(let id, let left): s.trimText(id, leftEdge: left, to: mt(t))
+        case .textEdge(let id, let left): s.trimText(id, leftEdge: left, to: mt(snappedEdge(t)))
         case .soundMove(let id, let grab):
             let len = s.project.soundClips.first { $0.id == id }?.duration.seconds ?? 0
             s.moveSound(id, toStart: mt(snapped(start: max(0, t - grab), length: len)))
-        case .soundEdge(let id, let left): s.trimSound(id, leftEdge: left, to: mt(t))
+        case .soundEdge(let id, let left): s.trimSound(id, leftEdge: left, to: mt(snappedEdge(t)))
         case .moveClip(_, let startX):
             if abs(p.x - startX) > 6 { movedFar = true }
             if movedFar { moveTarget = dropIndex(at: t); needsDisplay = true }
@@ -620,7 +660,10 @@ final class TimelineView: NSView {
     override func mouseUp(with e: NSEvent) {
         guard let s = session else { return }
         switch drag { case .edge, .overlayMove, .overlayEdge, .textMove, .textEdge, .soundMove, .soundEdge: s.endCoalescing(); default: break }
-        if case .moveClip(let id, _) = drag, movedFar, let target = moveTarget { s.moveClip(id, toIndex: target) }
+        // Several selected clips move together (0.20); a click without a drag selects just the one clicked.
+        if case .moveClip(let id, _) = drag, movedFar, let target = moveTarget { s.moveClips(s.selectedClipIDs.contains(id) ? s.selectedClipIDs : [id], toIndex: target) }
+        else if let id = collapseOnUp, !movedFar { s.select(.clip(id)) }
+        collapseOnUp = nil
         moveTarget = nil; movedFar = false
         drag = .none; needsDisplay = true
     }

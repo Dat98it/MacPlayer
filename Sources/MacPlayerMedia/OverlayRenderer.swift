@@ -38,6 +38,17 @@ enum OverlayRenderer {
         var uppercase = false
         /// How much of the text shows, 0...1 (the typewriter). The rest is laid out but not drawn, so the text does not shift as it grows.
         var reveal = 1.0
+        /// A part of the text marked (0.20 captions: the word being said): in its own colour, on a box of that colour, or bigger.
+        var highlight: Highlight?
+        /// An outline drawn around the letters and behind them, this thick (per cent of the letter size): it never eats into the letters,
+        /// so it can be heavy (0.20 captions). Nil: the usual outline (`outlineWidth`).
+        var ringPercent: Double?
+        struct Highlight {
+            var range: NSRange
+            var colorHex: String
+            var box = false
+            var scale = 1.0
+        }
     }
 
     /// A transparent image of `size` with the text drawn in it. Returns nil for empty text.
@@ -66,7 +77,7 @@ enum OverlayRenderer {
         ]
         if box.letterSpacing != 0 { attrs[NSAttributedString.Key(kCTKernAttributeName as String)] = box.letterSpacing * fontSize }
         let strokeFraction = box.outlineWidth ?? 0.06
-        if let outline = box.outlineHex, strokeFraction > 0 {
+        if let outline = box.outlineHex, strokeFraction > 0, box.ringPercent == nil {
             attrs[NSAttributedString.Key(kCTStrokeColorAttributeName as String)] = color(hex: outline)
             attrs[NSAttributedString.Key(kCTStrokeWidthAttributeName as String)] = -(fontSize * strokeFraction) // negative: fill and stroke
         }
@@ -81,6 +92,21 @@ enum OverlayRenderer {
                 attributed.addAttribute(NSAttributedString.Key(kCTStrokeColorAttributeName as String), value: CGColor(gray: 0, alpha: 0), range: range)
             }
         }
+        if let h = box.highlight, h.range.location != NSNotFound, NSMaxRange(h.range) <= (text as NSString).length {
+            if h.box {
+                // Letters on the box without the outline (it would eat into the box): black on a light box, white on a dark one.
+                let c = color(hex: h.colorHex).components ?? [1, 1, 1]
+                let light = c.count >= 3 && 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] > 0.6
+                attributed.addAttribute(NSAttributedString.Key(kCTForegroundColorAttributeName as String), value: color(hex: light ? "#111111" : "#FFFFFF"), range: h.range)
+                attributed.removeAttribute(NSAttributedString.Key(kCTStrokeWidthAttributeName as String), range: h.range)
+            } else {
+                attributed.addAttribute(NSAttributedString.Key(kCTForegroundColorAttributeName as String), value: color(hex: h.colorHex), range: h.range)
+            }
+            if h.scale != 1 {
+                attributed.addAttribute(NSAttributedString.Key(kCTFontAttributeName as String), value: CTFontCreateWithName(box.fontName as CFString, fontSize * CGFloat(h.scale), nil), range: h.range)
+                if box.outlineHex != nil, !h.box, box.ringPercent == nil { attributed.addAttribute(NSAttributedString.Key(kCTStrokeWidthAttributeName as String), value: -(fontSize * CGFloat(h.scale) * strokeFraction), range: h.range) }
+            }
+        }
         let setter = CTFramesetterCreateWithAttributedString(attributed)
         let (rect, pad) = layout(box, setter: setter, fontSize: fontSize, size: size)
 
@@ -92,8 +118,52 @@ enum OverlayRenderer {
         if box.shadow { ctx.setShadow(offset: CGSize(width: 0, height: -fontSize * 0.05), blur: fontSize * 0.28, color: color(hex: box.shadowHex, alpha: 0.95)) }
         let path = CGPath(rect: rect, transform: nil)
         let frame = CTFramesetterCreateFrame(setter, CFRange(location: 0, length: 0), path, nil)
+        if let h = box.highlight, h.box {
+            // The box behind the marked word, drawn before the letters (no shadow on it).
+            ctx.saveGState(); ctx.setShadow(offset: .zero, blur: 0, color: nil)
+            ctx.setFillColor(color(hex: h.colorHex))
+            for r in rects(of: h.range, in: frame, origin: rect.origin) {
+                let p = fontSize * 0.14
+                let b = r.insetBy(dx: -p * 1.4, dy: -p * 0.5)
+                ctx.addPath(CGPath(roundedRect: b, cornerWidth: p * 1.6, cornerHeight: p * 1.6, transform: nil)); ctx.fillPath()
+            }
+            ctx.restoreGState()
+        }
+        if let ring = box.ringPercent, let outline = box.outlineHex {
+            let r = NSMutableAttributedString(attributedString: attributed)
+            let all = NSRange(location: 0, length: r.length)
+            r.addAttribute(NSAttributedString.Key(kCTForegroundColorAttributeName as String), value: CGColor(gray: 0, alpha: 0), range: all)
+            r.addAttribute(NSAttributedString.Key(kCTStrokeColorAttributeName as String), value: color(hex: outline), range: all)
+            r.addAttribute(NSAttributedString.Key(kCTStrokeWidthAttributeName as String), value: ring * 2, range: all)   // half of it falls outside
+            if let h = box.highlight, h.box, NSMaxRange(h.range) <= r.length { r.removeAttribute(NSAttributedString.Key(kCTStrokeWidthAttributeName as String), range: h.range) }
+            ctx.saveGState()
+            ctx.setLineJoin(.round)
+            CTFrameDraw(CTFramesetterCreateFrame(CTFramesetterCreateWithAttributedString(r), CFRange(location: 0, length: 0), path, nil), ctx)
+            ctx.restoreGState()
+            ctx.setShadow(offset: .zero, blur: 0, color: nil)
+        }
         CTFrameDraw(frame, ctx)
         return ctx.makeImage()
+    }
+
+    /// The boxes a part of the text covers once laid out (one per line it is on), in the picture's coordinates.
+    static func rects(of range: NSRange, in frame: CTFrame, origin: CGPoint) -> [CGRect] {
+        let lines = CTFrameGetLines(frame) as! [CTLine]
+        var origins = [CGPoint](repeating: .zero, count: lines.count)
+        CTFrameGetLineOrigins(frame, CFRange(location: 0, length: 0), &origins)
+        var out: [CGRect] = []
+        for (i, line) in lines.enumerated() {
+            let lr = CTLineGetStringRange(line)
+            let a = max(range.location, lr.location), b = min(NSMaxRange(range), lr.location + lr.length)
+            guard b > a else { continue }
+            var ascent: CGFloat = 0, descent: CGFloat = 0, leading: CGFloat = 0
+            _ = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
+            // Trailing spaces are not part of the word.
+            let x0 = CTLineGetOffsetForStringIndex(line, a, nil), x1 = CTLineGetOffsetForStringIndex(line, b, nil)
+            // From a little under the line to the top of the accents.
+            out.append(CGRect(x: origin.x + origins[i].x + x0, y: origin.y + origins[i].y - descent * 0.55, width: max(1, x1 - x0), height: ascent * 0.98 + descent * 0.55))
+        }
+        return out
     }
 
     /// Where the text goes in a picture of `size` (CG coordinates, origin bottom-left), and the padding of its background.
@@ -261,6 +331,36 @@ enum OverlayRenderer {
                        backgroundHex: o.backgroundHex, alignment: o.alignment, centerX: o.x, centerY: o.y, bottomMargin: 0,
                        outlineWidth: f?.outlineWidth, shadow: f?.shadow ?? false, shadowHex: f?.shadowHex ?? "#000000",
                        letterSpacing: f?.letterSpacing ?? 0, uppercase: f?.uppercase ?? false, reveal: reveal)
+    }
+
+    /// A caption line (0.20): big bold words, the one being said (`active`) marked as the look says. `oneWord` shows that word alone.
+    static func captionBox(for cue: SubtitleCue, caption c: CaptionStyle, active: Int?) -> TextBox? {
+        var words = cue.timedWords.map(\.text)
+        guard !words.isEmpty else { return nil }
+        if c.uppercase { words = words.map { $0.uppercased() } }
+        var mark = active
+        if c.look == .oneWord {
+            guard let a = active, a < words.count else { return nil }
+            words = [words[a]]; mark = 0
+        }
+        let text = words.joined(separator: " ")
+        var highlight: TextBox.Highlight?
+        if let m = mark, m < words.count, c.look != .bold {
+            let loc = (words[..<m].map { $0 + " " }.joined() as NSString).length
+            let range = NSRange(location: loc, length: (words[m] as NSString).length)
+            switch c.look {
+            case .box: highlight = .init(range: range, colorHex: c.highlightHex, box: true)
+            case .pop: highlight = .init(range: range, colorHex: c.highlightHex, scale: 1.18)
+            case .oneWord: highlight = nil
+            default: highlight = .init(range: range, colorHex: c.highlightHex)
+            }
+        }
+        var b = TextBox(text: text, fontName: c.fontName, sizeFraction: c.look == .oneWord ? c.sizeFraction * 1.35 : c.sizeFraction, colorHex: c.look == .oneWord ? c.highlightHex : "#FFFFFF",
+                        outlineHex: "#000000", backgroundHex: nil, alignment: .center, centerX: 0.5, centerY: c.centerY, bottomMargin: 0,
+                        shadow: true, shadowHex: "#000000")
+        b.highlight = highlight
+        b.ringPercent = 9
+        return b
     }
 
     static func box(for cue: SubtitleCue, style: SubtitleStyle) -> TextBox {

@@ -108,7 +108,7 @@ struct TimelinePane: View {
                         Text(Format.duration(c.duration)).font(.caption)
                     }
                     if selected {
-                        SliderRow(title: L("Speed"), value: session.binding("Clip speed", coalesce: "spd-\(c.id)", get: { $0.activeLook.speed }, set: { $0.activeLook.speed = $1 }), range: 0.25...4, format: "%.2f×", onDone: { session.endCoalescing() })
+                        SliderRow(title: L("Speed"), value: Binding(get: { session.project.activeLook.speed }, set: { session.setClipSpeed($0, coalesce: "spd-\(c.id)") }), range: 0.25...4, format: "%.2f×", onDone: { session.endCoalescing() })
                     }
                 }
                 .padding(8)

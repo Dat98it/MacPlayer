@@ -10,7 +10,7 @@ final class QueueWindow {
 
     func show() {
         if window == nil {
-            let host = NSHostingController(rootView: QueueView(exports: AppEnvironment.shared.exports))
+            let host = NSHostingController(rootView: LanguageRoot(QueueView(exports: AppEnvironment.shared.exports)))
             let w = NSWindow(contentViewController: host)
             w.title = L("Export Queue"); w.setContentSize(NSSize(width: 520, height: 420)); w.styleMask = [.titled, .closable, .resizable, .miniaturizable]
             w.isReleasedWhenClosed = false

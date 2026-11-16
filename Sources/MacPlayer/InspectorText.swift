@@ -45,6 +45,58 @@ struct SubtitlesPane: View {
         .task { locales.value = SpeechTranscriber.onDeviceLocales(); if !locales.value.contains(where: { $0.identifier == language.value }), let l = locales.value.first(where: { $0.identifier.hasPrefix(Locale.current.language.languageCode?.identifier ?? "en") }) ?? locales.value.first { language.value = l.identifier } }
     }
 
+    // MARK: Captions like short-video apps (0.20)
+
+    private static let captionLooks: [(CaptionLook?, String, String)] = [
+        (nil, "Classic", "captions.bubble"), (.highlight, "Highlight word", "highlighter"), (.box, "Box", "rectangle.fill.on.rectangle.fill"),
+        (.pop, "Pop", "sparkle"), (.oneWord, "One word", "textformat.size.larger"), (.bold, "Bold", "bold"),
+    ]
+    static let captionFonts: [(String, String)] = [("AvenirNext-Bold", "Avenir Next"), ("HelveticaNeue-CondensedBlack", "Helvetica Condensed"),
+                                                  ("Verdana-Bold", "Verdana"), ("GillSans-UltraBold", "Gill Sans"), ("Arial-BoldMT", "Arial")]
+
+    private var captionCard: some View {
+        let cap = session.project.subtitles.style.caption
+        return ToolCard(title: L("Caption style"), icon: "captions.bubble", onReset: cap == nil ? nil : { session.edit("Caption style") { $0.subtitles.style.caption = nil } }) {
+            LazyVGrid(columns: panelColumns(66), spacing: 4) {
+                ForEach(Self.captionLooks, id: \.1) { look, name, icon in
+                    PanelButton(title: L(name), icon: icon, help: L(name), selected: cap?.look == look) { chooseLook(look) }
+                }
+            }
+            if let cap {
+                HStack {
+                    ColorPicker(L("Word colour"), selection: Binding(get: { color(cap.highlightHex) }, set: { c in session.edit("Caption colour", coalesce: "capcol") { $0.subtitles.style.caption?.highlightHex = OverlayRendererBridge.hex(c) } }))
+                    Toggle(L("Capitals"), isOn: Binding(get: { cap.uppercase }, set: { v in session.edit("Caption capitals") { $0.subtitles.style.caption?.uppercase = v } }))
+                }
+                Picker(L("Font"), selection: Binding(get: { cap.fontName }, set: { v in session.edit("Caption font") { $0.subtitles.style.caption?.fontName = v } })) {
+                    ForEach(Self.captionFonts, id: \.0) { Text($0.1).tag($0.0) }
+                }
+                SliderRow(title: L("Size"), value: session.binding("Caption size", coalesce: "capsz", get: { $0.subtitles.style.caption?.sizeFraction ?? 0.06 }, set: { $0.subtitles.style.caption?.sizeFraction = $1 }), range: 0.03...0.12, onDone: { session.endCoalescing() })
+                SliderRow(title: L("Height on the picture"), value: session.binding("Caption position", coalesce: "capy", get: { $0.subtitles.style.caption?.centerY ?? 0.7 }, set: { $0.subtitles.style.caption?.centerY = $1 }), range: 0.1...0.92, onDone: { session.endCoalescing() })
+                let long = session.project.subtitles.cues.filter { $0.timedWords.count > CaptionStyle.wordsPerLine }.count
+                if long > 0 {
+                    Button(LF("Split %d long subtitles into short lines", long)) {
+                        session.edit("Short caption lines") { _ = $0.subtitles.splitIntoCaptions() }
+                    }
+                }
+                Text(session.project.subtitles.cues.isEmpty ? L("Create subtitles from speech below, or import a file: they will show in this style.")
+                                                            : L("Burned into the picture on export. Recognised speech marks each word as it is said; typed or imported lines are timed by word length."))
+                    .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func chooseLook(_ look: CaptionLook?) {
+        guard let look else { session.edit("Caption style") { $0.subtitles.style.caption = nil }; return }
+        session.edit("Caption style") { p in
+            var c = p.subtitles.style.caption ?? CaptionStyle()
+            c.look = look
+            // A wide picture has room for smaller letters.
+            if p.subtitles.style.caption == nil, session.outputAspect > 1 { c.sizeFraction = 0.07; c.centerY = 0.8 }
+            p.subtitles.style.caption = c
+            p.subtitles.burnIn = true
+        }
+    }
+
     private func transcribe() {
         guard let clip = session.timingClip, let url = session.sourceURLs[clip.sourceID] else { return }
         let span: TimeSpan? = clip.sourceSpan
@@ -62,7 +114,13 @@ struct SubtitlesPane: View {
         Task {
             do {
                 let words = try await SpeechTranscriber.transcribe(source: url, span: span, locale: locale)
-                let cues = SubtitleBuilder.cues(from: words).map { c -> SubtitleCue in var n = c; n.start = onTimeline(c.start); n.end = onTimeline(c.end); return n }
+                // With a caption look chosen, short lines that keep when each word is said (0.20).
+                let made = session.project.subtitles.style.caption != nil ? SubtitleBuilder.captionCues(from: words) : SubtitleBuilder.cues(from: words)
+                let cues = made.map { c -> SubtitleCue in
+                    var n = c; n.start = onTimeline(c.start); n.end = onTimeline(c.end)
+                    n.words = c.words?.map { CaptionWord(text: $0.text, start: $0.start / speed, end: $0.end / speed) }
+                    return n
+                }
                 session.edit("Automatic subtitles") { $0.subtitles.cues.append(contentsOf: cues) }
                 session.flash(LF("%d subtitles were written.", cues.count))
             } catch { session.flash((error as? CustomStringConvertible)?.description ?? error.localizedDescription, error: true) }
@@ -84,6 +142,7 @@ struct SubtitlesPane: View {
                 Button(L("Export VTT…")) { exportFile(.vtt) }.disabled(doc.cues.isEmpty)
             }.font(.caption)
 
+            captionCard
             autoCard
             GroupBox(L("On export")) {
                 VStack(alignment: .leading, spacing: 4) {

@@ -114,4 +114,47 @@ struct TimelineCutsTests {
         #expect(TimelineCuts.range(in: p.timeline, from: ids[2], to: ids[0]) == ids)
         #expect(TimelineCuts.range(in: p.timeline, from: ids[1], to: ids[1]) == [ids[1]])
     }
+
+    @Test func reorderingCarriesWhatLiesOverEachClip() {
+        var (p, ids) = project()
+        let before = p.timeline
+        TimelineEditor.move(&p.timeline, fromOffsets: [2], toOffset: 0)       // clip 3 first: 3, 1, 2
+        TimelineRipple.followReorder(before: before, in: &p)
+        #expect(near(p.overlays[2].start, 2) && near(p.overlays[2].end, 6), "clip 3's text (22–26) is now over it at 0–10")
+        #expect(near(p.overlays[0].start, 12) && near(p.overlays[1].start, 22))
+        #expect(near(p.soundClips[0].start, 0) && near(p.soundClips[0].duration, 30), "the song under everything stays")
+        #expect(near(p.soundClips[1].start, 3) && near(p.overlayClips[0].start, 1))
+        #expect(near(p.markers[0].time, 25) && near(p.markers[1].time, 5))
+        #expect(near(p.subtitles.cues.first { $0.text == "last" }!.start, 5))
+    }
+
+    @Test func movingSeveralClipsKeepsTheirOrder() {
+        var (p, ids) = project()
+        TimelineEditor.move(&p.timeline, fromOffsets: [0, 1], toOffset: 3)
+        #expect(p.timeline.map(\.id) == [ids[2], ids[0], ids[1]])
+    }
+
+    @Test func aFasterClipKeepsItsTextsOnItsPicturesAndPullsTheRestIn() {
+        var (p, ids) = project()
+        let before = p.timeline
+        p.timeline[1].look.speed = 2                                         // clip 2: 10 s → 5 s
+        TimelineRipple.followSpeed(of: ids[1], before: before, in: &p)
+        #expect(near(p.overlays[1].start, 11) && near(p.overlays[1].end, 13), "12–16 over clip 2 → 11–13")
+        #expect(near(p.overlays[0].start, 2), "before it: unchanged")
+        #expect(near(p.overlays[2].start, 17), "after it: 5 s earlier")
+        #expect(near(p.soundClips[0].start, 0) && near(p.soundClips[0].duration, 30), "the song starts before it: unchanged")
+        #expect(near(p.markers[0].time, 12.5) && near(p.markers[1].time, 20))
+        #expect(near(p.subtitles.cues[0].start, 11) && near(p.subtitles.cues[0].end, 12))
+    }
+
+    @Test func aSubtitleRunningIntoTheNextClipGoesWithItsOwnClip() {
+        var (p, _) = project()
+        p.subtitles.cues = [SubtitleCue(start: s(8), end: s(10.5), text: "end of one")]   // mostly over clip 1 (0–10)
+        p.overlays = [TextOverlay(text: "title", start: s(5), end: s(25))]               // over all three
+        let before = p.timeline
+        TimelineEditor.move(&p.timeline, fromOffsets: [0], toOffset: 3)                // 2, 3, 1
+        TimelineRipple.followReorder(before: before, in: &p)
+        #expect(near(p.subtitles.cues[0].start, 28) && near(p.subtitles.cues[0].end, 30), "with clip 1, now at 20–30, cut to its end")
+        #expect(near(p.overlays[0].start, 5) && near(p.overlays[0].end, 25), "a title over several clips stays")
+    }
 }

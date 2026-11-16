@@ -38,7 +38,8 @@ final class OverlayLayer: @unchecked Sendable {
     private var cachedPixels = 0.0
 
     init(overlays: [TextOverlay], cues: [SubtitleCue], style: SubtitleStyle, live: Bool = false) {
-        self.overlays = overlays
+        // Drawn bottom first, in the stack's order (0.20); equal places keep the order they were added in.
+        self.overlays = overlays.enumerated().sorted { LayerOrder.key($0.element) != LayerOrder.key($1.element) ? LayerOrder.key($0.element) < LayerOrder.key($1.element) : $0.offset < $1.offset }.map(\.element)
         self.cues = cues.sorted { $0.start < $1.start }
         self.style = style
         self.live = live
@@ -64,8 +65,8 @@ final class OverlayLayer: @unchecked Sendable {
 
     /// Overlay images visible at output time `t` (seconds), with their opacity. Each is moved, scaled and turned to where its animation
     /// has put it at that moment, so a drawn element is made once and only transformed per frame.
-    func visible(at t: Double, size: CGSize) -> [(CIImage, Double)] {
-        var out: [(CIImage, Double)] = []
+    func visible(at t: Double, size: CGSize) -> [(CIImage, Double, Double)] {
+        var out: [(CIImage, Double, Double)] = []
         for o in overlays {
             guard var st = ElementAnimator.state(of: o, at: t, settled: live && ElementLive.paused), st.alpha > 0.001 else { continue }
             if live && CanvasLift.contains(o.id) { continue }          // being dragged: the editor draws it until the drop
@@ -97,12 +98,31 @@ final class OverlayLayer: @unchecked Sendable {
                 m = m.concatenating(CGAffineTransform(translationX: c1.x, y: c1.y))
                 picture = picture.transformed(by: m)
             }
-            out.append((picture, st.alpha))
+            out.append((picture, st.alpha, LayerOrder.key(o)))
         }
         for c in cues where t >= c.start.seconds && t < c.end.seconds {
-            if let img = image(key: "c\(c.id)\(c.text)", size: size, make: { OverlayRenderer.box(for: c, style: style) }) { out.append((img, 1)) }
+            if let cap = style.caption {
+                // Captions (0.20): drawn again for each word said; popping in, scaled around the middle of the line.
+                let st = captionState(c, cap, at: t)
+                guard var img = image(key: "c\(c.id)\(c.text)|\(st.word ?? -1)", size: size, make: { OverlayRenderer.captionBox(for: c, caption: cap, active: st.word) }) else { continue }
+                if st.scale != 1 {
+                    let m = CGPoint(x: size.width / 2, y: (1 - cap.centerY) * size.height)
+                    img = img.transformed(by: CGAffineTransform(translationX: -m.x, y: -m.y).concatenating(CGAffineTransform(scaleX: st.scale, y: st.scale)).concatenating(CGAffineTransform(translationX: m.x, y: m.y)))
+                }
+                out.append((img, 1, .infinity))
+            } else if let img = image(key: "c\(c.id)\(c.text)", size: size, make: { OverlayRenderer.box(for: c, style: style) }) { out.append((img, 1, .infinity)) }
         }
         return out
+    }
+
+    /// The word of a caption being said at `t`, and how big the line is while it pops in (a tenth of a second from 80 %).
+    func captionState(_ c: SubtitleCue, _ cap: CaptionStyle, at t: Double) -> (word: Int?, scale: Double) {
+        let word = cap.look == .bold ? nil : c.activeWord(at: t)
+        var since = t - c.start.seconds
+        if cap.look == .oneWord, let w = word { since = t - c.start.seconds - c.timedWords[w].start }
+        guard cap.look == .pop || cap.look == .oneWord, since < 0.12 else { return (word, 1) }
+        let p = max(0, since) / 0.12
+        return (word, ((0.8 + 0.2 * (1 - pow(1 - p, 3))) * 100).rounded() / 100)
     }
 }
 
@@ -126,7 +146,9 @@ struct StillFrameKey: Equatable {
         for o in inst.layer.overlays {
             if let st = ElementAnimator.state(of: o, at: time), st.alpha > 0.001 { states.append("t\(o.id)|\(st.x)|\(st.y)|\(st.scale)|\(st.rotation)|\(st.alpha)|\(st.reveal)") }
         }
-        for c in inst.layer.cues where time >= c.start.seconds && time < c.end.seconds { states.append("c\(c.id)") }
+        for c in inst.layer.cues where time >= c.start.seconds && time < c.end.seconds {
+            if let cap = inst.layer.style.caption { let st = inst.layer.captionState(c, cap, at: time); states.append("c\(c.id)|\(st.word ?? -1)|\(st.scale)") } else { states.append("c\(c.id)") }
+        }
         for (d, _) in layerFrames {
             if let st = d.spec.state(at: MediaTime(seconds: time, timescale: 6000)), st.opacity > 0.001 {
                 states.append("l\(d.spec.id)|\(st.centerX)|\(st.centerY)|\(st.width)|\(st.opacity)|\(st.rotation)")
@@ -355,23 +377,24 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
             out = TransitionRenderer.blend(outgoing: out, incoming: arriving, kind: kind, progress: progress, frame: frame)
         }
 
-        // Layers (Picture in Picture, logos), lowest lane first, over the colour-adjusted main picture.
+        // Layers (Picture in Picture, logos) and texts over the colour-adjusted main picture, in the stack's order (0.20: a text may sit under a
+        // layer); subtitles always on top.
+        var stack: [(z: Double, seq: Int, draw: (CIImage) -> CIImage)] = []
         for (d, pb) in layerFrames {
             if d.live && CanvasLift.contains(d.spec.id) { continue }
             let spec = d.live ? (LayerLive.spec(for: d.spec.id) ?? d.spec) : d.spec
             var li: CIImage
             if let pb { li = normalized(CIImage(cvPixelBuffer: pb).oriented(d.orientation)) } else if let im = d.image { li = normalized(im) } else { continue }
-            out = drawLayer(li, spec: spec, border: d.live ? CompositionBuilder.ciColor(hex: spec.transform.borderHex) : d.border, time: time,
-                            subjectMode: plan.subjectMode, over: out, frame: frame, settled: d.live && ElementLive.paused)
+            let border = d.live ? CompositionBuilder.ciColor(hex: spec.transform.borderHex) : d.border, settled = d.live && ElementLive.paused, mode = plan.subjectMode
+            stack.append((spec.z ?? Double(spec.lane), stack.count, { drawLayer(li, spec: spec, border: border, time: time, subjectMode: mode, over: $0, frame: frame, settled: settled) }))
         }
-
-        // Text and subtitles.
         if !layer.isEmpty {
-            for (overlay, alpha) in layer.visible(at: time, size: outputSize) {
+            for (overlay, alpha, z) in layer.visible(at: time, size: outputSize) {
                 let o = alpha >= 1 ? overlay : overlay.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: alpha)])
-                out = o.composited(over: out)
+                stack.append((z, stack.count, { o.composited(over: $0) }))
             }
         }
+        for item in stack.sorted(by: { $0.z != $1.z ? $0.z < $1.z : $0.seq < $1.seq }) { out = item.draw(out) }
         return out.cropped(to: frame)
     }
 
@@ -549,7 +572,7 @@ public enum CanvasLift {
     /// where they lie on the picture (Core Image's way up: y from the bottom), and its opacity.
     public static func element(_ o: TextOverlay, at t: Double, size: CGSize, still: Bool) -> (image: CGImage, rect: CGRect, alpha: Double)? {
         let layer = OverlayLayer(overlays: still ? PhotoRenderer.stilled([o]) : [o], cues: [], style: SubtitleStyle(), live: !still)
-        guard let (img, alpha) = layer.visible(at: still ? PhotoRenderer.stillTime : t, size: size).first else { return nil }
+        guard let (img, alpha, _) = layer.visible(at: still ? PhotoRenderer.stillTime : t, size: size).first else { return nil }
         return pixels(img, size: size).map { ($0.0, $0.1, alpha) }
     }
 

@@ -11,7 +11,7 @@ import MacPlayerCore
     private let size = CGSize(width: 200, height: 100)
 
     private func alpha(_ layer: OverlayLayer, x: Int, y: Int) -> Int {
-        guard let (img, _) = layer.visible(at: 0.5, size: size).first else { return 0 }
+        guard let (img, _, _) = layer.visible(at: 0.5, size: size).first else { return 0 }
         var bytes = [UInt8](repeating: 0, count: 4)
         ctx.render(img, toBitmap: &bytes, rowBytes: 4, bounds: CGRect(x: x, y: Int(size.height) - 1 - y, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
         return Int(bytes[3])
