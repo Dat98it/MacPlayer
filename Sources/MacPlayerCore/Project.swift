@@ -163,6 +163,8 @@ public struct VideoLook: Codable, Equatable, Sendable {
     public var flipHorizontal = false
     public var flipVertical = false
     public var canvas: CanvasPreset = .source
+    /// A timeline clip's own frame, fitted inside the finished video's canvas. Nil preserves older projects' rendering.
+    public var clipCanvas: CanvasPreset?
     public var fit: FitMode = .fit
     public var color = ColorAdjust()
     /// Playback speed of the clip (1 = normal).
@@ -188,13 +190,13 @@ public struct VideoLook: Codable, Equatable, Sendable {
     public var cutsOut: Bool { chromaKey != nil || mask != nil || isolateSubject }
 
     public var changesPicture: Bool {
-        !crop.isFull || rotation % 360 != 0 || flipHorizontal || flipVertical || canvas != .source || !color.isNeutral || !effects.isNeutral || !motion.isEmpty || transitionIn != nil || stabilize > 0 || cutsOut
+        !crop.isFull || rotation % 360 != 0 || flipHorizontal || flipVertical || canvas != .source || clipCanvas != nil || fit != .fit || !color.isNeutral || !effects.isNeutral || !motion.isEmpty || transitionIn != nil || stabilize > 0 || cutsOut
     }
     public var isNeutral: Bool { !changesPicture && speed == 1 }
 }
 
 extension VideoLook {
-    enum CodingKeys: String, CodingKey { case crop, rotation, flipHorizontal, flipVertical, canvas, fit, color, speed, effects, motion, transitionIn, stabilize, chromaKey, mask, isolateSubject, backdropHex }
+    enum CodingKeys: String, CodingKey { case crop, rotation, flipHorizontal, flipVertical, canvas, clipCanvas, fit, color, speed, effects, motion, transitionIn, stabilize, chromaKey, mask, isolateSubject, backdropHex }
 
     /// Projects saved before `effects` existed have no such key: they open with no effects.
     public init(from decoder: Decoder) throws {
@@ -205,6 +207,7 @@ extension VideoLook {
         flipHorizontal = try c.decodeIfPresent(Bool.self, forKey: .flipHorizontal) ?? false
         flipVertical = try c.decodeIfPresent(Bool.self, forKey: .flipVertical) ?? false
         canvas = try c.decodeIfPresent(CanvasPreset.self, forKey: .canvas) ?? .source
+        clipCanvas = try c.decodeIfPresent(CanvasPreset.self, forKey: .clipCanvas)
         fit = try c.decodeIfPresent(FitMode.self, forKey: .fit) ?? .fit
         color = try c.decodeIfPresent(ColorAdjust.self, forKey: .color) ?? ColorAdjust()
         speed = try c.decodeIfPresent(Double.self, forKey: .speed) ?? 1

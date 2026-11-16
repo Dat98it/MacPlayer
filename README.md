@@ -2,7 +2,7 @@
 
 Xem và chỉnh sửa **video lẫn ảnh**: cắt đoạn, ghép nhiều video, chỉnh màu chuyên nghiệp (đường cong, bánh xe màu, HSL, LUT), tách nền và mặt nạ, chuyển cảnh và keyframe, hiệu ứng giọng, chữ và hình dán, rồi xuất ngay trên Mac. Mọi xử lý diễn ra trên máy; không có tài khoản, không thu thập dữ liệu. Từ 0.15 app chỉ dùng mạng khi bạn tự dán một link video/ảnh để xem (Tệp ▸ Mở link…), ngoài ra không kết nối đi đâu.
 
-> **Trạng thái: bản 0.17.3 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
+> **Trạng thái: bản 0.17.4 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
 
 ## Yêu cầu
 
@@ -136,6 +136,7 @@ Mở một dự án video là thấy ngay bố cục quen thuộc của các app
     - **một** lựa chọn chất lượng (Tốt nhất, 4K, Full HD, HD, Nhẹ) thay cho "Chất lượng" và "Cỡ".
     - Video dọc 1080p là 1080 × 1920.
   - Ô Thư viện không còn nhấp nháy khi phát video.
+- **0.17.4:** đổi tỉ lệ và cách lấp khung trong **Cơ bản ▸ Khung hình** chỉ tác động đến đoạn đang chọn trên timeline, kể cả đoạn đầu. Mỗi đoạn giữ khung riêng khi xem và xuất; khung hình của video hoàn chỉnh vẫn đặt trong **Xuất**.
 - **0.17.3:** phát không còn khựng khi cửa sổ hiện ra hoặc đổi cỡ; khung xem dựng lại theo cỡ màn hình khi tạm dừng.
 - **0.17.2:** ảnh/chữ/hình/nhãn dán sắc nét hơn: khung xem dựng đúng số điểm ảnh màn hình; chữ, hình, nhãn dán đã phóng to được vẽ thẳng ở cỡ đó (không phóng ảnh bitmap), cả khi xem và khi xuất; ảnh lớn thu nhỏ bằng Lanczos.
 - **0.17.1:** thanh cài đặt bên phải chia **tab con có biểu tượng** để không phải cuộn dài: Chữ/Hình/Nhãn dán (Chữ · Kiểu · Thời gian · Vị trí · Vào/ra · Chuyển động · Keyframe · Tất cả), Lớp ảnh (Vị trí · Diện mạo · Vào/ra · Chuyển động · Keyframe), Cơ bản (Cắt khung · Xoay · Khung hình · Thu phóng · Ổn định hình · Màu sắc), Màu (Ánh sáng · Đường cong · Bánh xe · Từng màu · File màu · Biểu đồ), Hiệu ứng, Tốc độ, Tách nền, Âm thanh. Tab có chỉnh sửa có chấm xanh; tab đã chọn được nhớ cho từng mục.

@@ -45,6 +45,7 @@ public extension Project {
     mutating func setFrame(_ shape: CanvasPreset, fill: FrameFill) {
         func apply(_ l: inout VideoLook) {
             l.canvas = shape
+            l.clipCanvas = nil
             l.fit = fill == .fill ? .fill : .fit
             l.effects.blurBackground = fill == .blurredBars
         }

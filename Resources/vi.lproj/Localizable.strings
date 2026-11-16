@@ -1595,3 +1595,5 @@
 "Lighting" = "Ánh sáng";
 "Mask shape" = "Hình cắt";
 "Time" = "Thời gian";
+"Applies only to this clip. Set the finished video's frame in Export." = "Chỉ áp dụng cho đoạn này. Đổi khung hình video hoàn chỉnh trong Xuất.";
+"Clip frame: %d × %d" = "Khung của đoạn: %d × %d";

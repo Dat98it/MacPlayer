@@ -223,6 +223,13 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.17.4 Clip frames.** `PicturePane.canvasShapeBinding/canvasFitBinding` edit only `Project.activeLook`; the old video bindings called
+`setFrame`, overwriting every clip. Optional `VideoLook.clipCanvas` gives the selected clip its own frame, rendered by `RecipeCompositor.mainPicture`
+inside the fixed output canvas (including when the first clip is selected). Nil keeps legacy rendering. `canvas` still determines the finished
+frame; Export's explicit `Project.setFrame` resets clip overrides and applies its choice to all clips. A nondefault fit also needs the compositor.
+Core `ExportPresetTests` cover isolation, persistence and old JSON; Media `ClipCanvasTests` compare pixels in previews and exports for first/last clips.
+Self-test **G10**: `MACPLAYER_ONLY_CLIP_CANVAS=1 MACPLAYER_CANVAS_PROJECT=<project> MACPLAYER_DEV_NOSHARP=1` with `--sandbox <dir> --selftest <media-dir>`
+uses a copy, reads real source media, exercises the inspector's actual bindings, checks unchanged neighbour frames, selection, undo/redo and saving.
 **0.17.3** A screen-size rebuild never runs while playing (it stopped the picture ~0.5 s; G9 "plays in its window" caught it):
 `rebuildForScreenPixels` sets `pixelsRebuildWaiting`, `pausedRebuildIfWaiting` (from `$isPlaying`, looked at on the next main turn because the
 publisher fires before the value changes) does it on pause. `MACPLAYER_DEV_NOSHARP` now also turns off `screenPixelsChanged`. G9 checks the paused size.

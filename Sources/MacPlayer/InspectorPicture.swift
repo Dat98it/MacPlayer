@@ -14,6 +14,23 @@ struct PicturePane: View {
         SliderRow(title: title, value: look(title, key: key, { $0[keyPath: kp] }, { $0[keyPath: kp] = $1 }), range: range, onDone: { session.endCoalescing() })
     }
 
+    /// Also used by the real-project self-test, through the same bindings as the pickers.
+    var canvasShapeBinding: Binding<CanvasPreset> {
+        look("Canvas", { $0.clipCanvas ?? $0.canvas }, { l, value in
+            if session.isProject { l.clipCanvas = value } else { l.canvas = value }
+        })
+    }
+
+    var canvasFitBinding: Binding<FitMode> {
+        look("Fit", { $0.fit }, { $0.fit = $1 })
+    }
+
+    private var pictureLookForSize: VideoLook {
+        var look = session.project.activeLook
+        look.canvas = look.clipCanvas ?? look.canvas
+        return look
+    }
+
     /// The shapes offered for cropping.
     private var cropShapes: [(String, Double)] {
         let video: [(String, Double)] = [("16:9", 16.0 / 9), ("9:16", 9.0 / 16), ("1:1", 1.0), ("4:3", 4.0 / 3)]
@@ -145,7 +162,7 @@ struct PicturePane: View {
         let l = session.project.activeLook
         var s = [PaneSection(id: "crop", title: L("Crop"), icon: "crop", changed: !l.crop.isFull),
                  PaneSection(id: "rotate", title: L("Rotate"), icon: "rotate.right", changed: l.rotation != 0 || l.flipHorizontal || l.flipVertical),
-                 PaneSection(id: "canvas", title: L("Canvas"), icon: "aspectratio")]
+                 PaneSection(id: "canvas", title: L("Canvas"), icon: "aspectratio", changed: l.clipCanvas != nil || l.canvas != .source || l.fit != .fit)]
         if !session.isPhoto {
             s += [PaneSection(id: "zoom", title: L("Zoom"), icon: "plus.magnifyingglass", changed: !l.motion.isEmpty),
                   PaneSection(id: "stable", title: L("Stabilize"), icon: "hand.raised", changed: l.stabilize > 0)]
@@ -193,21 +210,20 @@ struct PicturePane: View {
                 if tab == "canvas" {
                 GroupBox(L("Canvas")) {
                     VStack(alignment: .leading, spacing: 6) {
-                        // A video project has one frame for the whole video: changed here, it changes for every clip (the export takes it from the first).
-                        Picker(L("Shape"), selection: session.isProject ? Binding(get: { session.project.frameShape }, set: { v in session.edit("Frame shape") { $0.setFrame(v, fill: $0.frameFill) } })
-                                                                         : look("Canvas", { $0.canvas }, { $0.canvas = $1 })) {
+                        Picker(L("Shape"), selection: canvasShapeBinding) {
                             Text(session.isPhoto ? L("Same as photo") : L("Same as video")).tag(CanvasPreset.source)
                             Text("16:9").tag(CanvasPreset.landscape16x9); Text("9:16").tag(CanvasPreset.portrait9x16)
                             Text("1:1").tag(CanvasPreset.square1x1); Text("4:5").tag(CanvasPreset.portrait4x5); Text("4:3").tag(CanvasPreset.standard4x3)
                         }
-                        Picker(L("Picture"), selection: session.isProject ? Binding(get: { session.project.frameFill == .fill ? FitMode.fill : FitMode.fit },
-                                                                                     set: { v in session.edit("Frame fill") { $0.setFrame($0.frameShape, fill: v == .fill ? .fill : ($0.frameFill == .blurredBars ? .blurredBars : .fit)) } })
-                                                                    : look("Fit", { $0.fit }, { $0.fit = $1 })) {
+                        Picker(L("Picture"), selection: canvasFitBinding) {
                             Text(L("Fit (black bars)")).tag(FitMode.fit); Text(L("Fill (crop edges)")).tag(FitMode.fill)
                         }.pickerStyle(.menu)
+                        if session.isProject {
+                            Text(L("Applies only to this clip. Set the finished video's frame in Export.")).font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
                         if let size = session.info?.primaryVideo {
-                            let out = RenderGeometry.outputSize(source: PixelSize(width: size.width, height: size.height), look: session.project.activeLook)
-                            Text(LF("Output picture: %d × %d", out.width, out.height)).font(.caption).foregroundColor(.secondary)
+                            let out = RenderGeometry.outputSize(source: PixelSize(width: size.width, height: size.height), look: pictureLookForSize)
+                            Text(session.isProject ? LF("Clip frame: %d × %d", out.width, out.height) : LF("Output picture: %d × %d", out.width, out.height)).font(.caption).foregroundColor(.secondary)
                         }
                     }.padding(4)
                 }

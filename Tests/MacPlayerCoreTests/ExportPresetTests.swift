@@ -28,6 +28,33 @@ import Testing
         #expect(abs(Double(out.width) / Double(out.height) - 0.8) < 0.01, "the export is 4:5 (\(out.width) × \(out.height))")
     }
 
+    @Test func aClipFrameIsIndependentEvenOnTheFirstClip() throws {
+        var p = Project(name: "Four clips", kind: .video)
+        let source = p.addSource(SourceRef(path: "/same-source.mp4"))
+        p.timeline = (0..<4).map { _ in TimelineClip(sourceID: source, sourceStart: .zero, sourceEnd: MediaTime(seconds: 1)) }
+        p.setFrame(.landscape16x9, fill: .blurredBars)
+        for selected in [0, 3] {
+            var edited = p
+            edited.activeClipID = edited.timeline[selected].id
+            edited.activeLook.clipCanvas = .portrait9x16
+            edited.activeLook.fit = .fill
+            #expect(edited.timeline.indices.filter { edited.timeline[$0] != p.timeline[$0] } == [selected])
+            #expect(edited.frameShape == p.frameShape, "the finished frame stays fixed, including when editing the first clip")
+            #expect(try ProjectCodec.decode(ProjectCodec.encode(edited)) == edited)
+            edited.setFrame(.square1x1, fill: .fit)
+            #expect(edited.timeline.allSatisfy { $0.look.canvas == .square1x1 && $0.look.clipCanvas == nil && !$0.look.effects.blurBackground })
+        }
+    }
+
+    @Test func olderLooksHaveNoClipFrameOverride() throws {
+        let look = try JSONDecoder().decode(VideoLook.self, from: Data(#"{"canvas":"landscape16x9","fit":"fit"}"#.utf8))
+        #expect(look.clipCanvas == nil && look.canvas == .landscape16x9)
+        var ownFrame = VideoLook(); ownFrame.clipCanvas = .source
+        #expect(ownFrame.changesPicture, "a clip's original shape can still differ from the finished frame")
+        var fill = VideoLook(); fill.fit = .fill
+        #expect(fill.changesPicture, "fill must use the compositor even without other edits")
+    }
+
     @Test func aSquareIsSquareOnAnyPicture() {
         for aspect in [16.0 / 9, 9.0 / 16, 1, 4.0 / 3] {
             let s = ShapeSpec.made(.rectangle, aspect: aspect)

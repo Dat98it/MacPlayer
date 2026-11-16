@@ -930,3 +930,13 @@ Ghi nhận thêm: chữ luôn được vẽ trên mọi ảnh/lớp (thứ tự 
 **Chưa kiểm chứng:**
 - Kéo bằng chuột hoặc trackpad thật trên màn hình 5K. Sự kiện chuột trong bài đo được gửi thẳng tới view, không qua hệ thống.
 - Kéo trên dự án ảnh chỉ được G4 kiểm tra về vị trí, chưa đo độ mượt.
+
+
+## Bản 0.17.4 — tỉ lệ riêng cho đoạn trên timeline (13/11/2026)
+
+- Tái hiện từ dự án thật “Tập bóng đá” (4 đoạn, 2 nguồn): lệnh của bảng thuộc tính gọi `setFrame`, nên đổi đoạn 4 làm thay đổi cả 4 đoạn. Lặp lại hai lần cho cùng kết quả.
+- Bảng **Cơ bản ▸ Khung hình** giờ chỉ chỉnh đoạn đang chọn; tỉ lệ riêng được lưu trong trường tùy chọn `VideoLook.clipCanvas`. Trình dựng hình đặt khung riêng của đoạn vào khung chung, nên đổi đoạn đầu cũng không làm hình các đoạn sau thay đổi. Thiết lập **Xuất** vẫn áp dụng khung chung khi người dùng chọn.
+- Giữ cách dựng của dự án cũ khi chưa có trường mới; kiểm tra lưu/đọc lại và Hoàn tác/Làm lại.
+- Kiểm thử: toàn bộ **680 bài** (425 Core + 255 Media) qua; bài hồi quy điểm ảnh cho đoạn đầu/cuối đã thất bại trước sửa và qua sau sửa, cả xem trước lẫn xuất. Kiểm tra bản dịch: 0 thiếu, 0 sai tham số.
+- Luồng app G10 mở bản sao của dự án thật, dùng đúng binding của hai menu thuộc tính; đổi đoạn 4 và đoạn 1, đối chiếu ảnh từng đoạn, chuyển lựa chọn, Hoàn tác/Làm lại, lưu và giải mã. **23 kiểm tra qua**; file gốc được so từng byte với bản sao lưu và không thay đổi. Media gốc chỉ được đọc.
+- Chưa chạy xuất toàn bộ dự án thật dài 5:46; kiểm tra xuất bằng video tổng hợp có bốn đoạn, cùng đường dựng hình. Chưa thử trên Intel.

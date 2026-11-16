@@ -243,6 +243,19 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
 
     /// The same for a picture that is already upright (a photo, or a video frame after its orientation was applied).
     static func mainPicture(base: CIImage, plan: PiecePlan, time: Double, outputSize: CGSize) -> CIImage {
+        // A clip may have its own shape. Render all its edits in that frame, then fit it into the shared output;
+        // changing even the first clip must not resize or crop the other clips.
+        if let canvas = plan.look.clipCanvas {
+            var local = plan
+            local.look.clipCanvas = nil
+            local.look.canvas = canvas
+            let size = RenderGeometry.outputSize(source: PixelSize(width: Int(base.extent.width), height: Int(base.extent.height)), look: local.look)
+            let placement = RenderGeometry.placement(edited: size, canvas: PixelSize(width: Int(outputSize.width), height: Int(outputSize.height)), fit: .fit)
+            let picture = mainPicture(base: base, plan: local, time: time, outputSize: CGSize(width: placement.width, height: placement.height))
+            let frame = CGRect(origin: .zero, size: outputSize)
+            let moved = picture.transformed(by: CGAffineTransform(translationX: placement.x, y: Double(outputSize.height) - placement.y - placement.height))
+            return moved.composited(over: CIImage(color: .black).cropped(to: frame)).cropped(to: frame)
+        }
         var img = base
         let look = plan.look
 
