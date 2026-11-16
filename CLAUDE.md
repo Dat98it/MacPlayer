@@ -246,6 +246,7 @@ CLI: `macplayer-probe instrumental <source> <new-output.m4a> [model]`. Quality v
 inside the fixed output canvas (including when the first clip is selected). Nil keeps legacy rendering. `canvas` still determines the finished
 frame; Export's explicit `Project.setFrame` resets clip overrides and applies its choice to all clips. A nondefault fit also needs the compositor.
 Core `ExportPresetTests` cover isolation, persistence and old JSON; Media `ClipCanvasTests` compare pixels in previews and exports for first/last clips.
+Real window, debug build: `MACPLAYER_DEV_SELECT=clip4 MACPLAYER_DEV_CANVAS=9x16[:fill] MACPLAYER_DEV_SEEK=<s>` (goes through the same bindings).
 Self-test **G10**: `MACPLAYER_ONLY_CLIP_CANVAS=1 MACPLAYER_CANVAS_PROJECT=<project> MACPLAYER_DEV_NOSHARP=1` with `--sandbox <dir> --selftest <media-dir>`
 uses a copy, reads real source media, exercises the inspector's actual bindings, checks unchanged neighbour frames, selection, undo/redo and saving.
 **0.17.3** A screen-size rebuild never runs while playing (it stopped the picture ~0.5 s; G9 "plays in its window" caught it):

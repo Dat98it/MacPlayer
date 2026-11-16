@@ -365,8 +365,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                     switch what {
                     case "text": if let o = s.project.overlays.last { s.select(.text(o.id)); s.activeTool = .text }
                     case "layer": if let c = s.project.overlayClips.last { s.select(.layer(c.id)); s.activeTool = .layers }
-                    default: if let c = s.project.timeline.first { s.select(.clip(c.id)) }
+                    default:
+                        // "clip" = the first clip, "clip4" = the fourth (by the timeline).
+                        let n = Int(what.dropFirst(4)) ?? 1
+                        if s.project.timeline.indices.contains(n - 1) { s.select(.clip(s.project.timeline[n - 1].id)) }
                     }
+                }
+                // MACPLAYER_DEV_CANVAS=9x16[:fill]: the selected clip's frame, through the Basic ▸ Canvas pickers' own bindings.
+                if let spec = ProcessInfo.processInfo.environment["MACPLAYER_DEV_CANVAS"] {
+                    let parts = spec.split(separator: ":").map(String.init)
+                    let shapes: [String: CanvasPreset] = ["16x9": .landscape16x9, "9x16": .portrait9x16, "1x1": .square1x1, "4x5": .portrait4x5, "4x3": .standard4x3, "source": .source]
+                    let pane = PicturePane(session: s)
+                    if let shape = shapes[parts[0]] { pane.canvasShapeBinding.wrappedValue = shape }
+                    if parts.count > 1 { pane.canvasFitBinding.wrappedValue = parts[1] == "fill" ? .fill : .fit }
+                }
+                // MACPLAYER_DEV_SEEK=<s>: the playhead at that time of the timeline.
+                if let t = ProcessInfo.processInfo.environment["MACPLAYER_DEV_SEEK"].flatMap(Double.init) {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    await s.player.seek(to: MediaTime(seconds: t))
                 }
                 for pair in (ProcessInfo.processInfo.environment["MACPLAYER_DEV_TABS"] ?? "").split(separator: ",") {
                     let kv = pair.split(separator: ":").map(String.init)
