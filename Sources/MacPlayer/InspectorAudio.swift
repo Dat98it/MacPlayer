@@ -18,6 +18,7 @@ struct AudioPane: View {
         if session.canHaveSounds {
             s += [PaneSection(id: "music", title: L("Music"), icon: "music.note.list", changed: !session.project.soundClips.isEmpty),
                   PaneSection(id: "beat", title: L("Beat"), icon: "metronome", changed: session.project.soundClips.contains { $0.beats != nil }),
+                  PaneSection(id: "silence", title: L("Silences"), icon: "waveform.path.badge.minus", changed: !session.silences.isEmpty),
                   PaneSection(id: "voice", title: L("Voice-over"), icon: "mic")]
         }
         if let c = session.timingClip, session.infos[c.sourceID]?.hasAudio == true { s.append(PaneSection(id: "save", title: L("Save sound"), icon: "square.and.arrow.down")) }
@@ -34,6 +35,7 @@ struct AudioPane: View {
             case "music": soundsCard
             case "voice": voiceCard
             case "beat": beatCard
+            case "silence": SilenceCard(session: session)
             case "save":
                 ToolCard(title: L("Save the sound alone"), icon: "square.and.arrow.down") {
                     Button(L("Export Audio Only (.m4a)…")) { exportAudio() }

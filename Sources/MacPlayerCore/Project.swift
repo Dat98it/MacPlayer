@@ -184,19 +184,21 @@ public struct VideoLook: Codable, Equatable, Sendable {
     public var isolateSubject = false
     /// What fills the parts the picture no longer covers (after a cut-out, a mask or a key): a colour, or nil for black.
     public var backdropHex: String?
+    /// The frame following people (0.21): where the middle of a filled frame is on the picture over time. Nil: centred.
+    public var reframe: [ReframeKey]?
     public init() {}
 
     /// Whether anything makes parts of the picture see-through.
     public var cutsOut: Bool { chromaKey != nil || mask != nil || isolateSubject }
 
     public var changesPicture: Bool {
-        !crop.isFull || rotation % 360 != 0 || flipHorizontal || flipVertical || canvas != .source || clipCanvas != nil || fit != .fit || !color.isNeutral || !effects.isNeutral || !motion.isEmpty || transitionIn != nil || stabilize > 0 || cutsOut
+        !crop.isFull || rotation % 360 != 0 || flipHorizontal || flipVertical || canvas != .source || clipCanvas != nil || fit != .fit || !color.isNeutral || !effects.isNeutral || !motion.isEmpty || transitionIn != nil || stabilize > 0 || cutsOut || reframe != nil
     }
     public var isNeutral: Bool { !changesPicture && speed == 1 }
 }
 
 extension VideoLook {
-    enum CodingKeys: String, CodingKey { case crop, rotation, flipHorizontal, flipVertical, canvas, clipCanvas, fit, color, speed, effects, motion, transitionIn, stabilize, chromaKey, mask, isolateSubject, backdropHex }
+    enum CodingKeys: String, CodingKey { case crop, rotation, flipHorizontal, flipVertical, canvas, clipCanvas, fit, color, speed, effects, motion, transitionIn, stabilize, chromaKey, mask, isolateSubject, backdropHex, reframe }
 
     /// Projects saved before `effects` existed have no such key: they open with no effects.
     public init(from decoder: Decoder) throws {
@@ -219,6 +221,7 @@ extension VideoLook {
         mask = try c.decodeIfPresent(MaskSpec.self, forKey: .mask)
         isolateSubject = try c.decodeIfPresent(Bool.self, forKey: .isolateSubject) ?? false
         backdropHex = try c.decodeIfPresent(String.self, forKey: .backdropHex)
+        reframe = try c.decodeIfPresent([ReframeKey].self, forKey: .reframe)
     }
 }
 

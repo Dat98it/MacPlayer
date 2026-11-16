@@ -140,7 +140,7 @@ struct StillFrameKey: Equatable {
     static func make(inst: RecipeInstruction, source: CVPixelBuffer, layerFrames: [(LayerDraw, CVPixelBuffer?)], second: (CVPixelBuffer, TransitionDraw)?,
                      time: Double, size: CGSize) -> StillFrameKey? {
         let plan = inst.plan
-        guard second == nil, plan.liveKey == nil, !inst.layer.live, !(plan.stabilizer.map { !$0.dx.isEmpty } ?? false), plan.look.motion.isEmpty,
+        guard second == nil, plan.liveKey == nil, !inst.layer.live, !(plan.stabilizer.map { !$0.dx.isEmpty } ?? false), plan.look.motion.isEmpty, plan.look.reframe == nil,
               layerFrames.allSatisfy({ $0.1 == nil && !$0.0.live }) else { return nil }
         var states: [String] = []
         for o in inst.layer.overlays {
@@ -320,7 +320,16 @@ class RecipeCompositor: NSObject, AVVideoCompositing {
         let k = placed.width / img.extent.width
         img = img.transformed(by: CGAffineTransform(scaleX: k, y: k))
         // CI origin is bottom-left; `placed.y` is measured from the top.
-        let tx = placed.x, ty = oh - placed.y - placed.height
+        var tx = placed.x, ty = oh - placed.y - placed.height
+        // Following people (0.21): a filled picture is moved so that the path's point is in the middle, never so far that an edge shows.
+        if look.fit == .fill, let keys = look.reframe, !keys.isEmpty,
+           let c = Reframe.center(keys, at: plan.sourceStart + max(0, time - plan.rangeStart) * plan.speed) {
+            if placed.width > ow + 0.5 { tx = min(0, max(ow - placed.width, ow / 2 - c.x * placed.width)) }
+            if placed.height > oh + 0.5 {
+                let top = min(0, max(oh - placed.height, oh / 2 - c.y * placed.height))     // from the top
+                ty = oh - top - placed.height
+            }
+        }
         img = img.transformed(by: CGAffineTransform(translationX: tx, y: ty))
         let frame = CGRect(x: 0, y: 0, width: ow, height: oh)
         let effects = plan.liveKey.flatMap { EffectsLive.effects(for: $0) } ?? look.effects

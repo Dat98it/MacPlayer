@@ -102,6 +102,14 @@ final class EditorSession: NSObject, ObservableObject {
     /// Everything selected on the picture (texts, shapes, stickers, layers, logos): one or more; a group comes whole (0.12).
     @Published var canvasSelection: Set<UUID> = []
     @Published var denoiseProgress: [DenoiseTarget: Double] = [:]
+    /// Looking for people to follow (0.21): how far, nil when not running.
+    @Published var reframeProgress: Double?
+    var reframeTask: Task<Void, Never>?
+    /// What a pasted clip style changes (0.21).
+    @Published var pasteParts: Set<ClipStyle.Part> = Set(ClipStyle.Part.allCases)
+    /// Looking for silences (0.21): the ones found, to look over before they are cut.
+    @Published var silences: [SilenceFound] = []
+    @Published var silenceProgress: Double?
     /// Sounds whose beat is being looked for (0.20).
     @Published var beatsWorking: Set<UUID> = []
     /// Which beats a fit or the markers use: every 1, 2, 4 or 8 (0.20).

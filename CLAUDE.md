@@ -224,6 +224,21 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.21.0 Follow people, copy style, cut silences.** Core `Reframe.swift`: `VideoLook.reframe: [ReframeKey]?` (source-time keys of where the
+middle of a filled frame is, 0…1 of the edited picture), `Reframe.center`, `Reframe.path` (bridge gaps, 1 s average, dead zone, speed limit,
+thinning), `Reframe.edited` (crop + quarter turns). `RecipeCompositor.mainPicture` shifts a `.fill` placement by it (clamped, no edges; source
+time = `plan.sourceStart + (time − rangeStart)·speed`), in `changesPicture`, not a still frame. Media `PersonTracker` (AVAssetImageGenerator 640 px,
+`VNDetectHumanRectanglesRequest` then faces; area-weighted middle of the 3 biggest; `detector` stub for tests; ~50 frames/s).
+App `EditorSession+Reframe.swift` (`autoReframe(to:only:)`: `setFrame(shape, .fill)` + a path for clips whose edited aspect differs >4 %),
+Basic ▸ Follow people. NB `mdls` reports the stored, not the displayed, size: the maintainer's football videos are all portrait.
+Core `StyleCopy.swift`: `ClipStyle` (parts colour/effects/frame/speed/transition/motion; speed paste follows with `followSpeed`), `TextStyle`
+(text↔text font/size/colours/flair, shape↔shape fill/stroke, animations always). App `EditorSession+Styles.swift`, Basic ▸ Copy style, element
+Style card, Edit ▸ Copy/Paste Style (⌥⇧⌘C/V; ⌥⌘V is Add Overlay Video). Core `Silences.swift`: `SilenceFinder.silences` (dB between the 10th and
+95th percentile, `sensitivity` of the way up; none if the range is <12 dB; `pad` kept), `found(in:)`, `TimelineCuts.removeSilences` (split around,
+delete with ripple, later first). App Audio ▸ Silences (`SilenceCard`: list, listen, check, cut). Debug: `MACPLAYER_DEV_DO` steps `reframe[:16x9]`,
+`silence`, `cutsilence`, `copystyle:<n>`, `pastestyle[:all]`. `SyntheticMedia.generate` blocks ignore a late call after finishing (crashed the
+media test process once).
+
 **0.20.1 Language switch.** `App/Language.swift`: `AppLanguage` (system/en/vi, UserDefaults `MacPlayerLanguage`), `L()`/`LF()` read the chosen
 `.lproj` (lock-guarded cache; a debug build reads `Resources/*.lproj` from the source folder), `LanguageState` posts `.appLanguageChanged`:
 each window's `ContentViewController.reloadForLanguage()` rebuilds its screen, `LanguageRoot(...)` wraps the other hosted windows (sidebar,

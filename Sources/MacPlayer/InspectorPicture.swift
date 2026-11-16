@@ -166,8 +166,10 @@ struct PicturePane: View {
         if !session.isPhoto {
             s += [PaneSection(id: "zoom", title: L("Zoom"), icon: "plus.magnifyingglass", changed: !l.motion.isEmpty),
                   PaneSection(id: "stable", title: L("Stabilize"), icon: "hand.raised", changed: l.stabilize > 0)]
+            if session.isProject { s.append(PaneSection(id: "follow", title: L("Follow people"), icon: "person.crop.rectangle", changed: l.reframe != nil)) }
         }
         s.append(PaneSection(id: "colour", title: L("Colour"), icon: "sun.max", changed: l.color.brightness != 0 || l.color.contrast != 0 || l.color.saturation != 0 || l.color.temperature != 0))
+        if session.isProject { s.append(PaneSection(id: "style", title: L("Copy style"), icon: "paintbrush")) }
         return s
     }
 
@@ -229,6 +231,8 @@ struct PicturePane: View {
                 }
                 }
                 if tab == "zoom" { motionCard }
+                if tab == "follow" { FollowPeopleCard(session: session) }
+                if tab == "style" { ClipStyleCard(session: session) }
                 if tab == "stable" { stabilizeCard }
                 if tab == "colour" {
                 GroupBox(L("Colour")) {

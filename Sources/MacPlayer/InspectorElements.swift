@@ -192,7 +192,7 @@ struct TextPane: View {
             }
         case "keys": ToolCard(title: L("Keyframes"), icon: "diamond") { keyframeControls(o) }
         case "list": list(session.project.overlays)
-        case "flair": ToolCard(title: L("Style"), icon: "wand.and.stars.inverse") { flairControls(o) }
+        case "flair": ToolCard(title: L("Style"), icon: "wand.and.stars.inverse") { flairControls(o); TextStyleRow(session: session) }
         case "time": ToolCard(title: L("Time"), icon: "clock") { timingControls(o) }
         default:
             ToolCard(title: o.isShape ? L("Figure") : L("Text"), icon: "slider.horizontal.3") {

@@ -142,9 +142,14 @@ public enum SyntheticMedia {
             }
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 let q = DispatchQueue(label: "synthetic.video")
+                // AVFoundation may call the block once more after the input is finished: it must then do nothing (touching the input
+                // or resuming twice crashed the test process now and then, 0.21).
+                var done = false
                 vIn.requestMediaDataWhenReady(on: q) {
+                    if done { return }
                     while vIn.isReadyForMoreMediaData {
                         if i >= frameCount {
+                            done = true
                             vIn.markAsFinished()
                             cont.resume()
                             return
@@ -162,7 +167,7 @@ public enum SyntheticMedia {
                             drawFrame(buf, index: i, width: spec.width, height: spec.height, fps: fps)
                         }
                         let pts = CMTime(value: CMTimeValue(i) * CMTimeValue(fps.denominator), timescale: fps.numerator)
-                        if !adaptor.append(buf, withPresentationTime: pts) { vIn.markAsFinished(); cont.resume(); return }
+                        if !adaptor.append(buf, withPresentationTime: pts) { done = true; vIn.markAsFinished(); cont.resume(); return }
                     }
                 }
             }
@@ -176,12 +181,14 @@ public enum SyntheticMedia {
             var written = 0
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 let q = DispatchQueue(label: "synthetic.audio")
+                var done = false
                 aIn.requestMediaDataWhenReady(on: q) {
+                    if done { return }
                     while aIn.isReadyForMoreMediaData {
-                        if written >= total { aIn.markAsFinished(); cont.resume(); return }
+                        if written >= total { done = true; aIn.markAsFinished(); cont.resume(); return }
                         let n = min(chunk, total - written)
                         if let sb = beepBuffer(startSample: written, count: n, sampleRate: sampleRate) {
-                            if !aIn.append(sb) { aIn.markAsFinished(); cont.resume(); return }
+                            if !aIn.append(sb) { done = true; aIn.markAsFinished(); cont.resume(); return }
                         }
                         written += n
                     }
@@ -194,11 +201,13 @@ public enum SyntheticMedia {
             let sampleRate = 48_000.0, total = Int(spec.seconds * sampleRate), chunk = 4800
             var written = 0
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                var done = false
                 aIn.requestMediaDataWhenReady(on: DispatchQueue(label: "synthetic.audio2")) {
+                    if done { return }
                     while aIn.isReadyForMoreMediaData {
-                        if written >= total { aIn.markAsFinished(); cont.resume(); return }
+                        if written >= total { done = true; aIn.markAsFinished(); cont.resume(); return }
                         let n = min(chunk, total - written)
-                        if let sb = beepBuffer(startSample: written, count: n, sampleRate: sampleRate, frequency: 440, continuous: true) { if !aIn.append(sb) { aIn.markAsFinished(); cont.resume(); return } }
+                        if let sb = beepBuffer(startSample: written, count: n, sampleRate: sampleRate, frequency: 440, continuous: true) { if !aIn.append(sb) { done = true; aIn.markAsFinished(); cont.resume(); return } }
                         written += n
                     }
                 }

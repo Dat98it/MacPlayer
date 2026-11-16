@@ -1019,3 +1019,21 @@ Ghi nhận thêm: chữ luôn được vẽ trên mọi ảnh/lớp (thứ tự 
 - **Nghe bằng tai:** máy không nghe được. Đã làm 3 file 1 phút (bài thật, chỉ đọc) có tiếng "tách" đặt đúng các nhịp tìm được (tiếng cao hơn ở mỗi nhịp thứ 4) trong `build/nghe-thu-nhip/` để người bảo trì nghe: "Đến khi nào remix" 70, "Liên khúc… cỏ 3 lá" 140, "Vết Thương Remix" 138 nhịp/phút.
 
 **Người bảo trì đã nghe 3 file trên: khớp nhịp.** (chỉ đo); menu Sửa trên thanh menu (chỉ bấm menu chuột phải và nút trong bảng); phụ đề 16:9 mặc định nằm ở 80 % chiều cao nên có thể đè chữ có sẵn trong video (chỉnh bằng "Độ cao trên khung hình").
+
+
+## Bản 0.21.0 — Theo người, chép kiểu, cắt khoảng lặng (16/11/2026)
+
+**Yêu cầu:** Nhóm 2 "tạo khác biệt": (5) tự đổi khung theo người, (6) sao chép và dán kiểu cho nhiều đoạn và cho chữ, (7) tự cắt khoảng lặng có xem trước danh sách.
+
+**Đã làm:**
+- **Theo người** (Cơ bản ▸ Theo người): chọn khung mới (9:16, 16:9, 1:1, 4:5) ▸ **Đổi khung, theo người**. Cả video lấy khung mới ở chế độ lấp đầy; đoạn nào có hình khác khung (lệch >4 %) được Vision tìm người ngay trên máy (vài lần mỗi giây), rồi khung đi theo: làm mượt ~1 giây, đứng yên khi người chỉ nhích trong vùng giữa, không chạy nhanh quá, không bao giờ lộ mép đen. Đường đi lưu theo thời gian của video gốc nên tách/cắt/đổi tốc độ vẫn đúng. Có tiến trình, nút Dừng, **Về giữa**, chỉ áp cho các đoạn đang chọn.
+- **Chép kiểu** (Cơ bản ▸ Chép kiểu; Sửa ▸ Chép kiểu ⌥⇧⌘C / Dán kiểu ⌥⇧⌘V): chép màu, hiệu ứng, khung, tốc độ, chuyển cảnh, thu phóng của một đoạn; chọn phần muốn dán; dán cho các đoạn đang chọn hoặc **Dán cho tất cả**. Dán tốc độ thì chữ/lớp/âm thanh đi theo như khi đổi tốc độ tay. Chữ: thẻ Kiểu của chữ có **Chép kiểu / Dán / Dán cho tất cả** (phông, cỡ, màu, nền, kiểu viền/bóng, hiệu ứng vào/ra); hình sang hình chép màu tô/viền; không bao giờ đổi nội dung hay vị trí.
+- **Cắt khoảng lặng** (Âm thanh ▸ Khoảng lặng): chỉnh độ dài ngắn nhất và độ nhạy ▸ **Tìm khoảng lặng** ▸ danh sách (giờ bắt đầu–kết thúc, độ dài, ô chọn, nút nghe từ ngay trước) và tổng thời gian sẽ bớt ▸ **Cắt**. Mỗi khoảng giữ lại 0,15 s hai bên để không cụt chữ; âm thanh đều đều (nhạc) không bị coi là lặng. Một bước hoàn tác.
+
+**Kiểm thử:**
+- Test mới: Core `ReframeTests` (5), `StyleCopyTests` (2), `SilenceTests` (2); Media `ReframeRenderTests` (5: khung đến đúng chỗ, thời gian theo nguồn và tốc độ, không lộ mép, tìm người bằng detector giả). Toàn bộ: Core 468, Media 270, tách lời 8 — đều qua (3 lần). Bản dịch 0 thiếu.
+- Vision trên video thật (chỉ đọc): "Tập cảm giác bóng" thấy người 80/80 lần nhìn (1,6 s cho 40 s video), "Các bài khởi động" 79/80, "Cẩm nang sân 7" 0/80 — đúng vì đoạn đó là sơ đồ chiến thuật, không có người.
+- Cửa sổ thật, **bấm chuột thật**, trên bản sao dự án "Tập bóng đá" (nguồn thiếu nối tạm sang "Tập cảm giác bóng.mp4"): **Theo người ▸ Đổi khung, theo người** → 3 đoạn 16:9 được theo người, khung 9:16 đầy hình, cầu thủ ở giữa, không còn viền đen; **Chép kiểu** sau khi kéo Độ bão hòa của đoạn 1 về −1 ▸ **Dán cho tất cả** → cả 4 đoạn bão hòa −1, đường theo người giữ nguyên; **Khoảng lặng ▸ Tìm** → 15 khoảng (0,4–5,4 s), nút nghe phát từ trước khoảng 3:18, bỏ chọn khoảng đầu → **Cắt 14** → video 346,3 → 331,7 s. Hoàn tác trả lại đủ (kiểm qua hook debug: 25 đoạn 320,75 s → 18 đoạn 331,7 s).
+- Sửa thêm: bộ tạo video giả của test thỉnh thoảng làm sập tiến trình test (khối ghi được gọi thêm một lần sau khi xong).
+
+**Chưa làm/chưa kiểm chứng:** video nằm ngang có người chạy ngang thật (các video bóng đá của người bảo trì đều dọc; chỉ thử bằng bản xuất 16:9 có viền và bằng test điểm ảnh); theo người cho ảnh trên timeline (bỏ qua); xuất video 9:16 đã theo người rồi xem lại; cắt khoảng lặng trên video nói chuyện thật (dự án thật toàn nhạc nền).

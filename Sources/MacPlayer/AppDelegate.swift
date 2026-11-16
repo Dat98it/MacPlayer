@@ -445,6 +445,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                         case "caption": s.edit("Caption style") { var c = $0.subtitles.style.caption ?? CaptionStyle(); c.look = CaptionLook(rawValue: f[1]) ?? .highlight; $0.subtitles.style.caption = c; $0.subtitles.burnIn = true }
                         case "seek": await s.player.seek(to: MediaTime(seconds: Double(f[1]) ?? 0, timescale: 600))
                         case "undo": s.undo()
+                        case "reframe":
+                            s.autoReframe(to: f.count > 1 && f[1] == "16x9" ? .landscape16x9 : .portrait9x16)
+                            for _ in 0..<1200 where s.reframeProgress != nil { try? await Task.sleep(nanoseconds: 250_000_000) }
+                            for c in s.project.timeline { print("DEV_DO reframe \(c.name.prefix(20)) keys \(c.look.reframe?.count ?? 0) x \(c.look.reframe.map { $0.map { String(format: "%.2f@%.1f", $0.x, $0.time) }.prefix(12).joined(separator: " ") } ?? "-")") }
+                        case "silence":
+                            s.findSilences(minLength: 0.7, sensitivity: 0.25)
+                            for _ in 0..<1200 where s.silenceProgress != nil { try? await Task.sleep(nanoseconds: 250_000_000) }
+                            print("DEV_DO silences \(s.silences.count): \(s.silences.prefix(20).map { String(format: "%.2f–%.2f", $0.timeline.start.seconds, $0.timeline.end.seconds) })")
+                        case "cutsilence": s.cutSilences()
+                        case "copystyle": if f.count > 1, let n = Int(f[1]), s.project.timeline.indices.contains(n - 1) { s.select(.clip(s.project.timeline[n - 1].id)) }; s.copyStyle()
+                        case "pastestyle": s.pasteStyle(toAll: f.count > 1 && f[1] == "all")
                         case "lang": LanguageState.shared.set(AppLanguage(rawValue: f[1]) ?? .system)
                         case "wait": try? await Task.sleep(nanoseconds: UInt64((Double(f[1]) ?? 1) * 1e9))
                         default: break
@@ -821,6 +832,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         settingsWindow?.title = L("Settings")
     }
     @objc func arrangeToFront(_ sender: Any?) { activeEditor?.arrange(.toFront) }
+    @objc func copyStyle(_ sender: Any?) { activeEditor?.copyStyle() }
+    @objc func pasteStyle(_ sender: Any?) { activeEditor?.pasteStyle() }
     @objc func arrangeForward(_ sender: Any?) { activeEditor?.arrange(.forward) }
     @objc func arrangeBackward(_ sender: Any?) { activeEditor?.arrange(.backward) }
     @objc func arrangeToBack(_ sender: Any?) { activeEditor?.arrange(.toBack) }
@@ -861,6 +874,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         case #selector(groupSelected(_:)): return (e?.canvasSelection.count ?? 0) > 1
         case #selector(ungroupSelected(_:)): return e?.canvasHasGroup ?? false
         case #selector(arrangeToFront(_:)): return e?.canArrange(.toFront) ?? false
+        case #selector(copyStyle(_:)): return e?.isProject == true
+        case #selector(pasteStyle(_:)): return e?.isProject == true && (e?.canPasteStyle ?? false)
         case #selector(arrangeForward(_:)): return e?.canArrange(.forward) ?? false
         case #selector(arrangeBackward(_:)): return e?.canArrange(.backward) ?? false
         case #selector(arrangeToBack(_:)): return e?.canArrange(.toBack) ?? false
@@ -966,6 +981,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         add(edit, L("Group"), #selector(groupSelected(_:)), "g")
         add(edit, L("Ungroup"), #selector(ungroupSelected(_:)), "g", [.command, .shift])
         add(edit, L("Lock"), #selector(lockSelected(_:)), "l")
+        edit.addItem(.separator())
+        add(edit, L("Copy Style"), #selector(copyStyle(_:)), "c", [.command, .option, .shift])
+        add(edit, L("Paste Style"), #selector(pasteStyle(_:)), "v", [.command, .option, .shift])
         edit.addItem(.separator())
         add(edit, L("Bring to Front"), #selector(arrangeToFront(_:)), "]", [.command, .option, .shift])
         add(edit, L("Bring Forward"), #selector(arrangeForward(_:)), "]", [.command, .option])
