@@ -15,8 +15,10 @@ public struct SilenceFound: Identifiable, Equatable, Sendable {
 public enum SilenceFinder {
     /// Quiet stretches in the loudness of consecutive frames of `frameSeconds` (seconds from the first frame). Quiet is measured against
     /// the sound itself: below `sensitivity` of the way from its quiet floor to its loud level (in dB), so a soft voice and a loud one
-    /// work the same. Only stretches of at least `minLength` count, and `pad` is kept at each side so words are not clipped.
-    public static func silences(rms: [Float], frameSeconds: Double, minLength: Double = 0.7, pad: Double = 0.15, sensitivity: Double = 0.25) -> [(start: Double, end: Double)] {
+    /// work the same. Only stretches of at least `minLength` count. `padAfter` is kept after the words before a silence and `padBefore`
+    /// before the words after it: soft sounds at the edges of words ("s", "th", a breath) are quieter than the threshold, and a word
+    /// check against speech recognition found cuts ending 0.04–0.08 s into the next word with 0.15 s on each side (0.21.1).
+    public static func silences(rms: [Float], frameSeconds: Double, minLength: Double = 0.7, padAfter: Double = 0.2, padBefore: Double = 0.3, sensitivity: Double = 0.25) -> [(start: Double, end: Double)] {
         guard rms.count > 4 else { return [] }
         let db = rms.map { 20 * log10(max(Double($0), 1e-6)) }
         let sorted = db.sorted()
@@ -34,7 +36,7 @@ public enum SilenceFinder {
             let a = Double(i) * frameSeconds, b = Double(j) * frameSeconds
             if b - a >= minLength {
                 // At the very start or end of the sound there is nothing to keep a gap from.
-                let s = i == 0 ? a : a + pad, e = j == db.count ? b : b - pad
+                let s = i == 0 ? a : a + padAfter, e = j == db.count ? b : b - padBefore
                 if e - s >= 0.2 { out.append((s, e)) }
             }
             i = j

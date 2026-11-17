@@ -31,7 +31,7 @@ Tài liệu này đi theo thứ tự bạn thường dùng: mở app → xem →
 
 **Yêu cầu:** macOS 15 trở lên. App mới được kiểm thử trên máy Apple Silicon (M1, M2, M3…); máy Intel chưa được thử.
 
-1. Mở file `MacPlayer-0.21.0.dmg` (hoặc giải nén file `.zip`).
+1. Mở file `MacPlayer-0.21.1.dmg` (hoặc giải nén file `.zip`).
 2. Kéo **MacPlayer** vào thư mục **Applications**.
 3. Lần đầu mở, macOS có thể chặn vì app chưa được Apple kiểm duyệt (notarize). Chuột phải vào MacPlayer ▸ **Mở**, hoặc vào **Cài đặt hệ thống ▸ Quyền riêng tư & Bảo mật ▸ Vẫn mở**.
 
@@ -421,7 +421,7 @@ Dùng cho video nói chuyện, hướng dẫn.
 3. Bấm ▶ ở một dòng để **nghe** từ ngay trước khoảng đó; bỏ tick những khoảng muốn giữ (có **Chọn hết / Bỏ chọn hết**).
 4. **Cắt** để bỏ các khoảng đã chọn trong một bước hoàn tác.
 
-Mỗi bên khoảng cắt được chừa 0,15 giây để không cụt chữ. Nhạc phát đều đều không bị coi là lặng.
+Khoảng cắt chừa 0,2 giây sau lời trước và 0,3 giây trước lời sau để không cụt chữ. Nhạc phát đều đều không bị coi là lặng.
 
 ### Giọng đọc
 

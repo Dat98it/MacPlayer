@@ -1764,3 +1764,7 @@
 "%d silences found, %@ in all. Check them, then cut." = "Tìm thấy %d khoảng lặng, tổng %@. Xem lại rồi cắt.";
 "%d silences cut. Undo puts them back." = "Đã cắt %d khoảng lặng. Hoàn tác sẽ trả lại.";
 "Paste style" = "Dán kiểu";
+"Speech recognition needs Dictation to be on. Turn it on in System Settings ▸ Keyboard ▸ Dictation, then try again." = "Nhận dạng giọng nói cần bật Đọc chính tả. Hãy bật trong Cài đặt hệ thống ▸ Bàn phím ▸ Đọc chính tả, rồi thử lại.";
+"Speech recognition is not allowed for MacPlayer. It can be switched on in System Settings ▸ Privacy & Security ▸ Speech Recognition." = "MacPlayer chưa được phép nhận dạng giọng nói. Bật trong Cài đặt hệ thống ▸ Quyền riêng tư & Bảo mật ▸ Nhận dạng giọng nói.";
+"No speech was found." = "Không tìm thấy lời nói.";
+"This video has no sound to listen to." = "Video này không có âm thanh để nghe.";

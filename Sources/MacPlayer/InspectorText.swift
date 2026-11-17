@@ -123,7 +123,7 @@ struct SubtitlesPane: View {
                 }
                 session.edit("Automatic subtitles") { $0.subtitles.cues.append(contentsOf: cues) }
                 session.flash(LF("%d subtitles were written.", cues.count))
-            } catch { session.flash((error as? CustomStringConvertible)?.description ?? error.localizedDescription, error: true) }
+            } catch { session.flash(L((error as? CustomStringConvertible)?.description ?? error.localizedDescription), error: true) }   // in the person's language when known
             working.value = false
         }
     }

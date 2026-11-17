@@ -34,7 +34,10 @@ extension EditorSession {
                         Task { @MainActor [weak self] in self?.reframeProgress = base + p * share }
                     })
                     let placed = samples.map { s in PersonSample(time: s.time, center: s.center.flatMap { Reframe.edited($0, crop: c.look.crop, rotation: c.look.rotation) }) }
-                    let keys = Reframe.path(placed)
+                    // The still zone is a share of what the frame shows: a 9:16 frame from a 16:9 picture sees a third of it, so the
+                    // person may only drift a little before it follows (6 % of the picture let them sit at the frame's edge, 0.21.1).
+                    let visible = min(1, a > target ? target / a : a / target)
+                    let keys = Reframe.path(placed, deadZone: max(0.015, 0.12 * visible))
                     if !keys.isEmpty { paths[c.id] = keys; followed += 1 }
                 } catch is CancellationError {
                     reframeProgress = nil; flash(L("Stopped.")); return

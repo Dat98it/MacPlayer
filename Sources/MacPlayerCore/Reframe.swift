@@ -14,7 +14,10 @@ public struct ReframeKey: Codable, Equatable, Sendable {
 /// One look at a frame: where the people are (their area-weighted middle), or nil when nobody was found.
 public struct PersonSample: Equatable, Sendable {
     public var time: Double
+    /// The one followed.
     public var center: (x: Double, y: Double)?
+    /// The biggest person in the frame (for measuring how well the frame keeps the main person in view).
+    public var main: (x: Double, y: Double)?
     public init(time: Double, center: (x: Double, y: Double)?) { self.time = time; self.center = center }
     public static func == (a: PersonSample, b: PersonSample) -> Bool { a.time == b.time && a.center?.x == b.center?.x && a.center?.y == b.center?.y }
 }
@@ -34,13 +37,21 @@ public enum Reframe {
     /// A calm camera path from where the people were seen: gaps are bridged, the target is averaged over about a second, the frame only
     /// moves when the people leave its middle part (`deadZone`, as a fraction of the picture), never faster than `maxSpeed` picture
     /// widths a second, and the keys are thinned out to those that bend the path.
-    public static func path(_ samples: [PersonSample], deadZone: Double = 0.06, maxSpeed: Double = 0.35, smoothing: Double = 1.0) -> [ReframeKey] {
+    public static func path(_ samples: [PersonSample], deadZone: Double = 0.06, maxSpeed: Double = 0.6, smoothing: Double = 0.6) -> [ReframeKey] {
         let s = samples.sorted { $0.time < $1.time }
         guard !s.isEmpty else { return [] }
         // Bridge the frames where nobody was found: hold the last place (the first one found, before anybody is seen).
         let firstSeen = s.first { $0.center != nil }?.center ?? (0.5, 0.5)
         var held = firstSeen
-        let raw: [(t: Double, x: Double, y: Double)] = s.map { p in if let c = p.center { held = c }; return (p.time, held.x, held.y) }
+        var raw: [(t: Double, x: Double, y: Double)] = s.map { p in if let c = p.center { held = c }; return (p.time, held.x, held.y) }
+        // A look that jumps away and straight back (another player crossing, a wrong find) is ignored: the middle of five neighbours.
+        if raw.count >= 5 {
+            let xs = raw.map(\.x), ys = raw.map(\.y)
+            for i in 2..<(raw.count - 2) {
+                raw[i].x = Array(xs[(i - 2)...(i + 2)]).sorted()[2]
+                raw[i].y = Array(ys[(i - 2)...(i + 2)]).sorted()[2]
+            }
+        }
         // Average over `smoothing` seconds around each moment.
         var avg: [(t: Double, x: Double, y: Double)] = []
         var a = 0, b = 0, sx = 0.0, sy = 0.0

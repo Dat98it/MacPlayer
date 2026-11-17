@@ -1,3 +1,4 @@
+import AVFoundation
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -417,6 +418,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                 // MACPLAYER_DEV_DO="beats|fit:2|speed:3:2|move:2,3>0|front:layer|back:text|caption:box" (0.20): editor actions in turn, each
                 // followed by a DEV_DO line with what the project holds (clips, texts, layers, sounds, cues, the stack, the last undo name).
                 if let steps = ProcessInfo.processInfo.environment["MACPLAYER_DEV_DO"] {
+                    setvbuf(stdout, nil, _IOLBF, 0)          // each line at once, also when written to a file
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
                     @MainActor func dump(_ tag: String) {
                         let p = s.project, starts = TimelineEditor.starts(p.timeline)
@@ -454,6 +456,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                             for _ in 0..<1200 where s.silenceProgress != nil { try? await Task.sleep(nanoseconds: 250_000_000) }
                             print("DEV_DO silences \(s.silences.count): \(s.silences.prefix(20).map { String(format: "%.2f–%.2f", $0.timeline.start.seconds, $0.timeline.end.seconds) })")
                         case "cutsilence": s.cutSilences()
+                        case "wordcheck":
+                            print("WORDCHECK speech allowed: \(SpeechTranscriber.isAuthorized())")
+                            // Silences found in a file against the words the speech recogniser hears in it (0.21.1): a word inside a cut
+                            // would be lost. "wordcheck:<path>" (several with ";").
+                            for path in f.dropFirst().joined(separator: ":").split(separator: ";").map(String.init) {
+                                let url = URL(fileURLWithPath: path)
+                                let asset = AVURLAsset(url: url)
+                                guard let dur = try? await asset.load(.duration).seconds,
+                                      let r = try? await AudioAnalysis.rms(asset: asset, range: CMTimeRange(start: .zero, duration: CMTime(seconds: dur, preferredTimescale: 600)), frameSeconds: 0.05) else { print("WORDCHECK \(url.lastPathComponent) unreadable"); continue }
+                                let sil = SilenceFinder.silences(rms: r.frames, frameSeconds: 0.05)
+                                do {
+                                    let words = try await SpeechTranscriber.transcribe(source: url, span: nil, locale: Locale(identifier: "vi-VN"))
+                                    // A word is lost when any part of it is inside a cut (not only its middle).
+                                    let hit = words.filter { w in sil.contains { w.start < $0.end && w.end > $0.start } }
+                                    let deep = words.filter { w in sil.contains { w.start + w.duration / 2 > $0.start && w.start + w.duration / 2 < $0.end } }
+                                    print(String(format: "WORDCHECK %@ %.0fs silences %d (%.1fs) words %d touching a cut %d, middle inside a cut %d", String(url.lastPathComponent.prefix(24)), dur, sil.count, sil.reduce(0) { $0 + $1.end - $1.start }, words.count, hit.count, deep.count))
+                                    for w in hit.prefix(12) {
+                                        let c = sil.first { w.start < $0.end && w.end > $0.start }!
+                                        print(String(format: "WORDCHECK   \"%@\" %.2f–%.2f vs cut %.2f–%.2f", w.text, w.start, w.end, c.start, c.end))
+                                    }
+                                    print("WORDCHECK   words: " + words.prefix(40).map { String(format: "%@@%.1f", $0.text, $0.start) }.joined(separator: " "))
+                                } catch { print("WORDCHECK \(url.lastPathComponent) speech failed: \(error)") }
+                            }
+                        case "export":
+                            var req = ExportRequest(options: s.draft.options, folder: f[1], baseName: f.count > 2 ? f[2] : "dev-export")
+                            req.options.mode = .exact
+                            if let (jobs, _) = try? s.planExport(req) {
+                                s.env.exports.enqueue(jobs)
+                                for _ in 0..<2400 {
+                                    try? await Task.sleep(nanoseconds: 250_000_000)
+                                    guard let j = s.env.exports.queue.jobs.first(where: { $0.id == jobs[0].id }) else { break }
+                                    if case .succeeded = j.state { print("DEV_DO exported \(j.outputPath)"); break }
+                                    if case .failed(let m) = j.state { print("DEV_DO export failed \(m)"); break }
+                                }
+                            } else { print("DEV_DO export refused") }
                         case "copystyle": if f.count > 1, let n = Int(f[1]), s.project.timeline.indices.contains(n - 1) { s.select(.clip(s.project.timeline[n - 1].id)) }; s.copyStyle()
                         case "pastestyle": s.pasteStyle(toAll: f.count > 1 && f[1] == "all")
                         case "lang": LanguageState.shared.set(AppLanguage(rawValue: f[1]) ?? .system)

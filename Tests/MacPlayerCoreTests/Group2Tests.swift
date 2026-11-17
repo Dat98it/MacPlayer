@@ -30,6 +30,13 @@ struct ReframeTests {
         #expect(k.allSatisfy { abs($0.x - k[0].x) < 0.001 }, "a person fidgeting in the middle leaves the frame still")
     }
 
+    @Test func aOneOffWrongFindDoesNotSwingTheFrame() {
+        // The person stays at 0.3; one look finds somebody at 0.9.
+        let samples = (0..<40).map { i in PersonSample(time: Double(i) * 0.25, center: (i == 20 ? 0.9 : 0.3, 0.5)) }
+        let k = Reframe.path(samples)
+        #expect(k.allSatisfy { abs($0.x - 0.3) < 0.01 }, "\(k.map(\.x))")
+    }
+
     @Test func nobodySeenKeepsTheMiddle() {
         let k = Reframe.path((0..<10).map { PersonSample(time: Double($0), center: nil) })
         #expect(k.allSatisfy { $0.x == 0.5 && $0.y == 0.5 })
@@ -98,7 +105,7 @@ struct SilenceTests {
     @Test func longPausesAreFoundWithRoomLeftAroundTheWords() {
         let f = SilenceFinder.silences(rms: rms(), frameSeconds: 0.05, minLength: 0.7)
         #expect(f.count == 1)
-        #expect(abs(f[0].start - 3.15) < 0.06 && abs(f[0].end - 4.85) < 0.06, "\(f)")
+        #expect(abs(f[0].start - 3.2) < 0.06 && abs(f[0].end - 4.7) < 0.06, "\(f)")
         #expect(SilenceFinder.silences(rms: [Float](repeating: 0.2, count: 200), frameSeconds: 0.05).isEmpty, "steady sound: nothing")
     }
 
@@ -108,12 +115,12 @@ struct SilenceTests {
         p.timeline = [c]
         p.overlays = [TextOverlay(text: "late", start: s(8), end: s(9))]
         let found = SilenceFinder.found(in: c, clipStart: .zero, rms: rms(), frameSeconds: 0.05, minLength: 0.7, sensitivity: 0.25)
-        #expect(found.count == 1 && abs(found[0].timeline.start.seconds - 3.15) < 0.06)
+        #expect(found.count == 1 && abs(found[0].timeline.start.seconds - 3.2) < 0.06)
         let n = TimelineCuts.removeSilences(&p, found, ripple: true)
         #expect(n == 1 && p.timeline.count == 2)
         #expect(p.timeline.map(\.name) == ["Talk", "Talk"])
-        #expect(abs(p.timeline.reduce(0) { $0 + $1.duration.seconds } - (10 - 1.7)) < 0.06)
-        #expect(abs(p.overlays[0].start.seconds - (8 - 1.7)) < 0.06, "the text after it moved in")
+        #expect(abs(p.timeline.reduce(0) { $0 + $1.duration.seconds } - (10 - 1.5)) < 0.06)
+        #expect(abs(p.overlays[0].start.seconds - (8 - 1.5)) < 0.06, "the text after it moved in")
         var unchosen = found; unchosen[0].chosen = false
         var q = Project(name: "t", kind: .video); q.timeline = [c]
         #expect(TimelineCuts.removeSilences(&q, unchosen, ripple: true) == 0 && q.timeline.count == 1)

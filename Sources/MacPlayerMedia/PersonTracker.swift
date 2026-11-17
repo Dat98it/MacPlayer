@@ -27,13 +27,32 @@ public enum PersonTracker {
         gen.requestedTimeToleranceBefore = CMTime(seconds: step / 2, preferredTimescale: 600)
         gen.requestedTimeToleranceAfter = CMTime(seconds: step / 2, preferredTimescale: 600)
         var out: [PersonSample] = []
+        var last: (x: Double, y: Double)?
         for (i, t) in times.enumerated() {
             try Task.checkCancellation()
             guard let img = try? await gen.image(at: CMTime(seconds: t, preferredTimescale: 600)).image else { out.append(PersonSample(time: t, center: nil)); continue }
-            out.append(PersonSample(time: t, center: center(of: boxes(in: img))))
+            let found = boxes(in: img)
+            let c = pick(found, near: last)
+            if c != nil { last = c }
+            var sample = PersonSample(time: t, center: c)
+            sample.main = center(of: Array(found.sorted { $0.width * $0.height > $1.width * $1.height }.prefix(1)))
+            out.append(sample)
             progress?(Double(i + 1) / Double(times.count))
         }
         return out
+    }
+
+    /// The person to follow (0.21.1): among the people big enough to matter (at least a quarter of the biggest), the one nearest to the
+    /// one followed so far, so the frame stays on one player instead of hopping between the three biggest; the biggest when nobody is
+    /// near (or at the start). A crowd far away never pulls the frame.
+    public static func pick(_ boxes: [CGRect], near last: (x: Double, y: Double)?) -> (x: Double, y: Double)? {
+        let big = boxes.map { $0.width * $0.height }.max() ?? 0
+        let candidates = boxes.filter { $0.width * $0.height >= big * 0.25 }
+        guard let biggest = candidates.max(by: { $0.width * $0.height < $1.width * $1.height }) else { return nil }
+        guard let last else { return (Double(biggest.midX), Double(biggest.midY)) }
+        func dist(_ b: CGRect) -> Double { hypot(Double(b.midX) - last.x, Double(b.midY) - last.y) }
+        if let near = candidates.min(by: { dist($0) < dist($1) }), dist(near) < 0.2 { return (Double(near.midX), Double(near.midY)) }
+        return (Double(biggest.midX), Double(biggest.midY))
     }
 
     /// People in a picture: whole bodies, else faces. Boxes are 0…1 from the top-left.

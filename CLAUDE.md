@@ -224,6 +224,15 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.21.1** `PersonTracker.pick(_:near:)` follows one person (boxes ≥ ¼ of the biggest; nearest to the last within 0.2, else the biggest);
+`PersonSample.main` = biggest person (for measuring); `Reframe.path` takes the median of 5 looks first, defaults dead zone 0.06 / speed 0.6 /
+smoothing 0.6; `autoReframe` sets the dead zone to 12 % of the visible share. Measured on the maintainer's landscape home videos (9:16 from 16:9):
+biggest person in view 76 % of looks vs 38 % for a centred frame. Paths typed by hand on the Lexar volume must be in the stored (decomposed) form:
+AVURLAsset fails on the composed spelling there (-17913). Speech recognition aborts a test process (no usage text): check words in the app.
+Dev aids: `MACPLAYER_TRACK_FILES`, `MACPLAYER_SILENCE_FILES` tests; `MACPLAYER_DEV_DO` steps `export:<folder>[:name]`, `wordcheck:<a;b>`.
+Silences keep `padAfter` 0.2 s / `padBefore` 0.3 s (0.15 each clipped soft word onsets: checked against word times). SFSpeechRecognizer fails with
+"Siri and Dictation are disabled" when Dictation is off (shown as `SpeechError.dictationOff`); SpeechAnalyzer (macOS 26) has no Vietnamese.
+
 **0.21.0 Follow people, copy style, cut silences.** Core `Reframe.swift`: `VideoLook.reframe: [ReframeKey]?` (source-time keys of where the
 middle of a filled frame is, 0…1 of the edited picture), `Reframe.center`, `Reframe.path` (bridge gaps, 1 s average, dead zone, speed limit,
 thinning), `Reframe.edited` (crop + quarter turns). `RecipeCompositor.mainPicture` shifts a `.fill` placement by it (clamped, no edges; source

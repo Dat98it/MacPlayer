@@ -1037,3 +1037,19 @@ Ghi nhận thêm: chữ luôn được vẽ trên mọi ảnh/lớp (thứ tự 
 - Sửa thêm: bộ tạo video giả của test thỉnh thoảng làm sập tiến trình test (khối ghi được gọi thêm một lần sau khi xong).
 
 **Chưa làm/chưa kiểm chứng:** video nằm ngang có người chạy ngang thật (các video bóng đá của người bảo trì đều dọc; chỉ thử bằng bản xuất 16:9 có viền và bằng test điểm ảnh); theo người cho ảnh trên timeline (bỏ qua); xuất video 9:16 đã theo người rồi xem lại; cắt khoảng lặng trên video nói chuyện thật (dự án thật toàn nhạc nền).
+
+
+## Bản 0.21.1 — làm nốt phần "chưa kiểm chứng" của 0.21.0 (16/11/2026)
+
+**Video quay ngang thật có người di chuyển** (video gia đình/sự kiện của người bảo trì trên ổ Lexar, chỉ đọc; chỉ đo bằng số, xem rất ít khung hình):
+- Đo: với khung 9:16 cắt từ hình 16:9, tỉ lệ lần nhìn mà **người lớn nhất nằm trong khung**: khung đứng giữa 128/338 (38 %), khung theo người **257/338 (76 %)** trên 7 video.
+- Lỗi tìm ra và đã sửa: khung **nhảy qua lại giữa nhiều người** (cách cũ lấy giữa của 3 người lớn nhất, đổi người liên tục, ví dụ 0,40 → 0,64 → 0,41 → 0,55). Nay bám một người (người gần chỗ đang theo; mất người đó mới chuyển sang người lớn nhất), bỏ qua một lần nhìn nhầm (lấy trung vị 5 lần nhìn), và vùng đứng yên tính theo phần khung đang thấy (trước đây 6 % bề ngang hình = gần 1/5 khung 9:16 nên người có thể nằm sát mép khung). Thêm test cho cả hai.
+
+**Xuất file 9:16 đã theo người rồi xem lại:** dự án thử từ 30 giây đầu một video sự kiện quay ngang 1920×1080 ▸ Đổi khung, theo người ▸ xuất qua hàng đợi thật → file 1080×1920, 30,0 s. Vision trên chính file xuất thấy người ở 39/60 lần nhìn, phần lớn ở 0,36–0,50 bề ngang (gần giữa); xem 3 khung hình: người chính nằm trong khung.
+
+**Cắt khoảng lặng trên giọng nói thật:**
+- Không có video nói chuyện có sẵn, nên tạo một bài nói tiếng Việt bằng giọng Linh của macOS (7 câu hướng dẫn tập bóng) nối bằng các khoảng nghỉ biết trước (0,35–3 s) và tiếng ồn phòng nhỏ: tìm đúng 6 khoảng lặng dài (đầu, 1,6 s, 2,4 s, 1,2 s, 3,0 s, cuối), **không cắt** hai khoảng nghỉ ngắn 0,35 s và 0,5 s, không có khoảng nào nằm trong câu nói.
+- Trên 5 video gia đình thật: 0–25 khoảng (0–8 % thời lượng), phần bị cắt nhỏ hơn mức trung bình 10–11 dB.
+- Đối chiếu từng từ bằng nhận dạng giọng nói (bước debug `wordcheck:` trong bản thử đóng gói có dòng mô tả quyền): người bảo trì đã bấm **Cho phép** quyền Nhận dạng giọng nói, nhưng macOS vẫn từ chối mọi lần với "Siri and Dictation are disabled" — máy này đang tắt Đọc chính tả (`com.apple.assistant.support` không có "Dictation Enabled", dù mô hình tiếng Việt ngoại tuyến đã cài). Chạy lại sau khi người bảo trì bật Đọc chính tả: vẫn bị từ chối (có thể máy bị khoá tính năng). Bộ nhận dạng mới của macOS 26+ (SpeechAnalyzer, không phụ thuộc Đọc chính tả) không có tiếng Việt, nên với sự đồng ý của người bảo trì đã tải gói tiếng Anh chính thức của Apple và đối chiếu trên một bài nói tiếng Anh (giọng Samantha, 7 câu, khoảng nghỉ biết trước): với lề 0,15 s mỗi bên, **3 khoảng cắt lấn 0,04–0,08 s vào đầu từ** ("Then", "Start", "Do" — phụ âm đầu nhẹ dưới ngưỡng). **Đã sửa:** giữ 0,2 s sau lời trước và 0,3 s trước lời sau. Đối chiếu lại: **0/61 từ chạm khoảng cắt**, và mọi khoảng nghỉ ≥ 0,7 s giữa các từ (5 khoảng, cộng đầu và cuối) đều được tìm thấy; bài tiếng Việt vẫn tìm đủ 6 khoảng, giữ hai khoảng nghỉ ngắn. Phát hiện kèm theo: nút "Tạo phụ đề từ giọng nói" cũng hỏng như vậy trên máy tắt Đọc chính tả và trước đây chỉ báo câu tiếng Anh khó hiểu; nay app báo "Nhận dạng giọng nói cần bật Đọc chính tả… Cài đặt hệ thống ▸ Bàn phím ▸ Đọc chính tả", và các lỗi nhận dạng giọng nói khác hiện bằng tiếng Việt.
+
+**Kiểm thử:** toàn bộ Core 469, Media 272, tách lời 8 — đều qua.

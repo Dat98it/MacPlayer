@@ -7,7 +7,7 @@ import Speech
 /// a language that cannot be recognised on the device is refused rather than handed to a server.
 public enum SpeechTranscriber {
     public enum SpeechError: Error, CustomStringConvertible {
-        case notAuthorized, notOnDevice(String), noSpeech, noAudio, failed(String)
+        case notAuthorized, notOnDevice(String), noSpeech, noAudio, failed(String), dictationOff
         public var description: String {
             switch self {
             case .notAuthorized: return "Speech recognition is not allowed for MacPlayer. It can be switched on in System Settings ▸ Privacy & Security ▸ Speech Recognition."
@@ -15,6 +15,7 @@ public enum SpeechTranscriber {
             case .noSpeech: return "No speech was found."
             case .noAudio: return "This video has no sound to listen to."
             case .failed(let m): return "Recognising the speech failed: \(m)"
+            case .dictationOff: return "Speech recognition needs Dictation to be on. Turn it on in System Settings ▸ Keyboard ▸ Dictation, then try again."
             }
         }
     }
@@ -60,7 +61,9 @@ public enum SpeechTranscriber {
                     words.isEmpty ? cont.resume(throwing: SpeechError.noSpeech) : cont.resume(returning: words)
                 } else if let error {
                     finished = true
-                    cont.resume(throwing: SpeechError.failed(error.localizedDescription))
+                    // macOS refuses to recognise anything while Dictation is off (found on the maintainer's Mac, 0.21.1): say how to turn it on.
+                    let text = error.localizedDescription
+                    cont.resume(throwing: text.localizedCaseInsensitiveContains("Dictation") && text.localizedCaseInsensitiveContains("disabled") ? SpeechError.dictationOff : SpeechError.failed(text))
                 }
             }
         }
