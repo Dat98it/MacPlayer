@@ -389,3 +389,96 @@ struct AutoChooseTests {
         #expect(total >= 28 && total <= 39, "about a tenth of 346 s: \(total)")
     }
 }
+
+struct SetPieceTests {
+    /// 300 s of play (the picture always changing), sampled every 0.2 s, with play standing still from `stop` for `still` seconds and
+    /// the kick right after (a burst of 2 s, then action).
+    private func play(stops: [(stop: Double, still: Double, burst: Double)], weak: Set<Double> = [], attacks: [Double] = []) -> HighlightSignals {
+        let n = 1500
+        var s = HighlightSignals(start: 0, step: 0.2, motion: (0..<n).map { 0.03 + 0.008 * sin(Double($0) * 1.3) },
+                                 loudness: (0..<n).map { -25 + 1.5 * sin(Double($0) * 2.1) }, people: (0..<n).map { _ in 0.02 },
+                                 personSpeed: (0..<n).map { 0.05 + 0.02 * sin(Double($0) * 0.7) })
+        for st in stops {
+            for i in 0..<n {
+                let t = s.time(i)
+                if t >= st.stop && t < st.stop + st.still { s.motion[i] = 0.006; s.personSpeed[i] = 0.005 }
+                if t >= st.stop + st.still && t < st.stop + st.still + 2 { s.motion[i] = st.burst; if !weak.contains(st.stop) { s.personSpeed[i] = 0.4; s.loudness[i] += 12 } }
+            }
+        }
+        for a in attacks { for i in 0..<n where s.time(i) >= a && s.time(i) < a + 4 { s.motion[i] = 0.2; s.personSpeed[i] = 0.6; s.loudness[i] += 15 } }
+        return s
+    }
+
+    @Test func aStillnessThenAKickIsASetPiece() {
+        let s = play(stops: [(100, 9, 0.12), (200, 3, 0.12)])
+        let k = HighlightFinder.setPieceKicks(s)
+        #expect(k.count == 1 && abs(k[0] - 109) <= 1, "only the 9 s wait counts, not a 3 s pause: \(k)")
+    }
+
+    @Test func dangerousSetPiecesAreKeptAndTheRestartAfterAGoalIsNot() {
+        // A free kick at 68 s, an attack and a goal at 128 s (the score read at 150 s), the restart at 168 s, a weak free kick at 248 s.
+        var s = play(stops: [(60, 8, 0.15), (160, 8, 0.15), (240, 8, 0.06)], weak: [240], attacks: [128])
+        s.periods = [MatchPeriod(kickoff: 0, end: 299)]
+        s.goals = [ScoreChange(from: (0, 0), to: (0, 1), lastOld: 140, firstNew: 150)]
+        let m = HighlightFinder.moments(s)
+        let pieces = m.filter(\.setPiece)
+        #expect(pieces.contains { $0.event == .setPiece && $0.start < 68 && $0.end > 75 }, "the free kick at 68 s, with its setting up and outcome: \(pieces)")
+        #expect(!pieces.contains { $0.start > 150 && $0.start < 175 }, "the restart after the goal is not a set piece")
+        #expect(pieces.contains { $0.start > 235 && $0.event == nil }, "a weak one is only a suggestion")
+    }
+
+    @Test func touchingMomentsBecomeClipsOfTheirOwnWithTheirNames() {
+        var p = Project(name: "match", kind: .video)
+        let c = TimelineClip(sourceID: UUID(), sourceStart: MediaTime(seconds: 0), sourceEnd: MediaTime(seconds: 100), name: "Full match.mp4")
+        p.timeline = [c]
+        func found(_ a: Double, _ b: Double) -> HighlightFound {
+            var h = HighlightFound(clipID: c.id, source: TimeSpan(start: MediaTime(seconds: a), end: MediaTime(seconds: b)),
+                                   timeline: TimeSpan(start: MediaTime(seconds: a), end: MediaTime(seconds: b)), score: 1)
+            h.chosen = true
+            return h
+        }
+        let a = found(10, 20), b = found(20, 30), d = found(50, 55)
+        TimelineCuts.keepHighlights(&p, [a, b, d], clips: [c.id], ripple: true, names: [a.id: "Goal 0-1", b.id: "Replay", d.id: "Set piece 1"])
+        #expect(p.timeline.map(\.name) == ["Goal 0-1", "Replay", "Set piece 1"], "\(p.timeline.map(\.name))")
+        #expect(abs(p.timeline.reduce(0) { $0 + $1.duration.seconds } - 25) < 0.01)
+    }
+}
+
+struct SetPieceCrowdTests {
+    @Test func aCrowdedSetPieceIsDangerousAndAGoalKickIsNot() {
+        let n = 1500
+        var s = HighlightSignals(start: 0, step: 0.2, motion: (0..<n).map { 0.03 + 0.008 * sin(Double($0) * 1.3) },
+                                 loudness: (0..<n).map { _ in -25 }, people: (0..<n).map { _ in 0.02 })
+        for st in [60.0, 160.0] { for i in 0..<n where s.time(i) >= st && s.time(i) < st + 8 { s.motion[i] = 0.006 }
+                                  for i in 0..<n where s.time(i) >= st + 8 && s.time(i) < st + 10 { s.motion[i] = 0.15 } }
+        let kicks = HighlightFinder.setPieceKicks(s)
+        #expect(kicks.count == 2)
+        s.kickCrowd = [kicks[0]: 3, kicks[1]: 9]
+        let m = HighlightFinder.moments(s).filter(\.setPiece)
+        #expect(m.first { $0.start < 70 }?.event == nil, "a goal kick (3 people) is only a suggestion")
+        #expect(m.first { $0.start > 150 }?.event == .setPiece, "a free kick with a wall (9 people) is kept")
+    }
+}
+
+struct ReplayedSetPieceTests {
+    @Test func aReplayedFreeKickIsCalledOneAndKeepsItsSettingUp() {
+        // Play, a free kick set up from 92 s and kicked at 100 s, its replay opening at 106 s (graphic shown twice, 8 s apart).
+        let n = 1500
+        var s = HighlightSignals(start: 0, step: 0.2, motion: (0..<n).map { 0.03 + 0.008 * sin(Double($0) * 1.3) },
+                                 loudness: (0..<n).map { _ in -25 }, people: (0..<n).map { _ in 0.02 })
+        let field: [UInt8] = (0..<432).map { i in UInt8([90, 110, 70][i % 3] + (i / 3) % 7) }
+        let green: [UInt8] = (0..<432).map { i in UInt8([20, 220, 60][i % 3]) }
+        let graphics = [106.0, 114.2, 200, 208.2, 250, 258.2]
+        s.thumbs = (0..<n).map { i in graphics.contains { s.time(i) >= $0 && s.time(i) < $0 + 1.2 } ? green : field }
+        for g in graphics { for i in 0..<n where s.time(i) >= g && s.time(i) < g + 1.2 { s.motion[i] = 0.3 } }
+        for i in 0..<n where s.time(i) >= 92 && s.time(i) < 100 { s.motion[i] = 0.006 }
+        for i in 0..<n where s.time(i) >= 100 && s.time(i) < 102 { s.motion[i] = 0.15 }
+        s.kickCrowd = [100: 9]
+        let m = HighlightFinder.moments(s)
+        let fk = m.first { $0.replayed && $0.start < 106 && $0.end > 106 }
+        #expect(fk?.setPiece == true && fk?.event == .setPiece, "\(String(describing: fk))")
+        #expect(fk.map { $0.start <= 94.01 } == true, "the setting up (6 s before the kick) is in: \(String(describing: fk))")
+        #expect(m.filter { $0.replayed && $0.start > 150 }.allSatisfy { $0.setPiece == false }, "a replay with no set piece before it stays a dangerous moment")
+        #expect(m.filter(\.setPiece).count == 1, "the free kick is not there twice")
+    }
+}

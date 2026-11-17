@@ -479,7 +479,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                             print("DEV_DO highlights \(s.highlights.count), chosen \(s.highlights.filter(\.chosen).count): \(s.highlights.filter { $0.chosen }.map { String(format: "%@%@%.1f–%.1f(%.2f)", $0.chosen ? "*" : "", $0.event.map { $0.rawValue + ":" } ?? "", $0.timeline.start.seconds, $0.timeline.end.seconds, $0.score) }.joined(separator: " "))")
                         case "makehighlight":
                             s.makeHighlight(toBeat: true)
-                            print("DEV_DO made: \(s.project.timeline.count) clips, \(String(format: "%.2f", s.project.timeline.reduce(0) { $0 + $1.duration.seconds })) s: \(s.project.timeline.map { String(format: "%@ %.1f–%.1f", String($0.name.prefix(12)), $0.sourceStart.seconds, $0.sourceEnd.seconds) })")
+                            print("DEV_DO made: \(s.project.timeline.count) clips, \(String(format: "%.2f", s.project.timeline.reduce(0) { $0 + $1.duration.seconds })) s: \(s.project.timeline.map { String(format: "%@ %.1f–%.1f", String($0.name.prefix(28)), $0.sourceStart.seconds, $0.sourceEnd.seconds) })")
                         case "wordcheck":
                             print("WORDCHECK speech allowed: \(SpeechTranscriber.isAuthorized())")
                             // Silences found in a file against the words the speech recogniser hears in it (0.21.1): a word inside a cut

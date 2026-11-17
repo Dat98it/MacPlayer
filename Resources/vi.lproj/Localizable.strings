@@ -1778,7 +1778,6 @@
 "Look again" = "Tìm lại";
 "Looking at the clips… %d%%" = "Đang xem các đoạn… %d%%";
 "Make the highlight" = "Dựng highlight";
-"Moment %d" = "Pha %d";
 "No moment stood out. Try clips with more action." = "Không có pha nào nổi bật. Hãy thử với đoạn có nhiều pha bóng hơn.";
 "Only mark them" = "Chỉ đánh dấu";
 "Play this moment" = "Phát pha này";
@@ -1809,3 +1808,15 @@
 "Highlight ready: %d moments, %@. Look it over, then make it." = "Đã chọn xong highlight: %d đoạn, %@. Xem lại rồi bấm Dựng highlight.";
 "%d moments: the highlight will be %@ long." = "%d đoạn: highlight sẽ dài %@.";
 "More suggestions (%d)" = "Gợi ý thêm (%d)";
+"Set piece" = "Đá phạt";
+"Play stood still, then the kick: a free kick, a corner or a penalty" = "Trận dừng rồi có cú đá: đá phạt, phạt góc hoặc phạt đền";
+"The two teams' line-ups" = "Đội hình hai đội";
+"Kick-off, half %d" = "Bắt đầu hiệp %d";
+"Set piece %d" = "Đá phạt %d";
+"Yellow card %d" = "Thẻ vàng %d";
+"Red card %d" = "Thẻ đỏ %d";
+"VAR check %d" = "Kiểm tra VAR %d";
+"Substitution %d" = "Thay người %d";
+"End of half %d" = "Hết hiệp %d";
+"Dangerous moment %d" = "Pha nguy hiểm %d";
+"Best play %d" = "Pha bóng hay %d";

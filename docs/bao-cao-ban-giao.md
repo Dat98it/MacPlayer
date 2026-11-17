@@ -1163,3 +1163,33 @@ Ghi nhận thêm: chữ luôn được vẽ trên mọi ảnh/lớp (thứ tự 
 **Lỗi tìm ra và đã sửa:** bấm vào chữ "Gợi ý thêm (15)" không mở danh sách — trên macOS chỉ mũi tên nhỏ của DisclosureGroup nhận bấm. Nay chữ là một nút mở/đóng: bấm chữ → 20 dòng, bấm lần nữa → 5 dòng (kiểm bằng chuột thật).
 
 **Ghi chú khi kiểm:** cây giao diện vẫn báo vị trí của phần tử đã bị khung cuộn che; hai lần bấm theo vị trí đó rơi xuống thước thời gian bên dưới (chỉ dời đầu phát, file không đổi). Công cụ bấm nay chỉ bấm khi điểm nằm trong vùng nhìn thấy của bảng.
+
+
+## Bản 0.22.5 — Đá phạt nguy hiểm và tên từng đoạn (17/11/2026)
+
+**Yêu cầu:** highlight không bắt được tình huống đá phạt cố định, nhất là đá phạt nguy hiểm; khi dựng, các đoạn vẫn mang tên file gốc — cần tên riêng theo tình huống.
+
+**Đã làm:**
+- Core `HighlightFinder.setPieceKicks`: hình gần đứng yên (< 60 % mức thay đổi thường của đoạn) ít nhất 6 s, có người trong hình, rồi trong 4 s có một giây thay đổi ≥ 1,8 lần mức thường = cú đá. Chỉ trong lúc đang đá (theo đồng hồ trận), bỏ cú giao bóng lại trong 90 s sau một bàn thắng. Pha = 6 s trước cú đá đến 9 s sau.
+- Pha nguy hiểm: Media `HighlightAnalyzer.crowds` nhìn kỹ 3 s và 1,5 s trước mỗi cú đá (960 px, Vision trên 6 phần của hình) đếm người; ≥ 7 người = nguy hiểm (luôn chọn, `MatchEventKind.setPiece`, tối đa 6, đông người trước); ít hơn = gợi ý (nhãn "Đá phạt" cam). Đo trên trận ví dụ: hai pha phát bóng lên 3 và 5 người; đá phạt trước khung thành/hàng rào/phạt góc 7–11 người. Bản đầu (chọn theo độ sôi động sau cú đá) chọn nhầm hai pha phát bóng lên (máy quay lia theo bóng dài) — đã bỏ.
+- Bàn thắng không có đoạn chiếu lại: lấy lúc sôi động **sau cùng** trong số các lúc ≥ 90 % mức cao nhất trong 90 s trước khi bảng đổi số (bàn thắng kết thúc pha bóng; trước đây lấy lúc đầu tiên, có thể là một pha đá phạt trước đó).
+- Tên đoạn: `TimelineCuts.keepHighlights(names:)` tách các tình huống liền nhau thành đoạn riêng và đặt tên; app đặt tên theo loại, đánh số theo thời gian: Ra sân, Đội hình hai đội, Bắt đầu hiệp n, Bàn thắng a-b, Đá phạt n, Thẻ vàng/đỏ n, Kiểm tra VAR n, Thay người n, Hết hiệp n, Hết trận, Pha nguy hiểm n (đài chiếu lại), Pha bóng hay n. Điểm đánh dấu (Chỉ đánh dấu) dùng cùng tên.
+
+**Kiểm thử:**
+- Test mới `SetPieceTests` (3: dừng 9 s rồi đá là pha cố định, dừng 3 s thì không; pha nguy hiểm được giữ, giao bóng lại sau bàn thắng không tính, pha yếu chỉ là gợi ý; tình huống liền nhau thành hai đoạn có tên), `SetPieceCrowdTests` (đông người = nguy hiểm, phát bóng lên = gợi ý). Toàn bộ: Core 500, Media 276, tách lời 8 — đều qua.
+- **Trên dự án thật của người bảo trì** "highlight FC98 - FC 2K3.macplayer" (ổ Lexar, không sandbox; MacPlayer của người bảo trì đã đóng dự án; sao lưu ngay trước khi chạy, kiểm SHA-256, trả lại sau khi kiểm — mã băm khớp, 1 đoạn nguyên trận): Tìm highlight → 34 dòng, chọn 19; Dựng highlight → 19 đoạn 582,5 s, tên trong file: Ra sân, Đội hình hai đội, Bắt đầu hiệp 1, Pha nguy hiểm 1–3, Bàn thắng 0-1, **Đá phạt 1** (28:20), Bàn thắng 0-2, Bàn thắng 0-3, **Đá phạt 2** (43:40), Hết hiệp 1, Bắt đầu hiệp 2, **Đá phạt 3** (56:53), Bàn thắng 0-4…2-5, Hết trận. Xem ảnh: cả ba là đá phạt có hàng rào/cầu thủ chờ trước khung thành; Đá phạt 1 dẫn tới bàn 0-2.
+
+**Ghi chú:** các bản sao thử trước đó (chạy không sandbox) hiện trong danh sách dự án của app và người bảo trì đã xoá; từ nay chỉ chạy trên dự án thật khi được yêu cầu (sao lưu trước), còn thử nghiệm thì dùng `--sandbox`.
+
+**Chưa làm/chưa kiểm chứng:** không phân biệt đá phạt / phạt góc / phạt đền (cùng nhãn "Đá phạt"); một số pha đá phạt có hàng rào trùng với đoạn đài đã chiếu lại nên mang tên "Pha nguy hiểm"; chỉ thử trên một trận.
+
+
+## Bản 0.22.6 — Pha đá phạt được đài chiếu lại mang tên "Đá phạt" (17/11/2026)
+
+**Vấn đề:** ở 0.22.5, pha đá phạt nào đài đã chiếu lại thì đã nằm trong đoạn "Pha nguy hiểm" (12 s trước đoạn chiếu lại + đoạn chiếu lại), nên không được nhận là đá phạt: tên là "Pha nguy hiểm n" và có thể thiếu phần chuẩn bị (đặt bóng, xếp hàng rào).
+
+**Đã làm:** khi có cú đá phạt trong khoảng từ 2 s trước đầu đoạn "12 s trước đoạn chiếu lại" đến ngay trước đoạn chiếu lại, đoạn đó là pha đá phạt (`setPiece`, `event` `.setPiece`, luôn chọn), tên "Đá phạt n", bắt đầu từ lúc sớm hơn trong hai mốc (12 s trước đoạn chiếu lại hoặc 6 s trước cú đá), không lấn sang đoạn trước; đoạn chiếu lại vẫn ở sau. Cú đá đó không tạo thêm đoạn đá phạt thứ hai.
+
+**Kiểm thử:** test mới `ReplayedSetPieceTests` (pha đá phạt được chiếu lại mang nhãn đá phạt, có phần chuẩn bị; pha chiếu lại không có đá phạt vẫn là pha nguy hiểm; không lặp). Toàn bộ: Core 501, Media 276, tách lời 8 — đều qua. **Trên dự án thật** "highlight FC98 - FC 2K3" (sao lưu ngay trước, trả lại sau, mã băm khớp): 22 đoạn, 668,3 s (11:08); "Đá phạt 1" 19:58 (trước là Pha nguy hiểm 3), "Đá phạt 5" 57:14, "Đá phạt 6" 64:20. Xem ảnh: Đá phạt 5 là đá phạt trước khung thành có trọng tài rồi đoạn chiếu lại; Đá phạt 6 là phạt góc; Đá phạt 1 ảnh nhỏ, chưa xác nhận được bằng mắt.
+
+**Lưu ý:** vì pha đá phạt được chiếu lại nay luôn được chọn, highlight trận ví dụ dài hơn (11:08, trước 9:42).

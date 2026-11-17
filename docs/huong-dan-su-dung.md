@@ -31,7 +31,7 @@ Tài liệu này đi theo thứ tự bạn thường dùng: mở app → xem →
 
 **Yêu cầu:** macOS 15 trở lên. App mới được kiểm thử trên máy Apple Silicon (M1, M2, M3…); máy Intel chưa được thử.
 
-1. Mở file `MacPlayer-0.22.4.dmg` (hoặc giải nén file `.zip`).
+1. Mở file `MacPlayer-0.22.6.dmg` (hoặc giải nén file `.zip`).
 2. Kéo **MacPlayer** vào thư mục **Applications**.
 3. Lần đầu mở, macOS có thể chặn vì app chưa được Apple kiểm duyệt (notarize). Chuột phải vào MacPlayer ▸ **Mở**, hoặc vào **Cài đặt hệ thống ▸ Quyền riêng tư & Bảo mật ▸ Vẫn mở**.
 
@@ -333,7 +333,7 @@ Dùng khi có video dài (trận đấu, buổi tập) và muốn có ngay một
 2. **Cơ bản ▸ Highlight**.
 3. Bấm **Tìm highlight**. App xem từng đoạn ngay trên máy (video 6 phút mất khoảng 6 giây, cả trận 86 phút khoảng 2 phút). Có thanh tiến trình và nút **Dừng**.
 4. App **tự chọn sẵn** các đoạn của highlight và báo highlight dài bao nhiêu. Danh sách chỉ gồm các đoạn đã chọn (mỗi đoạn có giờ bắt đầu, nhãn như *Bàn thắng 0-1*, *Hết hiệp*, độ dài và nút ▶ xem thử) và mục **Gợi ý thêm** (gập sẵn, tối đa 15 pha hay khác; bấm vào chữ để mở) nếu muốn thêm. Bỏ tick đoạn nào không thích.
-5. Bấm **Dựng highlight**: timeline chỉ còn các đoạn đã tick, theo thứ tự thời gian. Một bước **Hoàn tác** lấy lại cả video.
+5. Bấm **Dựng highlight**: timeline chỉ còn các đoạn đã tick, theo thứ tự thời gian, **mỗi đoạn có tên riêng** theo tình huống (Ra sân, Đội hình hai đội, Bắt đầu hiệp 1, Bàn thắng 0-1, Đá phạt 2, Pha nguy hiểm 3, Pha bóng hay 1, Hết hiệp 1, Hết trận…). Một bước **Hoàn tác** lấy lại cả video.
 
 App tự tính thế nào:
 
@@ -348,6 +348,7 @@ App chấm pha thế nào:
 - Hình **không có người** (sơ đồ chiến thuật, chữ tiêu đề) bị tính rất ít.
 - **Bàn thắng đọc từ bảng tỉ số** (video livestream/truyền hình có bảng tỉ số trên hình): app đọc chữ trên hình 10 giây một lần, thấy tỉ số tăng (đọc 2 lần liền giống nhau) là có bàn thắng. Bàn thắng hiện nhãn xanh **Bàn thắng 0-1** và **luôn được chọn**.
 - **Các mốc của trận** (video có bảng tỉ số với đồng hồ trận): **Ra sân** (trọng tài dẫn hai đội ra), **Xếp hàng, đội hình** (hai đội xếp hàng chào nhau, lúc đọc đội hình), **Bắt đầu hiệp** (đồng hồ bắt đầu chạy), **Hết hiệp** (còi và câu thông báo hết hiệp của bình luận viên), **Hết trận** (đến khi bình luận viên đọc xong kết quả), **Thẻ vàng / Thẻ đỏ / Kiểm tra VAR / Thay người** (khi trên hình có chữ báo). Mọi mốc đều tìm từ chính video, mỗi trận một khác; các mốc luôn được chọn và hiện nhãn màu trong danh sách. Video thiếu đoạn đầu (không có chào sân, bắt đầu ngay từ còi hoặc giữa trận) hay thiếu đoạn cuối (live bị sập) vẫn tạo highlight bình thường, chỉ không có các mốc không nằm trong video. Đoạn **Xếp hàng, đội hình** kéo đến khi loa sân lặng hẳn để có đủ tên cầu thủ của cả hai đội.
+- **Đá phạt nguy hiểm** (đá phạt, phạt góc, phạt đền): trận dừng ít nhất 6 giây (đặt bóng, xếp hàng rào) rồi có cú đá; app đếm người trong hình lúc chuẩn bị — từ 7 người trở lên (hàng rào, cầu thủ chờ trước khung thành) là pha nguy hiểm, luôn được chọn, nhãn cam **Đá phạt**; phát bóng lên, ném biên (ít người) chỉ nằm trong gợi ý. Mỗi pha gồm 6 giây chuẩn bị và 9 giây sau cú đá; pha đá phạt được đài chiếu lại cũng mang tên **Đá phạt** và kèm đoạn chiếu lại.
 - **Pha được chiếu lại**: video có đoạn chiếu lại mở/đóng bằng cùng một hình chuyển cảnh (logo đài, cửa chuyển cảnh…) thì app nhận ra; bàn thắng là 25 giây ngay trước đoạn chiếu lại của nó (cả pha tấn công dẫn tới bàn thắng), **rồi cả đoạn chiếu lại** (tắt bằng ô **Kèm đoạn chiếu lại sau bàn thắng**), các pha khác được chiếu lại (biểu tượng ↺ cam) đứng ngay sau bàn thắng. Phần chiếu lại không bị lấy trùng.
 - Mỗi pha không kéo sang cảnh khác sau chỗ chuyển cảnh, và dài 2,5 đến 12 giây.
 

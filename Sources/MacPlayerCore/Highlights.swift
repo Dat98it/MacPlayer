@@ -24,6 +24,9 @@ public struct HighlightSignals: Equatable, Sendable {
     public var marks: [WordMark] = []
     /// When people stood in a row (two teams lined up) before the first kick-off or after the final whistle (0.22.2), source seconds.
     public var lineups: [Double] = []
+    /// How many people stood in the picture while each set piece was set up (by its kick time, source seconds; 0.22.5): a free kick
+    /// or a corner near the goal has the wall and the players waiting for the ball; a goal kick or a throw-in has a few.
+    public var kickCrowd: [Double: Int] = [:]
     public init(start: Double, step: Double, motion: [Double], loudness: [Double] = [], people: [Double?] = [], personSpeed: [Double] = [],
                 goals: [ScoreChange] = [], thumbs: [[UInt8]] = []) {
         self.start = start; self.step = step; self.motion = motion; self.loudness = loudness; self.people = people; self.personSpeed = personSpeed
@@ -44,7 +47,7 @@ public func peopleInARow(feet: [Double], band: Double = 0.05) -> Int {
 
 /// What a moment is, when it is more than action: the parts of a match a highlight must have (0.22.2).
 public enum MatchEventKind: String, Codable, Sendable, CaseIterable {
-    case walkout, lineup, kickoff, goal, yellowCard, redCard, check, substitution, halfTime, fullTime
+    case walkout, lineup, kickoff, goal, setPiece, yellowCard, redCard, check, substitution, halfTime, fullTime
 }
 
 /// A card or a VAR check read on the picture, and when.
@@ -69,11 +72,17 @@ public struct HighlightFound: Identifiable, Equatable, Sendable {
     public var replayed = false
     /// A part of the match it is (kick-off, a goal, a card…): always kept.
     public var event: MatchEventKind?
+    /// A set piece (0.22.5); a dangerous one also has `event` `.setPiece`.
+    public var setPiece = false
     public init(clipID: UUID, source: TimeSpan, timeline: TimeSpan, score: Double, goal: String? = nil, replayed: Bool = false, event: MatchEventKind? = nil) {
         self.clipID = clipID; self.source = source; self.timeline = timeline; self.score = score; self.goal = goal; self.replayed = replayed
         self.event = event ?? (goal != nil ? .goal : nil)
     }
     public var length: Double { (timeline.end - timeline.start).seconds }
+}
+
+extension HighlightFound {
+    func with(setPiece: Bool) -> HighlightFound { var x = self; x.setPiece = setPiece; return x }
 }
 
 public enum HighlightFinder {
@@ -148,6 +157,8 @@ public enum HighlightFinder {
         /// The broadcast showed it again (a replay followed it).
         public var replayed = false
         public var event: MatchEventKind? = nil
+        /// A set piece (free kick, corner, penalty): play stood still, then the kick (0.22.5).
+        public var setPiece = false
     }
 
     /// Replays in a broadcast or a live stream: they open (and usually close) with the same short graphic, seen again and again. A
@@ -192,6 +203,34 @@ public enum HighlightFinder {
             return out
         }
         return []
+    }
+
+    /// When set pieces were kicked (source seconds): the picture nearly still (under 60 % of the clip's usual change) for at least 6 s
+    /// with people in it, then within 4 s a second of change at least 1.8 times the usual.
+    public static func setPieceKicks(_ s: HighlightSignals) -> [Double] {
+        let per = max(1, Int((1 / s.step).rounded()))
+        let secs = s.count / per
+        guard secs > 20 else { return [] }
+        let m = (0..<secs).map { i in s.motion[(i * per)..<min(s.count, (i + 1) * per)].reduce(0, +) / Double(per) }
+        let usual = m.sorted()[secs / 2]
+        guard usual > 0 else { return [] }
+        let seen = s.people.count == s.count
+        func people(_ i: Int) -> Bool {
+            guard seen else { return true }
+            return s.people[(i * per)..<min(s.count, (i + 1) * per)].contains { ($0 ?? 0) > 0.002 }
+        }
+        var out: [Double] = []
+        var i = 0
+        while i < secs {
+            guard m[i] < usual * 0.6 else { i += 1; continue }
+            var j = i
+            while j < secs && m[j] < usual * 0.6 { j += 1 }
+            if j - i >= 6, (i..<j).contains(where: people), let k = (j..<min(secs, j + 4)).first(where: { m[$0] > usual * 1.8 }) {
+                out.append(s.start + Double(k) * Double(per) * s.step)
+            }
+            i = j
+        }
+        return out
     }
 
     /// The moments of one clip, best first, in source seconds: goals (read on the scoreboard), then moments the broadcast replayed, then
@@ -306,7 +345,10 @@ public enum HighlightFinder {
                 replays.remove(at: k)
             } else {
                 let a = max(0, Int(((g.firstNew - 90) - s.start) / s.step)), b = min(n - 1, Int(((g.firstNew - 3) - s.start) / s.step))
-                guard a < b, let p = (a...b).filter({ !inReplay[$0] }).max(by: { sc[$0] < sc[$1] }) else { continue }
+                // The goal is the last of the most exciting moments before the board changed (an earlier one, as exciting, came
+                // before it: the goal ends the play).
+                let open = (a...b).filter { !inReplay[$0] }
+                guard let top = open.map({ sc[$0] }).max(), let p = open.last(where: { sc[$0] >= top * 0.9 }) else { continue }
                 let t = s.time(p) + s.step / 2
                 start = t - 18; end = t + 6
             }
@@ -315,10 +357,44 @@ public enum HighlightFinder {
             taken.append(Moment(start: start, end: end, score: best * 1.5, goal: g.label, replayed: true, event: .goal))
         }
         // Then what the broadcast chose to show again: the 12 s before each other replay (and the replay).
+        // A set piece the broadcast replayed (0.22.6) is named as one, and starts from its setting up (6 s before the kick) so the
+        // wall and the ball being placed are in; the replay stays after it.
+        let kicks = setPieceKicks(s)
         for r in replays {
-            let end = min(last, withReplays ? r.end : r.start - 1.2), start = max(first, r.start - 1.2 - 12)
+            let end = min(last, withReplays ? r.end : r.start - 1.2)
+            var start = max(first, r.start - 1.2 - 12)
+            let kick = kicks.last { $0 >= start - 2 && $0 < r.start - 1 }
+            if let k = kick {
+                let before = taken.filter { $0.end <= start + 0.01 }.map(\.end).max() ?? first
+                start = max(before, first, min(start, k - 6))
+            }
             guard end - start >= minLength, free(start, end) else { continue }
-            taken.append(Moment(start: start, end: end, score: best * 1.2, goal: nil, replayed: true))
+            var m = Moment(start: start, end: end, score: best * 1.2, goal: nil, replayed: true, event: kick == nil ? nil : .setPiece)
+            m.setPiece = kick != nil
+            taken.append(m)
+        }
+        // Set pieces (free kicks, corners, penalties): play stands still while the ball is placed and the wall forms, then the kick
+        // sets everything moving. From 6 s before the kick (the setting up) to 9 s after (what came of it). The dangerous ones are always
+        // kept; the others (goal kicks, throw-ins) are suggestions.
+        var pieces: [(start: Double, end: Double, danger: Double)] = []
+        for k in kicks {
+            guard s.periods.isEmpty || s.periods.contains(where: { k > $0.kickoff + 15 && k < $0.end }),
+                  // Not the restart after a goal (the ball back on the centre spot).
+                  !taken.contains(where: { $0.event == .goal && k > $0.end - 1 && k < $0.end + 90 }) else { continue }
+            let a = max(0, Int((k - s.start) / s.step)), b = min(n - 1, Int((k + 8 - s.start) / s.step))
+            guard a < b else { continue }
+            pieces.append((max(first, k - 6), min(last, k + 9), sc[a...b].max() ?? 0))
+        }
+        // Dangerous: many people waiting (7 or more: a wall, players in front of the goal); where nobody counted them, what followed
+        // the kick (at least 60 % as exciting as the best moment). Up to six, the most crowded first.
+        let crowdOf = pieces.indices.map { i in s.kickCrowd.first { abs($0.key - (pieces[i].start + 6)) < 1 }?.value }
+        let dangerous = Set(pieces.indices.filter { crowdOf[$0].map { $0 >= 7 } ?? (pieces[$0].danger >= best * 0.6) }
+            .sorted { (crowdOf[$0] ?? 0, pieces[$0].danger) > (crowdOf[$1] ?? 0, pieces[$1].danger) }.prefix(6))
+        for (i, p) in pieces.enumerated() where free(p.start, p.end) && p.end - p.start >= minLength {
+            var m = Moment(start: p.start, end: p.end, score: dangerous.contains(i) ? best * 1.3 : max(p.danger, threshold), goal: nil, replayed: false,
+                           event: dangerous.contains(i) ? .setPiece : nil)
+            m.setPiece = true
+            taken.append(m)
         }
         for p in sc.indices.sorted(by: { sc[$0] > sc[$1] }) {
             let peak = sc[p]
@@ -369,6 +445,7 @@ public enum HighlightFinder {
             let ta = clipStart.seconds + (a - lo) / k, tb = clipStart.seconds + (b - lo) / k
             return HighlightFound(clipID: c.id, source: TimeSpan(start: MediaTime(seconds: a, timescale: 6000), end: MediaTime(seconds: b, timescale: 6000)),
                                   timeline: TimeSpan(start: MediaTime(seconds: ta, timescale: 6000), end: MediaTime(seconds: tb, timescale: 6000)), score: m.score, goal: m.goal, replayed: m.replayed, event: m.event)
+            .with(setPiece: m.setPiece)
         }
     }
 
@@ -442,9 +519,12 @@ extension TimelineCuts {
     /// Keeps only the chosen moments of the clips in `clips` (the clips looked at): everything else of those clips is cut out, in one
     /// go; clips outside `clips` stay as they are. With `ripple`, what lies over the timeline follows. Returns how many moments are kept.
     @discardableResult
-    public static func keepHighlights(_ p: inout Project, _ found: [HighlightFound], clips: Set<UUID>, ripple: Bool) -> Int {
+    public static func keepHighlights(_ p: inout Project, _ found: [HighlightFound], clips: Set<UUID>, ripple: Bool, names: [UUID: String] = [:]) -> Int {
         let chosen = found.filter(\.chosen)
         guard !chosen.isEmpty else { return 0 }
+        // The source of each clip looked at: the pieces left keep it, and so tell which moment they are.
+        var sourceOf: [UUID: UUID] = [:]
+        for c in p.timeline where clips.contains(c.id) { sourceOf[c.id] = c.sourceID }
         let starts = TimelineEditor.starts(p.timeline)
         var drop: [SilenceFound] = []
         for c in p.timeline where clips.contains(c.id) {
@@ -464,6 +544,23 @@ extension TimelineCuts {
             gap(at, c.sourceEnd)
         }
         removeSilences(&p, drop, ripple: ripple)
+        // Moments that follow each other with nothing between are one piece now: each gets a clip of its own (0.22.5), so that every
+        // part of the highlight has its own name and can be moved or cut on its own.
+        let half = MediaTime(seconds: 0.05, timescale: 6000)
+        for m in chosen.sorted(by: { $0.source.start > $1.source.start }) {
+            guard let src = sourceOf[m.clipID],
+                  let c = p.timeline.first(where: { $0.sourceID == src && m.source.start > $0.sourceStart + half && m.source.start < $0.sourceEnd - half })
+            else { continue }
+            _ = TimelineEditor.split(&p.timeline, clipID: c.id, atSourceTime: m.source.start)
+        }
+        // Each piece named after its moment ("Goal 0-1", "Set piece 2"…) instead of the file it comes from.
+        if !names.isEmpty {
+            for i in p.timeline.indices {
+                let c = p.timeline[i]
+                if let m = chosen.first(where: { sourceOf[$0.clipID] == c.sourceID && $0.source.start <= c.sourceStart + half && $0.source.end >= c.sourceEnd - half }),
+                   let name = names[m.id] { p.timeline[i].name = name }
+            }
+        }
         return chosen.count
     }
 }

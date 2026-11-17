@@ -130,6 +130,8 @@ public enum HighlightAnalyzer {
             while first.kickoffSeen && t < first.kickoff - 10 { times.append(t); t += 2 }
             signals.lineups = try await lineups(asset: asset, at: times)
         }
+        // Each set piece looked at closely while it is set up (0.22.5): how many people are in the picture.
+        signals.kickCrowd = try await crowds(asset: asset, at: HighlightFinder.setPieceKicks(signals))
         progress?(1)
         return signals
     }
@@ -203,7 +205,36 @@ public enum HighlightAnalyzer {
         return out
     }
 
+    /// For tests: replaces the people count of a set piece.
+    nonisolated(unsafe) public static var crowdCounter: ((CGImage) -> Int)?
+
+    /// How many people are in the picture 3 s and 1.5 s before each kick (the more of the two), by kick time.
+    static func crowds(asset: AVAsset, at kicks: [Double]) async throws -> [Double: Int] {
+        guard !kicks.isEmpty else { return [:] }
+        let gen = AVAssetImageGenerator(asset: asset)
+        gen.appliesPreferredTrackTransform = true
+        gen.maximumSize = CGSize(width: 960, height: 960)
+        gen.requestedTimeToleranceBefore = CMTime(seconds: 0.3, preferredTimescale: 600)
+        gen.requestedTimeToleranceAfter = CMTime(seconds: 0.3, preferredTimescale: 600)
+        var out: [Double: Int] = [:]
+        for k in kicks {
+            try Task.checkCancellation()
+            var most = 0
+            for t in [k - 3, k - 1.5] {
+                guard let img = try? await gen.image(at: CMTime(seconds: max(0, t), preferredTimescale: 600)).image else { continue }
+                most = max(most, crowdCounter?(img) ?? people(img).count)
+            }
+            out[k] = most
+        }
+        return out
+    }
+
     static func rowCount(_ img: CGImage) -> Int {
+        peopleInARow(feet: people(img).map { Double($0.maxY) })
+    }
+
+    /// The people in a picture, small ones far off too: Vision looks at six overlapping parts of it. Boxes 0…1 from the top-left.
+    static func people(_ img: CGImage) -> [CGRect] {
         let w = CGFloat(img.width), h = CGFloat(img.height)
         var boxes: [CGRect] = []
         for ty in 0..<2 { for tx in 0..<3 {
@@ -220,7 +251,7 @@ public enum HighlightAnalyzer {
                 if !boxes.contains(where: { let i = $0.intersection(r); return i.width * i.height > 0.5 * r.width * r.height }) { boxes.append(r) }
             }
         } }
-        return peopleInARow(feet: boxes.map { Double($0.maxY) })
+        return boxes
     }
 
     /// Whole bodies found by Vision, 0…1 from the top-left.

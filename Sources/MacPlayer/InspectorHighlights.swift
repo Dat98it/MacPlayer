@@ -41,6 +41,7 @@ struct HighlightCard: View {
         case .lineup: return L("Line-up")
         case .kickoff: return L("Kick-off")
         case .goal: return LF("Goal %@", goal ?? "")
+        case .setPiece: return L("Set piece")
         case .yellowCard: return L("Yellow card")
         case .redCard: return L("Red card")
         case .check: return L("VAR check")
@@ -53,6 +54,7 @@ struct HighlightCard: View {
     static func colour(_ e: MatchEventKind) -> Color {
         switch e {
         case .goal: return .green
+        case .setPiece: return .orange
         case .yellowCard: return .yellow
         case .redCard: return .red
         default: return .accentColor
@@ -64,6 +66,7 @@ struct HighlightCard: View {
         case .goal: return L("The score changed on the scoreboard: this is the goal")
         case .kickoff, .halfTime, .fullTime: return L("Read from the match clock on the scoreboard")
         case .walkout, .lineup: return L("The teams stand in a row")
+        case .setPiece: return L("Play stood still, then the kick: a free kick, a corner or a penalty")
         case .yellowCard, .redCard, .check, .substitution: return L("Read in words on the picture")
         }
     }
@@ -102,6 +105,8 @@ struct HighlightCard: View {
             if let e = h.event {
                 Text(Self.label(e, h.goal)).font(.caption.weight(.semibold)).foregroundColor(Self.colour(e)).lineLimit(1)
                     .help(Self.why(e))
+            } else if h.setPiece {
+                Text(L("Set piece")).font(.caption).foregroundColor(.orange).lineLimit(1).help(Self.why(.setPiece))
             } else if h.replayed {
                 Image(systemName: "arrow.counterclockwise").font(.caption).foregroundColor(.orange)
                     .help(L("The broadcast showed this again")).accessibilityLabel(L("The broadcast showed this again"))

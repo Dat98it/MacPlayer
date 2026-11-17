@@ -224,6 +224,14 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.22.6** A replayed moment with a set-piece kick between 2 s before its start and the replay is a set piece (`.setPiece` event, named "Set piece"), starting at min(12 s before the replay, kick − 6 s).
+
+**0.22.5 Set pieces and clip names.** `setPieceKicks` (≥6 s still < 60 % of usual change with people, then a second ≥1.8×), only in play,
+not within 90 s after a goal; `HighlightSignals.kickCrowd` from `HighlightAnalyzer.crowds` (6-part Vision count 3 s / 1.5 s before; ≥7 =
+dangerous → `.setPiece` event, ≤6 kept; goal kicks had 3–5). Goals without a replay take the LAST moment ≥90 % of the window's top.
+`keepHighlights(names:)` splits touching moments and names pieces; app `EditorSession.highlightNames`. Test runs on copies must use
+`--sandbox` (non-sandbox runs register the copies in the maintainer's project list); real projects only when asked, backed up right before.
+
 **0.22.3 Automatic highlight.** No length/padding controls: `HighlightFinder.autoChoose(seconds:)` (events always; whole ≈10 % of the
 video, 30 s–8 min; play budget = rest, at least min(60, 2 %): replayed first, then score ≥ ½ best) and `shortlist` (chosen + 15 best others,
 time order); moment padding from the action's own rise (>15 % of peak, ≤6 s, +2 s) and fall (>20 %, ≤4 s, +1 s), 2.5–12 s. UI "Highlight"

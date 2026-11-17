@@ -70,7 +70,7 @@ extension EditorSession {
         // What was measured, by source (the clips are split by the cut and get new ids).
         var measured: [UUID: [HighlightSignals]] = [:]
         for c in p.timeline { if let sig = highlightSignals[c.id] { measured[c.sourceID, default: []].append(sig) } }
-        let n = TimelineCuts.keepHighlights(&p, chosen, clips: highlightClips, ripple: timelineFollows)
+        let n = TimelineCuts.keepHighlights(&p, chosen, clips: highlightClips, ripple: timelineFollows, names: Self.highlightNames(chosen))
         // Each moment's sound evened out to one level (a match jumps from a booming loudspeaker to a quiet field, and loud parts crackle
         // when written again), with a short fade at each join so the cuts do not click.
         for i in p.timeline.indices {
@@ -95,13 +95,44 @@ extension EditorSession {
         Task { await player.seek(to: .zero) }
     }
 
+    /// A name for each part of the highlight (0.22.5), numbered in time order within its kind: "Walk out", "Kick-off, half 1",
+    /// "Goal 0-1", "Set piece 2", "Dangerous moment 3", "Best play 1", "End of half 1", "Full time"…
+    static func highlightNames(_ moments: [HighlightFound]) -> [UUID: String] {
+        var count: [String: Int] = [:]
+        func next(_ key: String) -> Int { count[key, default: 0] += 1; return count[key]! }
+        var out: [UUID: String] = [:]
+        for h in moments.sorted(by: { $0.timeline.start < $1.timeline.start }) {
+            let name: String
+            switch h.event {
+            case .walkout: name = L("Walk out")
+            case .lineup: name = L("The two teams' line-ups")
+            case .kickoff: name = LF("Kick-off, half %d", next("kickoff"))
+            case .goal: name = LF("Goal %@", h.goal ?? "")
+            case .setPiece: name = LF("Set piece %d", next("set"))
+            case .yellowCard: name = LF("Yellow card %d", next("yellow"))
+            case .redCard: name = LF("Red card %d", next("red"))
+            case .check: name = LF("VAR check %d", next("var"))
+            case .substitution: name = LF("Substitution %d", next("sub"))
+            case .halfTime: name = LF("End of half %d", next("half"))
+            case .fullTime: name = L("Full time")
+            case nil:
+                if h.setPiece { name = LF("Set piece %d", next("set")) }
+                else if h.replayed { name = LF("Dangerous moment %d", next("danger")) }
+                else { name = LF("Best play %d", next("play")) }
+            }
+            out[h.id] = name
+        }
+        return out
+    }
+
     /// Puts a marker at the start of each checked moment instead of cutting (to cut by hand).
     func markHighlights() {
         let chosen = highlights.filter(\.chosen)
         guard !chosen.isEmpty else { return }
         edit("Mark highlights") { p in
-            for (i, h) in chosen.enumerated() where !p.markers.contains(where: { abs(($0.time - h.timeline.start).seconds) < 0.05 }) {
-                p.markers.append(Marker(time: h.timeline.start, name: LF("Moment %d", i + 1), color: .green))
+            let names = Self.highlightNames(chosen)
+            for h in chosen where !p.markers.contains(where: { abs(($0.time - h.timeline.start).seconds) < 0.05 }) {
+                p.markers.append(Marker(time: h.timeline.start, name: names[h.id] ?? "", color: .green))
             }
             p.markers.sort { $0.time < $1.time }
         }
