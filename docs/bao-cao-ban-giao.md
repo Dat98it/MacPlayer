@@ -1053,3 +1053,113 @@ Ghi nhận thêm: chữ luôn được vẽ trên mọi ảnh/lớp (thứ tự 
 - Đối chiếu từng từ bằng nhận dạng giọng nói (bước debug `wordcheck:` trong bản thử đóng gói có dòng mô tả quyền): người bảo trì đã bấm **Cho phép** quyền Nhận dạng giọng nói, nhưng macOS vẫn từ chối mọi lần với "Siri and Dictation are disabled" — máy này đang tắt Đọc chính tả (`com.apple.assistant.support` không có "Dictation Enabled", dù mô hình tiếng Việt ngoại tuyến đã cài). Chạy lại sau khi người bảo trì bật Đọc chính tả: vẫn bị từ chối (có thể máy bị khoá tính năng). Bộ nhận dạng mới của macOS 26+ (SpeechAnalyzer, không phụ thuộc Đọc chính tả) không có tiếng Việt, nên với sự đồng ý của người bảo trì đã tải gói tiếng Anh chính thức của Apple và đối chiếu trên một bài nói tiếng Anh (giọng Samantha, 7 câu, khoảng nghỉ biết trước): với lề 0,15 s mỗi bên, **3 khoảng cắt lấn 0,04–0,08 s vào đầu từ** ("Then", "Start", "Do" — phụ âm đầu nhẹ dưới ngưỡng). **Đã sửa:** giữ 0,2 s sau lời trước và 0,3 s trước lời sau. Đối chiếu lại: **0/61 từ chạm khoảng cắt**, và mọi khoảng nghỉ ≥ 0,7 s giữa các từ (5 khoảng, cộng đầu và cuối) đều được tìm thấy; bài tiếng Việt vẫn tìm đủ 6 khoảng, giữ hai khoảng nghỉ ngắn. Phát hiện kèm theo: nút "Tạo phụ đề từ giọng nói" cũng hỏng như vậy trên máy tắt Đọc chính tả và trước đây chỉ báo câu tiếng Anh khó hiểu; nay app báo "Nhận dạng giọng nói cần bật Đọc chính tả… Cài đặt hệ thống ▸ Bàn phím ▸ Đọc chính tả", và các lỗi nhận dạng giọng nói khác hiện bằng tiếng Việt.
 
 **Kiểm thử:** toàn bộ Core 469, Media 272, tách lời 8 — đều qua.
+
+
+## Bản 0.22.0 — Pha hay: tự dựng highlight video bóng đá (17/11/2026)
+
+**Yêu cầu:** người bảo trì hay phải cắt highlight video bóng đá: làm tính năng tự tìm pha hay trước.
+
+**Đã làm:**
+- **Cơ bản ▸ Pha hay**: chọn **Độ dài highlight** (15 s, 30 s, 1 phút, 1:30, 3 phút, Mọi pha tìm được), **Giây giữ trước / sau pha bóng** (mặc định 2,5 / 2) ▸ **Tìm pha hay** (thanh tiến trình, Dừng; tick **Chỉ các đoạn đang chọn** khi chọn nhiều đoạn) ▸ danh sách pha theo thời gian: giờ bắt đầu, độ dài, thanh cam độ sôi động so với pha hay nhất, nút ▶ xem thử, ô tick; các pha hay nhất vừa đủ độ dài được tick sẵn; dòng tóm tắt "Chọn x trên y pha: highlight sẽ dài …".
+- **Dựng highlight**: giữ đúng các pha đã tick (cắt bỏ phần còn lại của các đoạn đã xem, đoạn không xem giữ nguyên), một bước hoàn tác; nếu đã tìm nhịp bài nhạc và tick **Sau đó cắt theo nhịp nhạc** thì đưa chỗ cắt vào nhịp trong cùng bước. **Chỉ đánh dấu**: đặt điểm đánh dấu xanh "Pha n" ở mỗi pha, không cắt.
+- Cách chấm (Core `Highlights.swift`, Media `HighlightAnalyzer.swift`): đọc hình nhỏ (512 px) 5 lần/giây, đo độ thay đổi độ sáng giữa hai lần; Vision tìm người mỗi giây (diện tích người, tốc độ di chuyển của người); độ to của tiếng so với 8 giây xung quanh. Mỗi thước đo được chuẩn hoá theo chính đoạn đó (trung vị và độ lệch, giới hạn −2…4) rồi cộng 0,45 hình + 0,3 người + 0,25 tiếng, làm mượt 1 giây. Chỗ chuyển cảnh (một lần đổi hình lớn hơn hẳn trước và sau nó) không tính là chuyển động và pha không vượt qua nó. Không có người trong ±1 giây thì điểm chỉ còn 30 %. Pha dài 2,5–10 giây, không chồng nhau, chỉ lấy đỉnh cao nhất trong ±2 giây. Chọn theo điểm đến khi đủ độ dài, lệch không quá 10 %.
+
+**Kiểm thử:**
+- Test mới: Core `HighlightTests` (9: chuyển cảnh, có thời gian trước/sau pha, pha lớn hơn đứng đầu và không chồng nhau, không vượt chuyển cảnh, hình không người bị tính ít, video đều đều không có pha, chọn theo độ dài, giữ pha cắt phần còn lại, đoạn chạy nhanh); Media `HighlightMediaTests` (2: chuyển động đo đúng chỗ trên video giả có khối chạy, Dừng dừng thật). Toàn bộ: Core 478, Media 275, tách lời 8 — đều qua.
+- Trên video thật (chỉ đọc, ổ Lexar): "Tư duy chơi bóng" 110 s (cảnh tập + sơ đồ chiến thuật): 6 pha cao nhất đều là cầu thủ có bóng, cao nhất là cú sút vào khung thành; đoạn sơ đồ thấp nhất (kiểm bằng ảnh). "Tập cảm giác bóng" 346 s: xem trong 5,5 s, 31 chỗ chuyển cảnh, có người 344/347 lần nhìn. "Tập thể lực" 163 s: 1,5 s; "Các bài khởi động" 158 s: 2,1 s.
+- Bản sao dự án thật "Tập bóng đá" (nguồn thiếu nối tạm sang "Tập cảm giác bóng.mp4"): chọn 15 s → 15,3 s (2 đoạn), 30 s → 32,4 s (5 đoạn), 1 phút → 56,0 s (8 đoạn); hoàn tác trả lại 4 đoạn 346,3 s.
+- Cửa sổ thật, **bấm chuột thật**: tab Pha hay hiện đúng tiếng Việt ▸ **Tìm pha hay** → "Chọn 6 trên 40 pha: highlight sẽ dài 0:30" ▸ ▶ của một pha phát từ 01:09.97 ▸ **Dựng highlight** → 5 đoạn, 0:29,5, thông báo "Đã dựng highlight: 6 pha, 0:30" ▸ **Hoàn tác** → 4 đoạn 05:46.302.
+
+**Chưa làm/chưa kiểm chứng:**
+- Video trận đấu quay thô dài (máy quay lia theo bóng, khán giả): người bảo trì chưa có video loại này trên máy; chỉ thử trên video tập và video đã dựng sẵn. Máy quay lia liên tục có thể làm cả trận "chuyển động" đều nhau (khi đó tiếng reo và người chạy quyết định).
+- Không nhận ra bàn thắng hay quả bóng (Vision không có bộ tìm bóng); chỉ dựa vào chuyển động, người và tiếng.
+- Số pha tìm được có thể khác 1 giữa hai lần chạy trên cùng video (37 và 38 trên "Tập bóng đá": thời điểm đọc hình lệch rất nhỏ).
+- **Cắt theo nhịp nhạc** sau khi dựng chỉ được kiểm bằng code dùng chung với Âm thanh ▸ Nhịp (đã có test), chưa thử trên dự án có bài nhạc thật.
+
+
+## Bản 0.22.1 — Pha hay trên trận đấu thật: bàn thắng và đoạn chiếu lại (17/11/2026)
+
+**Yêu cầu:** tạo dự án từ "Full trận FC98 -FC 2K3.mp4" (ổ Lexar, 86 phút, livestream ban đêm, 1920×1080) và kiểm tra tính năng highlight.
+
+**Lỗi tìm ra và đã sửa:**
+- **Video dài báo lỗi -11841, không phân tích được:** cuối đoạn (độ dài file làm tròn theo thang thời gian) lệch quá đuôi file ~1/1000 s, AVAssetReader từ chối đọc. Đoạn đọc nay luôn nằm trong độ dài file (test mới với đoạn dài hơn file 0,0017 s).
+- **Bàn thắng không chắc vào highlight:** bản 0.22.0 chỉ dựa vào chuyển động, người, tiếng. Đối chiếu với 7 lần đổi tỉ số (đọc bằng mắt trên bảng tỉ số): highlight 3 phút có pha gần 6/7 lần đổi số nhưng cú ghi bàn thật nhiều khi lọt (bàn 0-1 hạng 131, bàn 0-3 hạng 106 trên 614 pha).
+
+**Đã làm:**
+- Core `ScoreReader`: đọc tỉ số từ chữ trên hình (Vision, khổ 960 px, 10 s một lần): cặp số "0 1", "2-5", "1:0" (không nhận đồng hồ "11:16"), theo chỗ trên hình đọc được nhiều nhất; bàn thắng = một bên tăng 1 (hoặc 2 khi lỡ một lần đọc) và đọc lại giống nhau lần sau (đọc nhầm một lần không tính). Ở 512 và 768 px Vision không đọc được chữ số trên nền đỏ; ở 960 px đọc đúng (≈90 ms một khung).
+- Core `HighlightFinder.replays`: tìm hình chuyển cảnh lặp lại (ảnh nhỏ 16×9 màu của mỗi khung; khung có thay đổi lớn, giống nhau ở ≥ 4 lần, mỗi lần < 2,5 s — góc máy lặp lại nhưng kéo dài thì không tính); hai lần cách 4–40 s là một đoạn chiếu lại.
+- `moments`: bàn thắng trước tiên = 18 s ngay trước đoạn chiếu lại gần lúc tỉ số mới được đọc nhất (không có đoạn chiếu lại thì lấy lúc sôi động nhất trong 90 s trước); pha được chiếu lại = 12 s trước đoạn chiếu lại; pha thường không lấy phần chiếu lại. `choose` luôn chọn bàn thắng. Danh sách: nhãn xanh "Bàn thắng 0-1", biểu tượng ↺ cho pha được chiếu lại.
+- Hook debug `MACPLAYER_DEV_NEWPROJECT="<video>|<file mới>"`: tạo dự án đúng như Tệp ▸ Mới (không qua hộp lưu).
+
+**Kết quả trên trận thật (chỉ đọc video):**
+- 86 phút phân tích trong ≈105–130 s. Đọc tỉ số: đúng **7/7** bàn (0-1, 0-2, 0-3, 0-4, 0-5, 1-5, 2-5), không bàn giả. Đoạn chiếu lại: 22 (7 dài 15,4 s đúng 7 bàn, 15 dài 8,2 s là các pha khác).
+- Kiểm bằng ảnh 7 pha bàn thắng: 5 thấy rõ cú dứt điểm rồi thủ môn nhặt bóng/cầu thủ ăn mừng; 2 (0-3, 2-5) quay rất xa, ảnh nhỏ không xác nhận được bằng mắt (thứ tự hình hợp lý).
+- Dự án tạo cho người bảo trì: `~/Movies/Full trận FC98 - FC 2K3.macplayer` (nguyên trận, chưa cắt). Trên bản sao: Pha hay 3 phút → 10 pha (7 bàn thắng + 3 pha được chiếu lại), dựng và xuất qua hàng đợi thật → `~/Movies/Highlight FC98 - FC 2K3 (3 phút).mp4`, 1920×1080, 162,0 s, có tiếng.
+
+**Kiểm thử:** test mới `ScoreReaderTests` (3), `ReplayTests` (3), `aSpanEndingAHairAfterTheFileStillReads`. Toàn bộ: Core 484, Media 276, tách lời 8 — đều qua (một lần chạy `FastExportTests` quá 5 s khi app thử đang xuất video cùng lúc; chạy lại 3 lần riêng: đều qua ≈1,5 s).
+
+**Chưa làm/chưa kiểm chứng:**
+- Chỉ thử trên một trận, một đài livestream. Bảng tỉ số kiểu khác (chữ số tách rời hai ô, tỉ số dạng "1 : 0" có khoảng trắng lạ) và đài không có đoạn chiếu lại chưa thử.
+- Video quay bằng điện thoại không có bảng tỉ số: vẫn dùng cách chấm cũ (chuyển động, người, tiếng), không nhận ra bàn thắng.
+- Highlight 3 phút có 7 bàn × 18 s = 126 s; trận nhiều bàn hơn với độ dài ngắn sẽ dài hơn độ dài đã chọn (bàn thắng luôn được giữ).
+- Chưa xem lại file xuất bằng mắt từ đầu đến cuối (chỉ xem ảnh 3 giây một khung).
+
+
+## Bản 0.22.2 — Các mốc của trận trong highlight bóng đá (17/11/2026)
+
+**Yêu cầu:** highlight phải có: trọng tài dẫn hai đội ra sân, đọc đội hình, còi bắt đầu và kết thúc, thẻ vàng/đỏ, tình huống dẫn tới bàn thắng, check VAR. Người bảo trì nhắc: trận FC98–FC 2K3 chỉ là ví dụ, **không được cố định mốc thời gian** — mọi mốc phải tìm từ chính video.
+
+**Đã làm (mọi mốc lấy từ tín hiệu của video, không có thời điểm nào viết sẵn):**
+- **Bắt đầu hiệp / Hết hiệp / Hết trận:** Core `ClockReader` đọc đồng hồ trận "mm:ss" trên hình (cùng lần đọc chữ 10 s một lần với tỉ số): đồng hồ chạy theo video (±2 s) là đang đá; đứng yên (00:00 trước trận, nghỉ giữa hiệp, sau trận) là không. Bắt đầu hiệp tính ngược từ giây đồng hồ đã đếm.
+- **Ra sân / Xếp hàng, đội hình:** lượt xem thứ hai, ngắn: 10 phút trước còi đầu (lấy từ đồng hồ), 2 s một hình 960 px, Vision tìm người trên 6 phần chồng nhau của hình rồi đếm người đứng cùng một hàng (`peopleInARow`). ≥ 7 người cùng hàng = hai đội xếp hàng. Đợt xếp hàng đầu = ra sân, đợt sau = xếp hàng trên sân (chào nhau, đọc đội hình). Đo trên trận ví dụ: cả hình một lần Vision thấy 0 người lúc hai đội xếp hàng ban đêm; chia 6 phần thấy 9–10 người cùng hàng; lúc đang đá chỉ 3–4.
+- **Thẻ vàng / Thẻ đỏ / Kiểm tra VAR:** `WordSpotter` tìm chữ trên hình (THẺ VÀNG, YELLOW CARD, THẺ ĐỎ, RED CARD, VAR, CHECK VAR, bỏ dấu khi so); pha = 15 s trước chữ hiện ra đến 5 s sau.
+- **Tình huống dẫn tới bàn thắng:** pha bàn thắng dài 25 s (trước 18 s), kết thúc 1,2 s trước hình chuyển cảnh của đoạn chiếu lại (hình này mờ dần vào sớm hơn lúc nhận ra ~0,5 s: bản trước còn dính khung đầu của nó).
+- Mọi mốc luôn được chọn; danh sách có nhãn màu (Ra sân, Xếp hàng/đội hình, Bắt đầu hiệp, Bàn thắng 0-1, Thẻ vàng, Thẻ đỏ, Kiểm tra VAR, Hết hiệp, Hết trận, Chào sau trận).
+
+**Góp ý của người bảo trì sau khi xem bản xuất, đã sửa:**
+- *Âm thanh đầu video nhiễu, rè:* đo bằng ffmpeg: tiếng **trong video gốc** đã vỡ ở đoạn ra sân (loa sân): 25 s có ~10 000 mẫu sát mức tối đa, đỉnh 0 dB, trung bình −12 dB (lúc đá: đỉnh −8 dB, trung bình −16 dB). Bản xuất không thêm mẫu chạm đỉnh nhưng đỉnh vẫn sát 0 dB. Sửa: khi dựng highlight, mỗi pha được đặt âm lượng để mức trung bình về −20 dB (`HighlightFinder.evenGain`, −9…+4 dB) và nhỏ dần/to dần 0,12 s ở mỗi chỗ nối. Tiếng vỡ sẵn trong gốc không khôi phục được.
+- *Đoạn chiếu lại ngắn, người xem chưa kịp theo dõi:* bàn thắng nay = 25 s trước đoạn chiếu lại **+ cả đoạn chiếu lại của đài** (≈15 s, gồm hình chuyển cảnh mở/đóng); pha khác được chiếu lại = 12 s + đoạn chiếu lại (≈8 s). Ô **Kèm đoạn chiếu lại sau bàn thắng** (bật sẵn) để tắt.
+
+- *Phần giới thiệu đội hình bị cắt, mới đọc hết một đội:* đoạn "Xếp hàng, đội hình" nay kéo từ lúc hai đội xếp hàng trên sân đến khi **loa sân lặng hẳn** (≥ 6 s, nhỏ hơn mức lúc giới thiệu ≥ 20 dB; người đọc ngừng 2–4 s giữa các tên/hai đội nên ngưỡng 2 s trước đó cắt sau đội thứ nhất), không thấy lúc lặng thì 60 s sau lần cuối thấy hàng, luôn trước còi bắt đầu. Trận ví dụ: 11:57–13:18 (81 s; bản trước 37 s).
+- *Hết hiệp 1 bị cắt khi bình luận viên chưa nói xong; sau đó người bảo trì đổi ý: hết hiệp 1 chỉ cần còi và câu thông báo hết hiệp, không cần đọc tỉ số:* đoạn hết hiệp kết thúc ở chỗ ngừng nói đầu tiên (≥ 0,4 s, nhỏ hơn tiếng nói quanh còi ≥ 20 dB) sau khi đồng hồ dừng, tối đa 15 s (trận ví dụ: 44:50–45:04; bình luận viên nói 44:57–45:03, ngừng, rồi đọc tỉ số đến 45:13).
+- *Hết trận quá dài, chỉ cần đến khi bình luận viên đọc xong kết quả:* đoạn hết trận kéo đến lúc ngừng nói ≥ 2 s (tối đa 40 s); bỏ hẳn mốc "Chào sau trận" và lượt tìm hai đội xếp hàng sau trận. Trận ví dụ: 85:20–85:52.
+- *Chưa bắt được thay người:* thêm mốc **Thay người** khi đài hiện chữ THAY NGƯỜI / SUBSTITUTION (8 s trước đến 10 s sau). Quét chữ cả trận ví dụ 10 s một khung: đài này **không hiện chữ thay người** (chỉ tên giải, tỉ số, đồng hồ, quảng cáo) — thay người chỉ có trong lời bình luận, cần nhận dạng tiếng Việt (máy này đang chặn), nên trận này chưa có mốc thay người.
+- *Trận đặc biệt (video không có đoạn chào sân, bắt đầu từ còi, hoặc live sập):* không phải lỗi, highlight vẫn tạo bình thường. Còi bắt đầu chỉ ghi khi thấy đồng hồ đứng trước đó hoặc mới chạy từ một mốc tròn (00:00, 30:00, 35:00, 45:00…; ở lần nhìn đầu tiên của video chỉ khi chạy chưa quá 15 s từ mốc 5 phút ≥ 20:00) — video vào giữa trận không bị gán còi bắt đầu; ra sân/đội hình chỉ tìm trước một còi bắt đầu có trong video; hết trận/chào sau trận chỉ khi video còn tiếp ≥ 20 s sau khi đồng hồ dừng (live sập giữa trận thì không có); tỉ số đầu video (2-1) là mốc ban đầu, không phải bàn thắng. Thử trên trận thật cắt còn 13:40→hết (không ra sân/đội hình, đủ 7 bàn, hết trận) và 33:20→66:40 (2 bàn, hết hiệp, không còi bắt đầu/hết trận giả). Hiệp 2 của giải này đếm từ 30:00 (bảng hiện "HIỆP 1" lúc nghỉ): nhận đúng còi hiệp 2 (≈52:03).
+
+**Kết quả trên trận ví dụ (chỉ đọc video):** 2 hiệp đọc từ đồng hồ (bắt đầu 13:44 — bằng mắt 13:41 — đến 45:00; 52:10 đến 85:30); ra sân 11:31–11:56 (bằng mắt 11:32–11:56); xếp hàng trên sân 11:57–12:29; 7 bàn; không có thẻ/VAR (giải phong trào, không có chữ báo trên hình). Lượt xem thêm tốn ≈11 s. Highlight "3 phút" (bản cuối) thành 13 đoạn, 472,3 s (gồm đoạn chiếu lại sau 7 bàn): các mốc luôn được giữ nên dài hơn độ dài đã chọn. File: `~/Movies/Highlight FC98 - FC 2K3.mp4`.
+
+**Kiểm thử:** test mới `MatchReadingTests` (4), `EvenSoundTests`, `PartialMatchTests` (2: vào giữa trận và live sập; bắt đầu đúng còi), `SecondHalfClockTests`. Toàn bộ: Core 494, Media 276, tách lời 8 — đều qua.
+
+**Chưa làm / chưa kiểm chứng:**
+- **Đọc đội hình bằng giọng nói:** cần nhận dạng tiếng Việt, máy này đang chặn (Đọc chính tả). App chỉ lấy lúc hai đội xếp hàng trên sân (thường là lúc đọc đội hình); bảng đội hình hiện bằng chữ trên hình chưa được nhận riêng.
+- **Thẻ phạt, VAR không có chữ trên hình** (trọng tài rút thẻ bằng tay): không nhận ra. Trận ví dụ không có thẻ/VAR nên phần đọc chữ chỉ được kiểm bằng test.
+- Video không có bảng tỉ số/đồng hồ (quay điện thoại): không có các mốc hiệp, ra sân (vì ra sân tìm theo giờ bắt đầu hiệp); vẫn có pha hay theo chuyển động, người, tiếng.
+- Chỉ thử trên một trận, một kiểu bảng tỉ số.
+
+
+## Bản 0.22.3 — Highlight tự động, danh sách gọn (17/11/2026)
+
+**Yêu cầu:** đổi chữ "Pha hay" thành "Highlight" (tiếng Anh và tiếng Việt); độ dài highlight và số giây giữ trước/sau tự tính theo diễn biến trận, người dùng không phải chỉnh; "Tìm pha hay" cho hơn 300 tình huống, phải tick lại từng đoạn — cần chính xác, thân thiện hơn.
+
+**Đã làm:**
+- Tab **Cơ bản ▸ Highlight**, thẻ **Highlight**, nút **Tìm highlight** / **Tìm lại** (cả hai ngôn ngữ). Bỏ ô **Độ dài highlight** và hai thanh trượt **Giây giữ trước/sau pha bóng**.
+- Core `HighlightFinder.autoChoose`: mọi mốc của trận luôn chọn; tổng highlight ≈ 10 % thời lượng đã xem (30 s–8 phút); phần còn lại cho pha hay (ít nhất 2 % video, tối đa 1 phút, khi các mốc đã gần đầy): trước hết pha đài chiếu lại, rồi pha có điểm ≥ ½ pha hay nhất, tốt nhất trước. `shortlist`: chỉ các đoạn đã chọn + tối đa 15 gợi ý, theo thời gian.
+- Phần trước/sau mỗi pha: lùi về lúc pha bóng còn đang dâng (> 15 % đỉnh, ≤ 6 s) thêm 2 s, kéo tới lúc lắng (> 20 % đỉnh, ≤ 4 s) thêm 1 s; ít nhất 1,5 s quanh đỉnh; pha 2,5–12 s.
+- Danh sách: dòng tóm tắt "%d đoạn: highlight sẽ dài …", Dựng highlight / Chỉ đánh dấu, các đoạn đã chọn, mục **Gợi ý thêm (n)** gập sẵn; bỏ thanh điểm và nút Chọn hết/Bỏ chọn hết.
+
+**Kiểm thử:**
+- Test mới `AutoChooseTests` (2: trận giữ mốc → pha chiếu lại → pha rõ, tổng ≈ 8 phút, trận đầy mốc vẫn có ≈ 1 phút pha; video tập ngắn ≈ 1/10). Toàn bộ: Core 496, Media 276, tách lời 8 — đều qua.
+- Trận ví dụ (dự án mới tạo trong thư mục tạm; dự án ở ~/Movies người bảo trì đã chuyển vào Thùng rác lúc 13:11, không khôi phục): danh sách 31 dòng (16 chọn + 15 gợi ý; trước: 500+), 16 đoạn, 8:58; dựng → 16 đoạn 537,5 s, hoàn tác về nguyên trận. Dự án tập "Tập bóng đá" (bản sao): 20 dòng, 5 pha, 36,5 s.
+- Cửa sổ thật, **bấm chuột thật**: tab hiện "Highlight", không còn ô độ dài/thanh trượt ▸ **Tìm highlight** → "Đã chọn xong highlight: 16 đoạn, 8:58", danh sách có nhãn Ra sân, Xếp hàng/đội hình, Bắt đầu hiệp, ↺, Bàn thắng 0-1…2-5, Hết hiệp, Hết trận, "Gợi ý thêm (15)".
+
+
+
+## Bản 0.22.4 — Làm nốt phần chưa kiểm chứng của 0.22.3 (17/11/2026)
+
+**Kiểm bằng chuột thật** trên cửa sổ thử (bản sao dự án "Tập bóng đá"; kết quả đọc từ cây giao diện và từ nội dung file dự án sau mỗi bước, vì ảnh chụp một cửa sổ đang bị cửa sổ khác che không cập nhật):
+- **Dựng highlight** → thông báo "Đã dựng highlight: 5 pha, 0:37", file dự án 4 đoạn 346,3 s → **5 đoạn 36,5 s**; **Hoàn tác** → 4 đoạn 346,3 s.
+- **Gợi ý thêm** → 15 dòng gợi ý hiện ra (nút ▶ từ 5 lên 20), chưa tick; tick một gợi ý → tóm tắt "6 đoạn: highlight sẽ dài 0:47"; Dựng highlight → **6 đoạn 47,3 s** (gợi ý vào đúng highlight); Hoàn tác → 4 đoạn.
+
+**Lỗi tìm ra và đã sửa:** bấm vào chữ "Gợi ý thêm (15)" không mở danh sách — trên macOS chỉ mũi tên nhỏ của DisclosureGroup nhận bấm. Nay chữ là một nút mở/đóng: bấm chữ → 20 dòng, bấm lần nữa → 5 dòng (kiểm bằng chuột thật).
+
+**Ghi chú khi kiểm:** cây giao diện vẫn báo vị trí của phần tử đã bị khung cuộn che; hai lần bấm theo vị trí đó rơi xuống thước thời gian bên dưới (chỉ dời đầu phát, file không đổi). Công cụ bấm nay chỉ bấm khi điểm nằm trong vùng nhìn thấy của bảng.

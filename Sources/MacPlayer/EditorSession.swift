@@ -110,6 +110,13 @@ final class EditorSession: NSObject, ObservableObject {
     /// Looking for silences (0.21): the ones found, to look over before they are cut.
     @Published var silences: [SilenceFound] = []
     @Published var silenceProgress: Double?
+    /// Looking for the best moments (0.22): the ones found, to look over before the highlight is made; what was measured per clip
+    /// (kept, so changing the length or the room around them needs no new look); which clips were looked at.
+    @Published var highlights: [HighlightFound] = []
+    @Published var highlightProgress: Double?
+    var highlightTask: Task<Void, Never>?
+    var highlightSignals: [UUID: HighlightSignals] = [:]
+    var highlightClips: Set<UUID> = []
     /// Sounds whose beat is being looked for (0.20).
     @Published var beatsWorking: Set<UUID> = []
     /// Which beats a fit or the markers use: every 1, 2, 4 or 8 (0.20).

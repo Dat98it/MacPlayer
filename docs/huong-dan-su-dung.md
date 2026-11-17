@@ -31,7 +31,7 @@ Tài liệu này đi theo thứ tự bạn thường dùng: mở app → xem →
 
 **Yêu cầu:** macOS 15 trở lên. App mới được kiểm thử trên máy Apple Silicon (M1, M2, M3…); máy Intel chưa được thử.
 
-1. Mở file `MacPlayer-0.21.1.dmg` (hoặc giải nén file `.zip`).
+1. Mở file `MacPlayer-0.22.4.dmg` (hoặc giải nén file `.zip`).
 2. Kéo **MacPlayer** vào thư mục **Applications**.
 3. Lần đầu mở, macOS có thể chặn vì app chưa được Apple kiểm duyệt (notarize). Chuột phải vào MacPlayer ▸ **Mở**, hoặc vào **Cài đặt hệ thống ▸ Quyền riêng tư & Bảo mật ▸ Vẫn mở**.
 
@@ -255,6 +255,7 @@ Chọn một đoạn trên timeline rồi dùng bảng bên phải. Mọi chỉn
 | **Khung hình** | Khung riêng của đoạn (Theo video, 16:9, 9:16, 1:1, 4:5, 4:3) và cách đặt hình: **Vừa khung (có viền đen)** hoặc **Lấp đầy (cắt phần thừa)**. Khung của cả video đặt trong **Xuất**. |
 | **Thu phóng** | Phóng to và dời hình theo thời gian: mẫu có sẵn (phóng vào, phóng ra, lia trái/phải, phóng và lia, giật vào) hoặc tự đặt keyframe, có xoay và kiểu chuyển động (đều, chậm đầu, chậm cuối, nảy…). |
 | **Ổn định hình** | Giảm rung cho video quay tay. |
+| **Highlight** | Tự tìm bàn thắng, các mốc của trận và các pha hay nhất, tự tính độ dài, rồi dựng highlight (xem 8.10). |
 | **Theo người** | Đổi video sang khung khác, khung tự đi theo người (xem 8.9). |
 | **Màu sắc** | Độ sáng, tương phản, bão hoà, nhiệt độ màu nhanh. |
 | **Chép kiểu** | Chép kiểu đoạn này dán cho đoạn khác (xem 8.8). |
@@ -323,6 +324,42 @@ App làm gì:
 - Có thanh tiến trình và nút **Dừng**. Nếu đang chọn nhiều đoạn, có thể tick **Chỉ các đoạn đang chọn**.
 - Đường đi của khung gắn với hình gốc, nên tách, cắt hay đổi tốc độ đoạn sau đó vẫn đúng.
 - **Về giữa** để bỏ theo người (khung mới vẫn giữ).
+
+### 8.10 Highlight: tự dựng highlight video bóng đá
+
+Dùng khi có video dài (trận đấu, buổi tập) và muốn có ngay một đoạn highlight. Không phải chọn độ dài hay chỉnh số giây: app tự tính theo diễn biến của video.
+
+1. Thêm video vào timeline (một hay nhiều video đều được).
+2. **Cơ bản ▸ Highlight**.
+3. Bấm **Tìm highlight**. App xem từng đoạn ngay trên máy (video 6 phút mất khoảng 6 giây, cả trận 86 phút khoảng 2 phút). Có thanh tiến trình và nút **Dừng**.
+4. App **tự chọn sẵn** các đoạn của highlight và báo highlight dài bao nhiêu. Danh sách chỉ gồm các đoạn đã chọn (mỗi đoạn có giờ bắt đầu, nhãn như *Bàn thắng 0-1*, *Hết hiệp*, độ dài và nút ▶ xem thử) và mục **Gợi ý thêm** (gập sẵn, tối đa 15 pha hay khác; bấm vào chữ để mở) nếu muốn thêm. Bỏ tick đoạn nào không thích.
+5. Bấm **Dựng highlight**: timeline chỉ còn các đoạn đã tick, theo thứ tự thời gian. Một bước **Hoàn tác** lấy lại cả video.
+
+App tự tính thế nào:
+
+- **Độ dài highlight** khoảng 1/10 độ dài video (ít nhất 30 giây, nhiều nhất 8 phút). Các mốc của trận (ra sân, đội hình, bắt đầu hiệp, bàn thắng, thẻ, thay người, hết hiệp, hết trận) luôn có; phần còn lại dành cho các pha hay — trước hết các pha đài đã chiếu lại, rồi các pha sôi động rõ rệt (ít nhất bằng nửa pha hay nhất). Trận nhiều bàn đã gần đủ 8 phút vẫn có thêm khoảng 1 phút pha nguy hiểm. Ví dụ: trận 86 phút có 7 bàn → 16 đoạn, 8:58; video tập 6 phút → 5 pha, 37 giây.
+- **Trước và sau mỗi pha** giữ đúng phần pha bóng dâng lên (tối đa 6 giây trước, thêm 2 giây dẫn vào) và lắng xuống (tối đa 4 giây sau, thêm 1 giây), nên pha dài được giữ dài, pha ngắn gọn.
+
+App chấm pha thế nào:
+
+- **Hình chuyển động nhiều** (cầu thủ chạy, bóng lăn, máy quay lia theo pha bóng).
+- **Người trong hình di chuyển nhanh** (Vision tìm người mỗi giây một lần).
+- **Tiếng to lên đột ngột** so với xung quanh: reo hò, tiếng còi, tiếng sút. Nhạc nền đều đều không làm pha nào nổi bật.
+- Hình **không có người** (sơ đồ chiến thuật, chữ tiêu đề) bị tính rất ít.
+- **Bàn thắng đọc từ bảng tỉ số** (video livestream/truyền hình có bảng tỉ số trên hình): app đọc chữ trên hình 10 giây một lần, thấy tỉ số tăng (đọc 2 lần liền giống nhau) là có bàn thắng. Bàn thắng hiện nhãn xanh **Bàn thắng 0-1** và **luôn được chọn**.
+- **Các mốc của trận** (video có bảng tỉ số với đồng hồ trận): **Ra sân** (trọng tài dẫn hai đội ra), **Xếp hàng, đội hình** (hai đội xếp hàng chào nhau, lúc đọc đội hình), **Bắt đầu hiệp** (đồng hồ bắt đầu chạy), **Hết hiệp** (còi và câu thông báo hết hiệp của bình luận viên), **Hết trận** (đến khi bình luận viên đọc xong kết quả), **Thẻ vàng / Thẻ đỏ / Kiểm tra VAR / Thay người** (khi trên hình có chữ báo). Mọi mốc đều tìm từ chính video, mỗi trận một khác; các mốc luôn được chọn và hiện nhãn màu trong danh sách. Video thiếu đoạn đầu (không có chào sân, bắt đầu ngay từ còi hoặc giữa trận) hay thiếu đoạn cuối (live bị sập) vẫn tạo highlight bình thường, chỉ không có các mốc không nằm trong video. Đoạn **Xếp hàng, đội hình** kéo đến khi loa sân lặng hẳn để có đủ tên cầu thủ của cả hai đội.
+- **Pha được chiếu lại**: video có đoạn chiếu lại mở/đóng bằng cùng một hình chuyển cảnh (logo đài, cửa chuyển cảnh…) thì app nhận ra; bàn thắng là 25 giây ngay trước đoạn chiếu lại của nó (cả pha tấn công dẫn tới bàn thắng), **rồi cả đoạn chiếu lại** (tắt bằng ô **Kèm đoạn chiếu lại sau bàn thắng**), các pha khác được chiếu lại (biểu tượng ↺ cam) đứng ngay sau bàn thắng. Phần chiếu lại không bị lấy trùng.
+- Mỗi pha không kéo sang cảnh khác sau chỗ chuyển cảnh, và dài 2,5 đến 12 giây.
+
+Khi dựng, âm lượng từng pha được **cân bằng** về cùng một mức (đoạn loa sân quá to được hạ xuống, đoạn sân vắng được nâng lên tối đa +4 dB) và mỗi chỗ nối nhỏ dần/to dần 0,12 giây cho khỏi lụp bụp. Tiếng đã vỡ sẵn trong video gốc (loa quá to lúc quay) không khôi phục được, chỉ đỡ rè hơn.
+
+Mẹo:
+
+- **Chỉ đánh dấu**: đặt điểm đánh dấu xanh ở mỗi pha đã tick mà không cắt gì, để tự cắt bằng tay ([ và ] nhảy giữa các điểm).
+- Đã có bài nhạc và đã **Tìm nhịp** (Âm thanh ▸ Nhịp) thì tick **Sau đó cắt theo nhịp nhạc**: highlight dựng xong được đưa các chỗ cắt vào nhịp luôn.
+- Đang chọn nhiều đoạn thì có thể tick **Chỉ các đoạn đang chọn**; các đoạn khác (ví dụ đoạn mở đầu) giữ nguyên.
+- Bỏ tick **Kèm đoạn chiếu lại sau bàn thắng** khi muốn highlight ngắn hơn: danh sách tự tính lại, không phải tìm lại.
+- Kết hợp với **Theo người** (8.9) để ra highlight dọc 9:16 cho TikTok/Reels.
 
 ---
 

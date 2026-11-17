@@ -53,6 +53,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         // Files named on the command line, except the values of the development flags.
         let flagValues = Set(["--sandbox", "--snapshot", "--project-demo", "--selftest", "--report-session"].compactMap { f in args.firstIndex(of: f).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } })
         for arg in args.dropFirst() where !arg.hasPrefix("--") && !flagValues.contains(arg) && FileManager.default.fileExists(atPath: arg) { open(urls: [URL(fileURLWithPath: arg)]) }
+        #if DEBUG
+        // MACPLAYER_DEV_NEWPROJECT="<video>|<new .macplayer path>" (0.22): makes a video project of that video the way File ▸ New does
+        // (no save panel) and opens it, so MACPLAYER_DEV_DO steps run on it. Never over an existing file.
+        if let spec = ProcessInfo.processInfo.environment["MACPLAYER_DEV_NEWPROJECT"] {
+            let parts = spec.split(separator: "|").map(String.init)
+            if parts.count == 2, !FileManager.default.fileExists(atPath: parts[1]) {
+                Task {
+                    do {
+                        _ = try await EditorSession.makeProjectFile(kind: .video, media: URL(fileURLWithPath: parts[0]), at: parts[1])
+                        openProject(path: parts[1])
+                    } catch { print("DEV_NEWPROJECT failed: \(error)") }
+                }
+            } else { print("DEV_NEWPROJECT refused: \(spec)") }
+        }
+        #endif
         if let i = args.firstIndex(of: "--project-demo"), i + 1 < args.count {
             // Development aid for screenshots: turns the first file into a project and adds a second video.
             let second = URL(fileURLWithPath: args[i + 1])
@@ -456,6 +471,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                             for _ in 0..<1200 where s.silenceProgress != nil { try? await Task.sleep(nanoseconds: 250_000_000) }
                             print("DEV_DO silences \(s.silences.count): \(s.silences.prefix(20).map { String(format: "%.2f–%.2f", $0.timeline.start.seconds, $0.timeline.end.seconds) })")
                         case "cutsilence": s.cutSilences()
+                        case "highlight":
+                            // "highlight[:noreplay]": find the highlight, chosen by itself (0.22.3).
+                            var hs = EditorSession.HighlightSettings(); if f.count > 1 { hs.withReplays = f[1] != "noreplay" }
+                            s.findHighlights(hs)
+                            for _ in 0..<2400 where s.highlightProgress != nil { try? await Task.sleep(nanoseconds: 250_000_000) }
+                            print("DEV_DO highlights \(s.highlights.count), chosen \(s.highlights.filter(\.chosen).count): \(s.highlights.filter { $0.chosen }.map { String(format: "%@%@%.1f–%.1f(%.2f)", $0.chosen ? "*" : "", $0.event.map { $0.rawValue + ":" } ?? "", $0.timeline.start.seconds, $0.timeline.end.seconds, $0.score) }.joined(separator: " "))")
+                        case "makehighlight":
+                            s.makeHighlight(toBeat: true)
+                            print("DEV_DO made: \(s.project.timeline.count) clips, \(String(format: "%.2f", s.project.timeline.reduce(0) { $0 + $1.duration.seconds })) s: \(s.project.timeline.map { String(format: "%@ %.1f–%.1f", String($0.name.prefix(12)), $0.sourceStart.seconds, $0.sourceEnd.seconds) })")
                         case "wordcheck":
                             print("WORDCHECK speech allowed: \(SpeechTranscriber.isAuthorized())")
                             // Silences found in a file against the words the speech recogniser hears in it (0.21.1): a word inside a cut

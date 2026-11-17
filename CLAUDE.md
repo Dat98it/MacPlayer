@@ -224,6 +224,49 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.22.3 Automatic highlight.** No length/padding controls: `HighlightFinder.autoChoose(seconds:)` (events always; whole ≈10 % of the
+video, 30 s–8 min; play budget = rest, at least min(60, 2 %): replayed first, then score ≥ ½ best) and `shortlist` (chosen + 15 best others,
+time order); moment padding from the action's own rise (>15 % of peak, ≤6 s, +2 s) and fall (>20 %, ≤4 s, +1 s), 2.5–12 s. UI "Highlight"
+(EN key "Highlight"; "Highlights" is the colour control), `HighlightSettings` only `withReplays`, list = chosen rows + DisclosureGroup
+"More suggestions". Debug `highlight[:noreplay]`. 0.22.4: the "More suggestions" words are a button (macOS DisclosureGroup only opens on its arrow). Real-click
+testing: AX reports frames of rows clipped by a ScrollView (a click there lands on what is below); a window covered by another gives a stale
+`screencapture -l` picture — check results in the AX tree and the saved project file.
+
+**0.22.2 Match events.** Core `MatchReading.swift`: `ClockReader` ("mm:ss" at the place read most; running = clock advances with the video
+±2 s; kick-off counted back from the look before; `periods()`), `MatchWord`/`WordSpotter` (THẺ VÀNG/YELLOW CARD, THẺ ĐỎ/RED CARD, VAR, accent-
+folded, one per kind a minute), `peopleInARow(feet:)`. `HighlightSignals.periods/marks/lineups`; `MatchEventKind` (walkout, lineup, kickoff, goal,
+cards, check, substitution, halfTime, fullTime) on `Moment`/`HighlightFound.event`; `choose` keeps every event. `HighlightAnalyzer.lineups`: a second
+pass (AVAssetImageGenerator 960 px every 2 s, 10 min before the first kick-off) counting people in a row over
+6 overlapping parts (whole-frame Vision finds 0 of a lined-up team at night; ≥7 in a row = lined up; play gives 3–4). Runs of lined-up looks:
+first = walk-out, second = line-up on the pitch. Goals 25 s before their replay + the replay (`withReplays`); `evenGain` sets each kept clip to −20 dB average (−9…+4) with 0.12 s fades.
+Half-time ends at the first 0.4 s pause in the talk after the clock stops (≤15 s: whistle + "end of the first half", not the score);
+full time at the first 2 s quiet (≤40 s: the result read out); no farewell (the maintainer found the end too long). Line-up runs until the loudspeaker is silent ≥6 s (≥20 dB under; readers pause 2–4 s between names), else +60 s, before kick-off. Partial
+videos: `MatchPeriod.kickoffSeen` (standing clock before, or ≤60 s, or ≤60 s past a 5-min mark; at the video's first clock look only ≤60 s or
+≥20:00 and ≤15 s past a 5-min mark); whistle events only if the video runs ≥20 s past the clock stopping; walk-out only before a seen
+kick-off. A second half counting from 30:00 with "HIỆP 1" shown at the break is handled. Nothing is tied to one match: all from the video's own clock,
+score, rows and words. Not done: line-ups read aloud (needs Vietnamese speech, blocked here), cards shown only by the referee's hand.
+
+**0.22.1 Goals and replays.** Core `ScoreReader` (Vision words every `readEvery` 10 s at `longSide` 960 — digits on a red box are not read at
+512/768; `parse` takes "0 1"/"2-5"/"1:0", not "mm:ss"; the place read most often; a goal = one side +1 (≤2) read twice) → `HighlightSignals.goals`.
+`HighlightFinder.replays` (16×9 RGB `thumbs` per sample; high-motion samples matching ≥3 others, every showing < 2.5 s, ≥4 showings; pairs
+4–40 s apart). `moments` returns `Moment` (goal label, replayed): goals = 18 s before the replay nearest the first read of the new score
+(fallback: top of the 90 s before), replayed = 12 s before other replays, nothing inside replays; `choose` always keeps goals. A pixel-only
+scoreboard watch (stable squares) was tried and dropped: replays cover the board right after goals and dark night fields hold still too.
+`HighlightAnalyzer` clamps its read range to the file (a clip end rounded up past it gave -11841). Debug `MACPLAYER_DEV_NEWPROJECT="<video>|<path>"`,
+`MACPLAYER_HIGHLIGHT_DUMP=<file>` (per-sample signals + `.thumbs`). Measured on an 86-min night livestream: 7/7 goals read, 22 replays (7 of 15.4 s = the goals).
+
+**0.22.0 Best moments (highlights).** Core `Highlights.swift`: `HighlightSignals` (per `step` of source: motion, loudness dB, people area or nil,
+person speed), `HighlightFinder.cuts(motion:)` (spike > 3.5× the median of ±3 and > 0.08), `scores` (robust z of motion 0.45 / person speed 0.3 /
+sound rise over its 8 s median 0.25; ×0.3 where nobody is within ±1 s; 1 s smoothing), `moments` (peaks that are the top of ±`minGap` 2 s, grown while
+>40 % of the peak plus `before`/`after`, 2.5–10 s, never across a cut or into another), `found(in:clipStart:signals:)` (speed-aware), `normalize`,
+`choose(target:)` (best first until ≥90 % of the target, nothing that makes it >110 %), `TimelineCuts.keepHighlights` (the complement as
+`SilenceFound`s through `removeSilences`; clips not looked at stay). Media `HighlightAnalyzer.signals` (AVAssetReaderVideoCompositionOutput at
+512 px and `step` 0.2 s — one decode pass, upright via preferredTransform; luma grid ~64 across; Vision bodies every 1 s; `AudioAnalysis.rms`;
+`detector` stub; cancellable). ~60× real time. App `EditorSession+Highlights.swift` (signals kept per clip so length/padding changes need no new
+look; `makeHighlight(toBeat:)` one undo step, optionally `BeatSync.fitClips`; `markHighlights`), `InspectorHighlights.swift` `HighlightCard`,
+Basic ▸ "Best moments" (EN key; "Highlights" is already the colour control). Debug: `MACPLAYER_DEV_DO` `highlight[:seconds]`, `makehighlight`;
+`MACPLAYER_HIGHLIGHT_FILES=a|b` (+`MACPLAYER_HIGHLIGHT_OUT`) media test prints moments of real videos.
+
 **0.21.1** `PersonTracker.pick(_:near:)` follows one person (boxes ≥ ¼ of the biggest; nearest to the last within 0.2, else the biggest);
 `PersonSample.main` = biggest person (for measuring); `Reframe.path` takes the median of 5 looks first, defaults dead zone 0.06 / speed 0.6 /
 smoothing 0.6; `autoReframe` sets the dead zone to 12 % of the visible share. Measured on the maintainer's landscape home videos (9:16 from 16:9):
