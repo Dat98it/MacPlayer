@@ -224,6 +224,15 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.22.9 Pro broadcasts.** Core `BoardWatch` (ScoreReader.swift; `TextFrame` keeps Core free of CoreGraphics): team-name pair on one row →
+gap anchored on the median of 5 sightings → 48×12 picture per look → stroke columns (vertical brightness change), two widest runs = the
+digits → per side a lasting change (3 of 4 next looks, old look not back twice within 5 min; bits at the 10/90 % midpoint) = a goal for that
+side; used only when `ScoreReader` reads none; counted from 0-0 if the first kick-off is seen, else labelled with the team. `ClockReader.periods`
+joins pieces whose clock ran on with the video (±10 s). Goals: paired replays only (end−start ≥ 4 s), else `loudestCall` (≥12 dB over the
+middle in the 2 min before the new score; moment call−40…call+8), else the old peak rule. Many cameras (≥30 cuts/h): dangerous set piece only
+if a replay opens ≤45 s after the kick or a goal ≤90 s after. Analyzer `wordBoxes`, `grid(cols:rows:)`. Paths with "|" break the
+`MACPLAYER_*_FILES` lists: use a symlink.
+
 **0.22.8** `setPieceKicks` no longer asks for people (a night corner far off: whole-frame Vision found nobody); no cap on dangerous set pieces (a cap of 6 dropped a real one).
 
 **0.22.7** `setPieceKicks`: still = 8 s mean < 0.6×usual with ≤2 s above 0.9×usual and people; kick = next 3 s mean ≥ max(2.5×still, usual) and first second > 1.5×still (a far-off free kick at 15:57 of the sample match: no unbroken 6 s, burst only 1.6×usual). Set pieces start 8 s before the kick; `kickCrowd` matched by kick time.

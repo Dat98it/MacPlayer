@@ -71,6 +71,7 @@ import Testing
     /// MACPLAYER_HIGHLIGHT_OUT=<file>, also written as "file<TAB>start<TAB>end<TAB>score" lines to look at the pictures.
     @Test func momentsInRealVideos() async throws {
         guard let list = ProcessInfo.processInfo.environment["MACPLAYER_HIGHLIGHT_FILES"] else { return }
+        if ProcessInfo.processInfo.environment["MACPLAYER_BOARD_TRACE"] != nil { BoardWatch.trace = { print("TRACE", $0) } }
         var lines: [String] = []
         for path in list.split(separator: "|").map(String.init) {
             let url = URL(fileURLWithPath: path)
@@ -88,6 +89,7 @@ import Testing
                          m.count, m.reduce(0) { $0 + $1.end - $1.start }))
             print("GOALS", s.goals.map { String(format: "%@ %.0f(old seen %.0f)", $0.label, $0.firstNew, $0.lastOld) }.joined(separator: " "))
             print("PERIODS", s.periods.map { String(format: "%.0f–%.0f", $0.kickoff, $0.end) }.joined(separator: " "), "MARKS", s.marks.map { "\($0.kind.rawValue)@\(Int($0.time))" })
+            print("REPLAYS", HighlightFinder.replays(s).map { String(format: "%d:%02d+%.0f", Int($0.start) / 60, Int($0.start) % 60, $0.end - $0.start) }.joined(separator: " "))
             print("KICKS", HighlightFinder.setPieceKicks(s).map { k in "\(Int(k))(\(s.kickCrowd.first { abs($0.key - k) < 1 }?.value ?? -1))" }.joined(separator: " "))
             print("LINEUPS", s.lineups.map { String(Int($0)) }.joined(separator: " "))
             print("EVENTS", m.filter { $0.event != nil }.sorted { $0.start < $1.start }.map { String(format: "%@ %.0f–%.0f", $0.event!.rawValue, $0.start, $0.end) }.joined(separator: " | "))
@@ -102,5 +104,46 @@ import Testing
             lines += m.map { "\(path)\t\($0.start)\t\($0.end)\t\($0.score)" }
         }
         if let out = ProcessInfo.processInfo.environment["MACPLAYER_HIGHLIGHT_OUT"] { try lines.joined(separator: "\n").write(toFile: out, atomically: true, encoding: .utf8) }
+    }
+}
+
+extension HighlightMediaTests {
+    /// With MACPLAYER_BOARD_FILE=<video>: the goals the board watch sees, reading the picture every 10 s (printed, not a check).
+    @Test func boardGoalsInARealVideo() async throws {
+        guard let path = ProcessInfo.processInfo.environment["MACPLAYER_BOARD_FILE"] else { return }
+        if ProcessInfo.processInfo.environment["MACPLAYER_BOARD_TRACE"] != nil { BoardWatch.trace = { print("TRACE", $0) } }
+        let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+        let dur = try await asset.load(.duration).seconds
+        let gen = AVAssetImageGenerator(asset: asset)
+        gen.appliesPreferredTrackTransform = true
+        gen.maximumSize = CGSize(width: 960, height: 960)
+        var watch = BoardWatch(), reader = ScoreReader()
+        let span = ProcessInfo.processInfo.environment["MACPLAYER_BOARD_SPAN"]?.split(separator: "-").compactMap { Double($0) }
+        var t = span?.first ?? 0.0
+        while t < (span?.last ?? dur) {
+            if let img = try? await gen.image(at: CMTime(seconds: t, preferredTimescale: 600)).image, let pb = pixelBuffer(img) {
+                let boxes = HighlightAnalyzer.wordBoxes(pb)
+                reader.add(boxes.map { ($0.text, $0.box.midX, $0.box.midY) }, at: t)
+                watch.add(boxes, at: t) { HighlightAnalyzer.grid(pb, in: $0, cols: $1, rows: $2) }
+            }
+            t += 10
+        }
+        print("BOARD TEAMS", watch.teams.map { "\($0.left) | \($0.right)" } ?? "-", watch.boardFrame.map { String(format: "x %.0f–%.0f y %.0f–%.0f (of 960×540)", $0.minX * 960, $0.maxX * 960, $0.minY * 540, $0.maxY * 540) } ?? "")
+        print("BOARD GOALS", watch.goals(fromNil: true).map { String(format: "%@ %d:%02d", $0.label, Int($0.firstNew) / 60, Int($0.firstNew) % 60) }.joined(separator: "  "))
+        print("BOARD LAYOUT", BoardWatch.lastLayoutText)
+        print("READ GOALS", reader.changes().map { String(format: "%@ %d:%02d", $0.label, Int($0.firstNew) / 60, Int($0.firstNew) % 60) }.joined(separator: "  "))
+    }
+
+    private func pixelBuffer(_ img: CGImage) -> CVPixelBuffer? {
+        var pb: CVPixelBuffer?
+        CVPixelBufferCreate(nil, img.width, img.height, kCVPixelFormatType_32BGRA, [kCVPixelBufferCGImageCompatibilityKey: true] as CFDictionary, &pb)
+        guard let b = pb else { return nil }
+        CVPixelBufferLockBaseAddress(b, [])
+        let ctx = CGContext(data: CVPixelBufferGetBaseAddress(b), width: img.width, height: img.height, bitsPerComponent: 8,
+                            bytesPerRow: CVPixelBufferGetBytesPerRow(b), space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        ctx?.draw(img, in: CGRect(x: 0, y: 0, width: img.width, height: img.height))
+        CVPixelBufferUnlockBaseAddress(b, [])
+        return b
     }
 }

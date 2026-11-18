@@ -205,6 +205,25 @@ public enum HighlightFinder {
         return []
     }
 
+    /// The loudest 2 s between `from` and `to` (source seconds) when it stands far above the rest (at least 12 dB over the middle
+    /// level there): a goal called by a commentator and the broadcast's goal sound. Nil without such a moment, or without sound.
+    public static func loudestCall(_ s: HighlightSignals, from: Double, to: Double) -> Double? {
+        guard s.loudness.count == s.count else { return nil }
+        let per = max(1, Int((2 / s.step).rounded()))
+        let a = max(0, Int((from - s.start) / s.step)), b = min(s.count, Int((to - s.start) / s.step))
+        guard b - a >= per * 4 else { return nil }
+        var levels: [(t: Double, db: Double)] = []
+        var i = a
+        while i + per <= b {
+            let power = s.loudness[i..<(i + per)].reduce(0) { $0 + pow(10, $1 / 10) } / Double(per)
+            levels.append((s.time(i), 10 * log10(max(power, 1e-12))))
+            i += per
+        }
+        let middle = levels.map(\.db).sorted()[levels.count / 2]
+        guard let top = levels.max(by: { $0.db < $1.db }), top.db - middle >= 12 else { return nil }
+        return top.t
+    }
+
     /// When set pieces were kicked (source seconds): play had stood still for 8 s (their average change under 60 % of the clip's
     /// usual, a few brief stirs allowed: players walk to their places, the camera nudges), then the
     /// picture moves again: the 3 s after at least 2.5 times the stillness and above the usual change (0.22.7: a free kick filmed
@@ -249,6 +268,7 @@ public enum HighlightFinder {
         // Replays are the same action again: not moments of their own, but each tells which action came just before it. Moments end
         // 1.2 s before a replay's graphic is recognised: it fades in about half a second before.
         var replays = replays(s)
+        let shownAgain = replays
         var inReplay = Array(repeating: false, count: n)
         for r in replays {
             let a = max(0, Int((r.start - s.start) / s.step)), b = min(n - 1, Int((r.end - s.start) / s.step))
@@ -337,12 +357,20 @@ public enum HighlightFinder {
         // attack that led to it, the shot and the cheering are in. Without, the most exciting moment of the 90 s before the new score was read.
         for g in s.goals {
             var start: Double, end: Double
-            if let k = replays.indices.filter({ replays[$0].start >= g.lastOld - 90 && replays[$0].start <= g.firstNew + 15 })
+            // Only a replay seen to open and close (a pair of the graphic) places a goal: a lone graphic may be another one (a
+            // broadcast's logo before a goal it then replays: the goal came after it).
+            if let k = replays.indices.filter({ replays[$0].end - replays[$0].start >= 4 && replays[$0].start >= g.lastOld - 90 && replays[$0].start <= g.firstNew + 15 })
                 .min(by: { abs(replays[$0].start - g.firstNew) < abs(replays[$1].start - g.firstNew) }) {
                 start = replays[k].start - 1.2 - 25
                 // With the replay: the whole of it after the goal, so a viewer who missed the action sees all of it again.
                 end = withReplays ? replays[k].end : replays[k].start - 1.2
                 replays.remove(at: k)
+            } else if let call = loudestCall(s, from: g.firstNew - 120, to: g.firstNew + 5) {
+                // No replay to go by (0.22.9): the goal is called. A broadcast's commentator and its goal sound (the "GOAL" graphic
+                // as the score changes) make the loudest moment by far around a goal: right after the ball went in, or up to about
+                // 40 s later, once the cheering and a replay have been shown. From 40 s before the call (the attack and the shot are
+                // in either way, and the replay when there is one) to 8 s after.
+                start = call - 40; end = call + 8
             } else {
                 let a = max(0, Int(((g.firstNew - 90) - s.start) / s.step)), b = min(n - 1, Int(((g.firstNew - 3) - s.start) / s.step))
                 // The goal is the last of the most exciting moments before the board changed (an earlier one, as exciting, came
@@ -389,7 +417,16 @@ public enum HighlightFinder {
         // the kick (at least 60 % as exciting as the best moment). All of them (0.22.8: a cap of six dropped a real free kick once
         // a corner more was found).
         let crowdOf = pieces.indices.map { i in s.kickCrowd.first { abs($0.key - pieces[i].kick) < 1 }?.value }
-        let dangerous = Set(pieces.indices.filter { crowdOf[$0].map { $0 >= 7 } ?? (pieces[$0].danger >= best * 0.6) }
+        // A broadcast with many cameras (30 shot changes an hour or more, 0.22.9) cuts to close-ups whenever play stops (a kick-in,
+        // a substitution, a player down), and its wide camera shows every player: neither the stillness nor the count of people
+        // tells a dangerous set piece there. The broadcast does: it replays the dangerous ones, and some end in a goal.
+        let hours = max(1.0 / 60, Double(n) * s.step / 3600)
+        let manyCameras = Double(cuts(motion: s.motion).count) / hours >= 30
+        func confirmed(_ i: Int) -> Bool {
+            let k = pieces[i].kick
+            return shownAgain.contains { $0.start > k && $0.start < k + 45 } || s.goals.contains { $0.firstNew > k && $0.firstNew < k + 90 }
+        }
+        let dangerous = Set(pieces.indices.filter { manyCameras ? confirmed($0) : (crowdOf[$0].map { $0 >= 7 } ?? (pieces[$0].danger >= best * 0.6)) }
             .sorted { (crowdOf[$0] ?? 0, pieces[$0].danger) > (crowdOf[$1] ?? 0, pieces[$1].danger) })
         for (i, p) in pieces.enumerated() where free(p.start, p.end) && p.end - p.start >= minLength {
             var m = Moment(start: p.start, end: p.end, score: dangerous.contains(i) ? best * 1.3 : max(p.danger, threshold), goal: nil, replayed: false,

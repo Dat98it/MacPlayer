@@ -43,6 +43,8 @@ public struct ClockReader: Sendable {
         let clock = looks.filter { abs($0.x - at.x) < 0.04 && abs($0.y - at.y) < 0.04 }.sorted { $0.t < $1.t }
         guard clock.count >= 3 else { return [] }
         var out: [MatchPeriod] = []
+        // Where each period's clock was read first and last (time, clock), to join pieces of one period (below).
+        var reads: [(t0: Double, s0: Int, t1: Double, s1: Int)] = []
         var runStart: Int? = nil
         var lastRunning = 0
         func runs(_ a: Int, _ b: Int) -> Bool {
@@ -72,6 +74,7 @@ public struct ClockReader: Sendable {
                 end += Double(clock[lastRunning + 1].s - clock[lastRunning].s)
             }
             out.append(MatchPeriod(kickoff: kickoff, end: end, kickoffSeen: seen))
+            reads.append((clock[a].t, clock[a].s, clock[lastRunning].t, clock[lastRunning].s))
             runStart = nil
         }
         // Each look against the next one that differs from a misread: up to two looks are skipped.
@@ -89,7 +92,27 @@ public struct ClockReader: Sendable {
             }
         }
         close()
-        return out
+        // One period read in pieces (0.22.9): while a replay or a graphic hides the scoreboard, or a few looks are misread, the clock
+        // goes on. A piece whose clock carries on from the one before (it counted as much as the video ran, give or take 10 s) is
+        // the same period, not a new kick-off and a whistle in between (a 35-minute half was cut in two at 1:45).
+        var merged: [MatchPeriod] = []
+        var last: (t1: Double, s1: Int)? = nil
+        for (k, p) in out.enumerated() {
+            let r = reads[k]
+            if let l = last, var prev = merged.popLast() {
+                let ran = r.t0 - l.t1, counted = Double(r.s0 - l.s1)
+                if counted >= 0 && abs(counted - ran) <= max(10, ran * 0.05) {
+                    prev.end = p.end
+                    merged.append(prev)
+                    last = (r.t1, r.s1)
+                    continue
+                }
+                merged.append(prev)
+            }
+            merged.append(p)
+            last = (r.t1, r.s1)
+        }
+        return merged
     }
 }
 

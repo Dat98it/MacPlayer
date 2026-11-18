@@ -530,3 +530,77 @@ struct ManySetPiecesTests {
         #expect(kept.count == stops.count, "all nine kept, not six: \(kept.count)")
     }
 }
+
+struct ClockPiecesTests {
+    @Test func aPeriodReadInPiecesIsOnePeriod() {
+        var c = ClockReader()
+        func look(_ v: Int, _ t: Double) { c.add([(String(format: "%02d:%02d", v / 60, v % 60), 0.1, 0.12)], at: t) }
+        // Kick-off at 1410 (clock standing at 00:00 before), the board hidden from 1525 to 1560 (a replay), then the half goes on to
+        // 35:00; half-time; a second half from 35:00 at 4215.
+        var t = 1380.0
+        while t < 3520 {
+            if t >= 1525 && t < 1560 { t += 10; continue }
+            look(t < 1410 ? 0 : Int(t - 1410), t); t += 10
+        }
+        t = 4215
+        while t < 6300 { look(2100 + Int(t - 4215), t); t += 10 }
+        let p = c.periods()
+        #expect(p.count == 2, "\(p)")
+        #expect(abs((p.first?.kickoff ?? 0) - 1410) <= 1 && (p.first?.end ?? 0) > 3500, "\(p)")
+    }
+}
+
+struct RealClockLooksTests {
+    /// With MACPLAYER_CLOCK_LOOKS=<file of "seconds<TAB>mm:ss" lines>: the periods read from a real match's clock (printed, not a check).
+    @Test func periodsOfARealMatch() throws {
+        guard let path = ProcessInfo.processInfo.environment["MACPLAYER_CLOCK_LOOKS"] else { return }
+        var c = ClockReader()
+        for line in try String(contentsOfFile: path, encoding: .utf8).split(separator: "\n") {
+            let f = line.split(separator: "\t"); guard f.count == 2, let t = Double(f[0]) else { continue }
+            c.add([(String(f[1]), 0.1, 0.12)], at: t)
+        }
+        print("REAL PERIODS", c.periods().map { String(format: "%.0f–%.0f%@", $0.kickoff, $0.end, $0.kickoffSeen ? "" : "(late)") }.joined(separator: " "))
+    }
+}
+
+struct GoalCallTests {
+    @Test func withoutAReplayTheGoalIsWhereItIsCalled() {
+        // A broadcast with no replay graphic: the ball goes in at 220 s, the call (commentator and goal sound, -4 dB against
+        // -25 dB) at 230 s, the scoreboard changes at 250 s; celebrations (close-ups, much motion) until 290 s.
+        let n = 2000
+        var s = HighlightSignals(start: 0, step: 0.2, motion: (0..<n).map { 0.03 + 0.008 * sin(Double($0) * 1.3) },
+                                 loudness: (0..<n).map { -25 + 2 * sin(Double($0) * 0.7) })
+        for i in 0..<n where s.time(i) >= 230 && s.time(i) < 233 { s.loudness[i] = -4 }
+        for i in 0..<n where s.time(i) >= 250 && s.time(i) < 290 { s.motion[i] = 0.12 }
+        s.goals = [ScoreChange(from: (0, 0), to: (0, 1), lastOld: 240, firstNew: 250)]
+        let goal = HighlightFinder.moments(s).first { $0.goal == "0-1" }
+        #expect(goal.map { $0.start <= 212 && $0.end >= 236 && $0.end <= 240 } == true, "the attack, the goal and the call, not only the cheering: \(String(describing: goal))")
+        #expect(HighlightFinder.loudestCall(HighlightSignals(start: 0, step: 0.2, motion: [Double](repeating: 0, count: 500), loudness: [Double](repeating: -20, count: 500)), from: 0, to: 100) == nil, "no call in a steady sound")
+    }
+}
+
+struct ManyCamerasTests {
+    @Test func aMultiCameraBroadcastKeepsOnlySetPiecesItReplays() {
+        // 10 minutes; 60 shot changes (a multi-camera broadcast); two set pieces, both crowded; a replay graphic shown twice right
+        // after the second only.
+        let n = 3000
+        var s = HighlightSignals(start: 0, step: 0.2, motion: (0..<n).map { 0.03 + 0.008 * sin(Double($0) * 1.3) },
+                                 loudness: (0..<n).map { _ in -25 }, people: (0..<n).map { _ in 0.02 })
+        for c in stride(from: 5, to: n, by: 50) where !(c > 380 && c < 470) && !(c > 1380 && c < 1520) { s.motion[c] = 0.5 }
+        for st in [80.0, 280.0] {
+            for i in 0..<n where s.time(i) >= st && s.time(i) < st + 8 { s.motion[i] = 0.006 }
+            for i in 0..<n where s.time(i) >= st + 8 && s.time(i) < st + 11 { s.motion[i] = 0.15 }
+        }
+        let field: [UInt8] = (0..<432).map { i in UInt8([90, 110, 70][i % 3] + (i / 3) % 7) }
+        let green: [UInt8] = (0..<432).map { i in UInt8([20, 220, 60][i % 3]) }
+        let graphics = [300.0, 310.0, 400.0, 410.0, 500.0, 510.0]
+        s.thumbs = (0..<n).map { i in graphics.contains { s.time(i) >= $0 && s.time(i) < $0 + 1.2 } ? green : field }
+        for g in graphics { for i in 0..<n where s.time(i) >= g && s.time(i) < g + 1.2 { s.motion[i] = 0.4 } }
+        let kicks = HighlightFinder.setPieceKicks(s)
+        s.kickCrowd = Dictionary(uniqueKeysWithValues: kicks.map { ($0, 10) })
+        #expect(HighlightFinder.cuts(motion: s.motion).count >= 30)
+        let m = HighlightFinder.moments(s).filter(\.setPiece)
+        #expect(m.first { $0.start < 100 }?.event == nil, "not replayed: a suggestion, however many people")
+        #expect(m.contains { $0.start > 270 && $0.start < 300 && $0.event == .setPiece }, "replayed by the broadcast: kept")
+    }
+}

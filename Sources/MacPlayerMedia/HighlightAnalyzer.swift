@@ -65,6 +65,7 @@ public enum HighlightAnalyzer {
                         var lastLook = -Double.infinity
                         var lastCenter: (x: Double, y: Double, t: Double)? = nil
                         var board = ScoreReader()
+                        var watch = BoardWatch()
                         var clock = ClockReader()
                         var spotter = WordSpotter()
                         var thumbs: [[UInt8]] = []
@@ -83,8 +84,10 @@ public enum HighlightAnalyzer {
                             // The scoreboard's words, every few seconds (Vision reads its digits at about 960 px, not at 512).
                             if t - lastRead >= readEvery - step / 2 {
                                 lastRead = t
-                                let w = words(pb)
+                                let boxes = wordBoxes(pb)
+                                let w = boxes.map { (text: $0.text, x: $0.box.midX, y: $0.box.midY) }
                                 board.add(w, at: t); clock.add(w, at: t); spotter.add(w, at: t)
+                                watch.add(boxes, at: t) { grid(pb, in: $0, cols: $1, rows: $2) }
                             }
                             if t - lastLook >= peopleEvery - step / 2 {
                                 lastLook = t
@@ -101,7 +104,12 @@ public enum HighlightAnalyzer {
                             progress?(min(1, max(0, (t - range.start.seconds) / max(0.001, length))) * 0.9)
                         }
                         if reader.status == .failed { throw reader.error ?? MediaProbeError.unreadable("video") }
-                        cont.resume(returning: (motion, people, speed, board.changes(), thumbs, clock.periods(), spotter.events.map { WordMark(kind: $0.kind, time: $0.time) }))
+                        // Goals: the score read as text; else (its digits alone in boxes text recognition leaves out) the boxes seen to change,
+                        // counted from 0-0 when the video shows the first kick-off.
+                        let periods = clock.periods()
+                        var goals = board.changes()
+                        if goals.isEmpty { goals = watch.goals(fromNil: periods.first?.kickoffSeen ?? false) }
+                        cont.resume(returning: (motion, people, speed, goals, thumbs, periods, spotter.events.map { WordMark(kind: $0.kind, time: $0.time) }))
                     } catch { cont.resume(throwing: error) }
                 }
             }
@@ -171,6 +179,39 @@ public enum HighlightAnalyzer {
 
     /// For tests: replaces text recognition. Given a frame, returns words and their middles (0…1, top-left origin).
     nonisolated(unsafe) public static var reader: ((CVPixelBuffer) -> [(text: String, x: Double, y: Double)])?
+
+    /// The words on the picture with their frames (0…1, top-left origin).
+    static func wordBoxes(_ pb: CVPixelBuffer) -> [(text: String, box: TextFrame)] {
+        if let r = reader { return r(pb).map { ($0.text, TextFrame(x: $0.x - 0.02, y: $0.y - 0.01, width: 0.04, height: 0.02)) } }
+        let req = VNRecognizeTextRequest()
+        req.recognitionLevel = .accurate
+        req.usesLanguageCorrection = false
+        try? VNImageRequestHandler(cvPixelBuffer: pb, options: [:]).perform([req])
+        return (req.results ?? []).compactMap { o in
+            o.topCandidates(1).first.map { ($0.string, TextFrame(x: Double(o.boundingBox.minX), y: 1 - Double(o.boundingBox.maxY),
+                                                                 width: Double(o.boundingBox.width), height: Double(o.boundingBox.height))) }
+        }
+    }
+
+    /// A small picture (`cols` × `rows` brightness values) of a part of the frame (0…1, top-left origin).
+    static func grid(_ pb: CVPixelBuffer, in r: TextFrame, cols: Int = 12, rows: Int = 16) -> [UInt8] {
+        CVPixelBufferLockBaseAddress(pb, .readOnly); defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(pb) else { return [] }
+        let w = CVPixelBufferGetWidth(pb), h = CVPixelBufferGetHeight(pb), row = CVPixelBufferGetBytesPerRow(pb)
+        let p = base.assumingMemoryBound(to: UInt8.self)
+        var out = [UInt8](); out.reserveCapacity(cols * rows)
+        for gy in 0..<rows { for gx in 0..<cols {
+            var sum = 0, n = 0
+            for sy in 0..<2 { for sx in 0..<2 {
+                let fx = r.x + r.width * (Double(gx) + (Double(sx) + 0.5) / 2) / Double(cols), fy = r.y + r.height * (Double(gy) + (Double(sy) + 0.5) / 2) / Double(rows)
+                let x = min(w - 1, max(0, Int(fx * Double(w)))), y = min(h - 1, max(0, Int(fy * Double(h))))
+                let o = y * row + x * 4
+                sum += (Int(p[o + 2]) * 30 + Int(p[o + 1]) * 59 + Int(p[o]) * 11) / 100; n += 1
+            } }
+            out.append(UInt8(sum / max(1, n)))
+        } }
+        return out
+    }
 
     /// The words on the picture and where (middle, 0…1 from the top-left).
     static func words(_ pb: CVPixelBuffer) -> [(text: String, x: Double, y: Double)] {
