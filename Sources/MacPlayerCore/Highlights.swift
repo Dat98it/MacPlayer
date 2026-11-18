@@ -205,8 +205,12 @@ public enum HighlightFinder {
         return []
     }
 
-    /// When set pieces were kicked (source seconds): the picture nearly still (under 60 % of the clip's usual change) for at least 6 s
-    /// with people in it, then within 4 s a second of change at least 1.8 times the usual.
+    /// When set pieces were kicked (source seconds): play had stood still for 8 s (their average change under 60 % of the clip's
+    /// usual, a few brief stirs allowed: players walk to their places, the camera nudges), then the
+    /// picture moves again: the 3 s after at least 2.5 times the stillness and above the usual change (0.22.7: a free kick filmed
+    /// from far off barely moves the picture; it used to need an unbroken 6 s of stillness and a jump to 1.8 times the usual). People
+    /// are not asked for here: a whole night picture often shows none of a team waiting for a corner far off (the closer count of
+    /// `kickCrowd` decides which set pieces are dangerous, and the match clock keeps out what is not play).
     public static func setPieceKicks(_ s: HighlightSignals) -> [Double] {
         let per = max(1, Int((1 / s.step).rounded()))
         let secs = s.count / per
@@ -214,21 +218,17 @@ public enum HighlightFinder {
         let m = (0..<secs).map { i in s.motion[(i * per)..<min(s.count, (i + 1) * per)].reduce(0, +) / Double(per) }
         let usual = m.sorted()[secs / 2]
         guard usual > 0 else { return [] }
-        let seen = s.people.count == s.count
-        func people(_ i: Int) -> Bool {
-            guard seen else { return true }
-            return s.people[(i * per)..<min(s.count, (i + 1) * per)].contains { ($0 ?? 0) > 0.002 }
-        }
+        func mean(_ r: Range<Int>) -> Double { m[r].reduce(0, +) / Double(r.count) }
         var out: [Double] = []
-        var i = 0
-        while i < secs {
-            guard m[i] < usual * 0.6 else { i += 1; continue }
-            var j = i
-            while j < secs && m[j] < usual * 0.6 { j += 1 }
-            if j - i >= 6, (i..<j).contains(where: people), let k = (j..<min(secs, j + 4)).first(where: { m[$0] > usual * 1.8 }) {
-                out.append(s.start + Double(k) * Double(per) * s.step)
-            }
-            i = j
+        var j = 8
+        while j + 3 <= secs {
+            let still = (j - 8)..<j
+            let calm = mean(still), after = mean(j..<(j + 3))
+            if calm < usual * 0.6, still.filter({ m[$0] > usual * 0.9 }).count <= 2,
+               after >= max(calm * 2.5, usual), m[j] > calm * 1.5 {
+                out.append(s.start + Double(j) * Double(per) * s.step)
+                j += 15
+            } else { j += 1 }
         }
         return out
     }
@@ -366,7 +366,7 @@ public enum HighlightFinder {
             let kick = kicks.last { $0 >= start - 2 && $0 < r.start - 1 }
             if let k = kick {
                 let before = taken.filter { $0.end <= start + 0.01 }.map(\.end).max() ?? first
-                start = max(before, first, min(start, k - 6))
+                start = max(before, first, min(start, k - 8))
             }
             guard end - start >= minLength, free(start, end) else { continue }
             var m = Moment(start: start, end: end, score: best * 1.2, goal: nil, replayed: true, event: kick == nil ? nil : .setPiece)
@@ -374,22 +374,23 @@ public enum HighlightFinder {
             taken.append(m)
         }
         // Set pieces (free kicks, corners, penalties): play stands still while the ball is placed and the wall forms, then the kick
-        // sets everything moving. From 6 s before the kick (the setting up) to 9 s after (what came of it). The dangerous ones are always
+        // sets everything moving. From 8 s before the kick (the setting up) to 9 s after (what came of it). The dangerous ones are always
         // kept; the others (goal kicks, throw-ins) are suggestions.
-        var pieces: [(start: Double, end: Double, danger: Double)] = []
+        var pieces: [(start: Double, end: Double, danger: Double, kick: Double)] = []
         for k in kicks {
             guard s.periods.isEmpty || s.periods.contains(where: { k > $0.kickoff + 15 && k < $0.end }),
                   // Not the restart after a goal (the ball back on the centre spot).
                   !taken.contains(where: { $0.event == .goal && k > $0.end - 1 && k < $0.end + 90 }) else { continue }
             let a = max(0, Int((k - s.start) / s.step)), b = min(n - 1, Int((k + 8 - s.start) / s.step))
             guard a < b else { continue }
-            pieces.append((max(first, k - 6), min(last, k + 9), sc[a...b].max() ?? 0))
+            pieces.append((max(first, k - 8), min(last, k + 9), sc[a...b].max() ?? 0, k))
         }
         // Dangerous: many people waiting (7 or more: a wall, players in front of the goal); where nobody counted them, what followed
-        // the kick (at least 60 % as exciting as the best moment). Up to six, the most crowded first.
-        let crowdOf = pieces.indices.map { i in s.kickCrowd.first { abs($0.key - (pieces[i].start + 6)) < 1 }?.value }
+        // the kick (at least 60 % as exciting as the best moment). All of them (0.22.8: a cap of six dropped a real free kick once
+        // a corner more was found).
+        let crowdOf = pieces.indices.map { i in s.kickCrowd.first { abs($0.key - pieces[i].kick) < 1 }?.value }
         let dangerous = Set(pieces.indices.filter { crowdOf[$0].map { $0 >= 7 } ?? (pieces[$0].danger >= best * 0.6) }
-            .sorted { (crowdOf[$0] ?? 0, pieces[$0].danger) > (crowdOf[$1] ?? 0, pieces[$1].danger) }.prefix(6))
+            .sorted { (crowdOf[$0] ?? 0, pieces[$0].danger) > (crowdOf[$1] ?? 0, pieces[$1].danger) })
         for (i, p) in pieces.enumerated() where free(p.start, p.end) && p.end - p.start >= minLength {
             var m = Moment(start: p.start, end: p.end, score: dangerous.contains(i) ? best * 1.3 : max(p.danger, threshold), goal: nil, replayed: false,
                            event: dangerous.contains(i) ? .setPiece : nil)

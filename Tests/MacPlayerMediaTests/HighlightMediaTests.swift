@@ -88,6 +88,7 @@ import Testing
                          m.count, m.reduce(0) { $0 + $1.end - $1.start }))
             print("GOALS", s.goals.map { String(format: "%@ %.0f(old seen %.0f)", $0.label, $0.firstNew, $0.lastOld) }.joined(separator: " "))
             print("PERIODS", s.periods.map { String(format: "%.0f–%.0f", $0.kickoff, $0.end) }.joined(separator: " "), "MARKS", s.marks.map { "\($0.kind.rawValue)@\(Int($0.time))" })
+            print("KICKS", HighlightFinder.setPieceKicks(s).map { k in "\(Int(k))(\(s.kickCrowd.first { abs($0.key - k) < 1 }?.value ?? -1))" }.joined(separator: " "))
             print("LINEUPS", s.lineups.map { String(Int($0)) }.joined(separator: " "))
             print("EVENTS", m.filter { $0.event != nil }.sorted { $0.start < $1.start }.map { String(format: "%@ %.0f–%.0f", $0.event!.rawValue, $0.start, $0.end) }.joined(separator: " | "))
             print("MOMENTS", m.prefix(12).map { String(format: "%.1f–%.1f(%.2f)", $0.start, $0.end, $0.score) }.joined(separator: " "))

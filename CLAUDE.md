@@ -224,6 +224,10 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.22.8** `setPieceKicks` no longer asks for people (a night corner far off: whole-frame Vision found nobody); no cap on dangerous set pieces (a cap of 6 dropped a real one).
+
+**0.22.7** `setPieceKicks`: still = 8 s mean < 0.6×usual with ≤2 s above 0.9×usual and people; kick = next 3 s mean ≥ max(2.5×still, usual) and first second > 1.5×still (a far-off free kick at 15:57 of the sample match: no unbroken 6 s, burst only 1.6×usual). Set pieces start 8 s before the kick; `kickCrowd` matched by kick time.
+
 **0.22.6** A replayed moment with a set-piece kick between 2 s before its start and the replay is a set piece (`.setPiece` event, named "Set piece"), starting at min(12 s before the replay, kick − 6 s).
 
 **0.22.5 Set pieces and clip names.** `setPieceKicks` (≥6 s still < 60 % of usual change with people, then a second ≥1.8×), only in play,

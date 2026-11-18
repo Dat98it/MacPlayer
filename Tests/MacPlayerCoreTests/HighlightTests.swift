@@ -482,3 +482,51 @@ struct ReplayedSetPieceTests {
         #expect(m.filter(\.setPiece).count == 1, "the free kick is not there twice")
     }
 }
+
+struct FarFreeKickTests {
+    /// The free kick at 15:57 of the maintainer's match, as measured (change per second, 937–962 s): players walking to the wall
+    /// stir the picture now and then, and the kick, filmed from far off, moves it only a little.
+    @Test func aFreeKickFilmedFromFarIsFound() {
+        let measured: [Double] = [0.019, 0.015, 0.017, 0.026, 0.023, 0.013, 0.012, 0.011, 0.012, 0.011, 0.011, 0.031, 0.016, 0.013, 0.022,
+                                  0.025, 0.022, 0.016, 0.009, 0.008, 0.009, 0.008, 0.013, 0.028, 0.050, 0.031, 0.017]
+        // A minute of ordinary play before and after (the clip's usual change about 0.03).
+        let play = (0..<60).map { 0.03 + 0.01 * sin(Double($0) * 1.1) }
+        let perSecond = play + measured + play
+        let motion = perSecond.flatMap { Array(repeating: $0, count: 5) }
+        let s = HighlightSignals(start: 877, step: 0.2, motion: motion, people: motion.map { _ in 0.02 })
+        let kicks = HighlightFinder.setPieceKicks(s)
+        #expect(kicks.contains { $0 >= 955 && $0 <= 961 }, "the kick at about 957–960 s: \(kicks)")
+    }
+}
+
+struct FarCornerTests {
+    /// The corner at 19:58 of the maintainer's match, as measured (1186–1215 s): a replay, the camera still on the corner while the
+    /// teams wait (Vision finds nobody in the whole night picture), the kick at about 1203 s.
+    @Test func aCornerWithNobodyFoundInTheWholePictureIsFound() {
+        let measured: [Double] = [0.025, 0.035, 0.027, 0.031, 0.045, 0.086, 0.152, 0.111, 0.011, 0.010, 0.012, 0.007, 0.011, 0.012, 0.010,
+                                  0.010, 0.010, 0.010, 0.064, 0.056, 0.012, 0.016, 0.036, 0.048, 0.060, 0.033, 0.052, 0.076, 0.041, 0.037]
+        let play = (0..<60).map { 0.03 + 0.01 * sin(Double($0) * 1.1) }
+        let motion = (play + measured + play).flatMap { Array(repeating: $0, count: 5) }
+        let s = HighlightSignals(start: 1126, step: 0.2, motion: motion, people: motion.map { _ in 0 })
+        let kicks = HighlightFinder.setPieceKicks(s)
+        #expect(kicks.contains { $0 >= 1201 && $0 <= 1206 }, "the corner kicked at about 1203 s: \(kicks)")
+    }
+}
+
+struct ManySetPiecesTests {
+    @Test func everyCrowdedSetPieceIsKeptHoweverMany() {
+        let n = 3000
+        var s = HighlightSignals(start: 0, step: 0.2, motion: (0..<n).map { 0.03 + 0.008 * sin(Double($0) * 1.3) },
+                                 loudness: (0..<n).map { _ in -25 }, people: (0..<n).map { _ in 0.02 })
+        let stops = stride(from: 30.0, to: 560, by: 60).map { $0 }        // nine free kicks
+        for st in stops {
+            for i in 0..<n where s.time(i) >= st && s.time(i) < st + 8 { s.motion[i] = 0.006 }
+            for i in 0..<n where s.time(i) >= st + 8 && s.time(i) < st + 11 { s.motion[i] = 0.15 }
+        }
+        let kicks = HighlightFinder.setPieceKicks(s)
+        #expect(kicks.count == stops.count, "\(kicks)")
+        s.kickCrowd = Dictionary(uniqueKeysWithValues: kicks.map { ($0, 9) })
+        let kept = HighlightFinder.moments(s).filter { $0.event == .setPiece }
+        #expect(kept.count == stops.count, "all nine kept, not six: \(kept.count)")
+    }
+}

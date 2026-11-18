@@ -1193,3 +1193,31 @@ Ghi nhận thêm: chữ luôn được vẽ trên mọi ảnh/lớp (thứ tự 
 **Kiểm thử:** test mới `ReplayedSetPieceTests` (pha đá phạt được chiếu lại mang nhãn đá phạt, có phần chuẩn bị; pha chiếu lại không có đá phạt vẫn là pha nguy hiểm; không lặp). Toàn bộ: Core 501, Media 276, tách lời 8 — đều qua. **Trên dự án thật** "highlight FC98 - FC 2K3" (sao lưu ngay trước, trả lại sau, mã băm khớp): 22 đoạn, 668,3 s (11:08); "Đá phạt 1" 19:58 (trước là Pha nguy hiểm 3), "Đá phạt 5" 57:14, "Đá phạt 6" 64:20. Xem ảnh: Đá phạt 5 là đá phạt trước khung thành có trọng tài rồi đoạn chiếu lại; Đá phạt 6 là phạt góc; Đá phạt 1 ảnh nhỏ, chưa xác nhận được bằng mắt.
 
 **Lưu ý:** vì pha đá phạt được chiếu lại nay luôn được chọn, highlight trận ví dụ dài hơn (11:08, trước 9:42).
+
+
+## Bản 0.22.7 — Bắt đá phạt nguy hiểm quay từ xa (17/11/2026)
+
+**Người bảo trì báo:** pha đá phạt nguy hiểm ở khoảng 15:56.924 của video gốc không được bắt.
+
+**Tái hiện (đo trên video, chỉ đọc):** 15:42–15:56 cầu thủ vàng xếp hàng rào trước khung thành bên trái, trọng tài đứng gần, cầu thủ đỏ đá phạt ≈15:57. Mức thay đổi hình mỗi giây (mức thường của trận ≈0,031): lúc chuẩn bị 0,008–0,031, nhưng cầu thủ đi lại và máy quay nhích làm vài giây vượt ngưỡng "đứng yên" (0,6 × thường), nên không có 6 giây yên liền nhau; cú đá quay từ xa chỉ đẩy lên 0,050 (1,6 × thường, dưới ngưỡng 1,8). Cả hai điều kiện cũ đều trượt.
+
+**Đã sửa (`setPieceKicks`):** yên = trung bình 8 s dưới 0,6 × mức thường, cho phép tối đa 2 giây nhích lên (> 0,9 × thường), có người trong hình; cú đá = trung bình 3 s sau ≥ 2,5 × lúc yên và ≥ mức thường, giây đầu > 1,5 × lúc yên. Pha bắt đầu 8 s trước cú đá (thấy lúc xếp hàng rào). Số người đếm được gắn với chính thời điểm cú đá.
+
+**Kiểm thử:** test mới `FarFreeKickTests` dùng đúng số đo 937–962 s của trận. Toàn bộ: Core 502, Media 276, tách lời 8 — đều qua. Cả trận: 30 cú đá dò được; đông người (≥ 7) trong lúc đang đá: 15:60 (9 người), 25:63 (12), 28:26 (11), 33:16 (10), 56:58 (11), 57:20 (10), 64:26 (5, phạt góc được chiếu lại); 51:46 (8, trước còi hiệp 2) và 62:38 (8, giao bóng lại sau bàn 0-4) bị loại đúng. Xem ảnh 15:52, 25:55, 33:08: đều là đá phạt (hàng rào/cầu thủ chờ trước khung thành, đá phạt bên cánh). **Trên dự án thật** "highlight FC98 - FC 2K3" (sao lưu ngay trước, trả lại sau, mã băm khớp — bản người bảo trì vừa sửa): 23 đoạn, 11:24; Đá phạt 1 = 15:52 (pha được báo), thêm Đá phạt 2 (25:55) và Đá phạt 4 (33:08).
+
+**Chưa kiểm chứng:** pha "Đá phạt 1" 19:58 của 0.22.6 (chưa xác nhận bằng mắt) nay là "Pha nguy hiểm 3" vì cú đá dò được ở 19:26 nằm ngoài đoạn chiếu lại đó; chưa xem lại bằng mắt.
+
+
+## Bản 0.22.8 — Phạt góc 19:58 và mọi pha đá phạt đông người (18/11/2026)
+
+**Người bảo trì báo:** pha 19:58 là phạt góc, cần mang tên "Đá phạt" (0.22.7 gọi là "Pha nguy hiểm 3").
+
+**Tái hiện:** 19:43–19:53 đài chiếu lại pha trước; 19:54–20:03 máy quay đứng yên ở góc khung thành, hai đội chờ phạt góc (thay đổi hình 0,007–0,012); phạt góc ≈ 20:03–20:04. Bộ dò thỏa mọi điều kiện chuyển động nhưng bị loại vì điều kiện "có người trong hình": Vision nhìn cả hình ban đêm, máy quay xa, không thấy ai trong suốt lúc chuẩn bị.
+
+**Đã sửa:**
+- `setPieceKicks` không đòi "có người" nữa (cảnh không phải trận đấu đã bị loại theo đồng hồ trận; pha nguy hiểm do bước đếm người kỹ — 6 phần của hình — quyết định). Cả trận: 38 cú đá dò được (trước 30); các cú đá mới ngoài giờ thi đấu bị loại theo đồng hồ.
+- Bỏ giới hạn 6 pha đá phạt nguy hiểm: lần chạy đầu sau khi sửa, thêm pha phạt góc làm số pha đông người vượt 6 và **mất pha đá phạt 15:52** của 0.22.7. Nay mọi pha đông người (≥ 7) trong lúc đang đá đều được giữ.
+
+**Kiểm thử:** test mới `FarCornerTests` (số đo thật 1186–1215 s, không ai được thấy trong cả hình) và `ManySetPiecesTests` (9 pha đông người đều được giữ). Toàn bộ: Core 504, Media 276, tách lời 8 — đều qua. **Trên dự án thật** "highlight FC98 - FC 2K3" (người bảo trì đóng dự án trước; sao lưu ngay trước, trả lại sau, mã băm khớp): 28 đoạn, 13:03; Đá phạt 1 = 15:52 (giữ), Đá phạt 3 = 19:56–20:26 (phạt góc 19:58 + đoạn chiếu lại); 12 pha đá phạt. Xem ảnh các pha mới: 17:23 phạt góc, 26:25 đá phạt trước khung thành; 31:55 và 35:09 giống đá phạt (cầu thủ chờ quanh bóng rồi cú đá), ảnh nhỏ, chưa chắc chắn.
+
+**Lưu ý:** highlight trận ví dụ dài hơn (13:03) vì mọi pha đá phạt đông người đều được giữ; có thể bỏ tick trong danh sách trước khi dựng.

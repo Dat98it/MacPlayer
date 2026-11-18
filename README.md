@@ -2,7 +2,7 @@
 
 Xem và chỉnh sửa **video lẫn ảnh**: cắt đoạn, ghép nhiều video, chỉnh màu chuyên nghiệp (đường cong, bánh xe màu, HSL, LUT), tách nền và mặt nạ, chuyển cảnh và keyframe, hiệu ứng giọng, chữ và hình dán, rồi xuất ngay trên Mac. Mọi xử lý diễn ra trên máy; không có tài khoản, không thu thập dữ liệu. Từ 0.15 app chỉ dùng mạng khi bạn tự dán một link video/ảnh để xem (Tệp ▸ Mở link…), ngoài ra không kết nối đi đâu.
 
-> **Trạng thái: bản 0.22.6 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). **Hướng dẫn sử dụng đầy đủ: [docs/huong-dan-su-dung.md](docs/huong-dan-su-dung.md).** Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
+> **Trạng thái: bản 0.22.8 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). **Hướng dẫn sử dụng đầy đủ: [docs/huong-dan-su-dung.md](docs/huong-dan-su-dung.md).** Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
 
 ## Yêu cầu
 
@@ -148,6 +148,8 @@ Mở một dự án video là thấy ngay bố cục quen thuộc của các app
 - **0.22.4:** bấm vào chữ **Gợi ý thêm** cũng mở/đóng danh sách gợi ý (trước chỉ mũi tên nhỏ nhận bấm). Dựng highlight, thêm pha gợi ý và hoàn tác đã kiểm bằng chuột thật.
 - **0.22.5:** highlight bắt **đá phạt nguy hiểm** (trận dừng rồi có cú đá, nhiều người trong hình lúc chuẩn bị: hàng rào, cầu thủ chờ trước khung thành); phát bóng lên/ném biên chỉ là gợi ý. Khi dựng, **mỗi đoạn có tên riêng** (Bàn thắng 0-1, Đá phạt 2, Hết hiệp 1…) thay cho tên file gốc; hai tình huống liền nhau thành hai đoạn riêng.
 - **0.22.6:** pha đá phạt được đài chiếu lại mang tên **Đá phạt** (trước là Pha nguy hiểm), bắt đầu từ lúc chuẩn bị, kèm đoạn chiếu lại.
+- **0.22.7:** bắt được đá phạt nguy hiểm quay từ xa (lúc chuẩn bị cầu thủ vẫn đi lại, cú đá làm hình đổi ít): ví dụ 15:56 của trận FC98–FC 2K3. Mỗi pha đá phạt bắt đầu 8 giây trước cú đá.
+- **0.22.8:** bắt cả phạt góc/đá phạt khi Vision không thấy người trong cả hình ban đêm (ví dụ phạt góc 19:58); mọi pha đá phạt đông người đều được giữ (bỏ giới hạn 6 pha).
 - **0.18.0 — Tách lời để lấy nhạc nền:** mở bài hát hoặc video rồi bấm **Tách lời**, hoặc chọn **Tệp ▸ Tách lời…**. Trong dự án, nút nằm ở bảng **Âm thanh** của đoạn hoặc bài nhạc. Chọn **Tách và lưu nhạc nền…** để lưu file `.m4a` mới (AAC stereo 256 kb/s). Có tiến trình, hủy được; đóng cửa sổ hoặc thoát app cũng hủy và dọn file dở. File gốc không bị thay đổi. Mô hình UVR MDX-Net Inst HQ 3 chạy bằng Core ML trên máy, đi kèm app; không cần Python, tài khoản hay tải bài hát lên mạng. Xử lý từng đoạn nên không cần giữ cả bài dài trong bộ nhớ. Chất lượng phụ thuộc bản phối: có thể còn một chút giọng hát hoặc giảm một số nhạc cụ.
 - **0.17.4:** đổi tỉ lệ và cách lấp khung trong **Cơ bản ▸ Khung hình** chỉ tác động đến đoạn đang chọn trên timeline, kể cả đoạn đầu. Mỗi đoạn giữ khung riêng khi xem và xuất; khung hình của video hoàn chỉnh vẫn đặt trong **Xuất**.
 - **0.17.3:** phát không còn khựng khi cửa sổ hiện ra hoặc đổi cỡ; khung xem dựng lại theo cỡ màn hình khi tạm dừng.
