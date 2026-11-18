@@ -368,9 +368,9 @@ public enum HighlightFinder {
             } else if let call = loudestCall(s, from: g.firstNew - 120, to: g.firstNew + 5) {
                 // No replay to go by (0.22.9): the goal is called. A broadcast's commentator and its goal sound (the "GOAL" graphic
                 // as the score changes) make the loudest moment by far around a goal: right after the ball went in, or up to about
-                // 40 s later, once the cheering and a replay have been shown. From 40 s before the call (the attack and the shot are
-                // in either way, and the replay when there is one) to 8 s after.
-                start = call - 40; end = call + 8
+                // 50 s later, once the cheering and a replay have been shown (0.22.10: a late call left out the live goal at 40 s).
+                // From 60 s before the call (the attack and the shot are in either way, and the replay when there is one) to 8 s after.
+                start = call - 60; end = call + 8
             } else {
                 let a = max(0, Int(((g.firstNew - 90) - s.start) / s.step)), b = min(n - 1, Int(((g.firstNew - 3) - s.start) / s.step))
                 // The goal is the last of the most exciting moments before the board changed (an earlier one, as exciting, came
@@ -389,8 +389,11 @@ public enum HighlightFinder {
         // wall and the ball being placed are in; the replay stays after it.
         let kicks = setPieceKicks(s)
         for r in replays {
-            let end = min(last, withReplays ? r.end : r.start - 1.2)
-            var start = max(first, r.start - 1.2 - 12)
+            // A lone graphic (seen once, 0.22.10) may open the replay or close it: from 24 s before it (the action, live, either
+            // way) to 4 s after.
+            let lone = r.end - r.start < 4
+            let end = min(last, lone ? (withReplays ? r.start + 4 : r.start - 1.2) : (withReplays ? r.end : r.start - 1.2))
+            var start = max(first, r.start - 1.2 - (lone ? 22.8 : 12))
             let kick = kicks.last { $0 >= start - 2 && $0 < r.start - 1 }
             if let k = kick {
                 let before = taken.filter { $0.end <= start + 0.01 }.map(\.end).max() ?? first

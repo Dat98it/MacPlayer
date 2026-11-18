@@ -1242,3 +1242,23 @@ Ghi nhận thêm: chữ luôn được vẽ trên mọi ảnh/lớp (thứ tự 
 - Toàn bộ: Core 508, Media 277, tách lời 8 — đều qua.
 
 **Chưa kiểm chứng:** chưa xem bằng mắt từng giây của 4 pha bàn thắng VSC (đã xem ảnh 2,5 s một khung: có cú ghi bàn/đoạn chiếu lại); các "Pha nguy hiểm" VSC (12 s trước logo VSC-S6) chưa xem lại; đá phạt nguy hiểm thật ở trận VSC (nếu có, mà đài không chiếu lại) sẽ chỉ nằm trong gợi ý.
+
+
+## Bản 0.22.10 — Kiểm chứng nốt trận VSC (18/11/2026)
+
+**Xem lại từng giây (ảnh 1 s/khung) 4 bàn thắng VSC của bản 0.22.9:**
+- 0-2 (43:44–44:32), 1-2 (80:40–81:28), 1-3 (82:58–83:46): đúng — có pha tấn công, cú ghi bàn, ăn mừng, đoạn chiếu lại, chữ GOAL.
+- **0-1 (36:54–37:42): thiếu cú ghi bàn trực tiếp.** Bóng vào lưới ≈36:45, logo chiếu lại 36:52, nhưng chữ GOAL và tiếng hô to nhất đến ≈37:34 (đài cập nhật tỉ số muộn ≈50 s), nên clip "40 s trước tiếng hô" chỉ có bàn thắng qua đoạn chiếu lại. Sửa: bàn thắng định vị bằng tiếng hô lấy **60 s trước** đến 8 s sau.
+
+**Các "Pha nguy hiểm" VSC:** đều là pha đài chiếu lại thật (dứt điểm, phạm lỗi), nhưng logo "VSC-S6" nhỏ ở góc nên thường chỉ thấy một lần; khi lần thấy đó là logo *đóng* đoạn chiếu lại, clip "12 s trước logo" bắt đầu từ lúc đang chiếu lại/ăn mừng, thiếu pha trực tiếp (ví dụ 40:36, pha thật ≈40:30). Sửa: logo chỉ thấy một lần → pha = **24 s trước đến 4 s sau** logo. Logo thấy đủ cặp mở/đóng giữ như cũ.
+
+**Đá phạt nguy hiểm VSC mà đài không chiếu lại:** xem ảnh mọi cú đá sau lúc dừng trong 2 hiệp: gần hết là đá biên, thay người, quảng cáo giữa giờ, cận cảnh. Một pha phạt góc thật lúc 97:24 không được chiếu lại → chỉ nằm trong **Gợi ý thêm**. Đo thử tiếng khán giả sau cú đá: phạt góc này tăng 0,7 dB, đá biên tăng tới 18 dB — âm thanh không phân biệt được, nên giữ quy tắc "đài chiếu lại hoặc dẫn tới bàn thắng".
+
+**Kiểm thử:**
+- Test mới `GoalCallTests.aLateCallStillHasTheLiveGoal` (GOAL 50 s sau bàn thắng) và `aLoneReplayGraphicKeepsTheLiveActionBeforeIt`; `dangerousSetPiecesAreKeptAndTheRestartAfterAGoalIsNot` dời pha đá phạt giả lập sớm hơn (ở 68 s nó nằm trong clip bàn thắng 60 s trước tiếng hô).
+- **Trên dự án thật "Dự án video VSC"** (MacPlayer không chạy; sao lưu ngay trước, tạm đưa timeline về nguyên trận, Tìm + Dựng highlight, đọc file, trả lại bản sao lưu — mã băm khớp e90901ef…): 12 đoạn, 8:43 — Ra sân 20:22, Đội hình hai đội 20:54–21:59, Bắt đầu hiệp 1 23:30, Pha nguy hiểm 1 24:44–25:12, Pha nguy hiểm 2 30:20–30:48, **Bàn thắng 0-1 36:34–37:42** (nay có cú ghi bàn 36:45), Bàn thắng 0-2 43:24–44:32, Hết hiệp 1 59:10, Bắt đầu hiệp 2 70:15, Bàn thắng 1-2 80:20–81:28, Bàn thắng 1-3 82:38–83:46, Hết trận 107:10–108:00. Xem ảnh 2 s/khung hai pha nguy hiểm: có pha tấn công/dứt điểm trực tiếp rồi logo VSC-S6 và đoạn chiếu lại.
+- Trận FC98 chạy lại: 7 bàn (khung không đổi — đều có cặp chiếu lại), 2 hiệp, đá phạt 15:52 và phạt góc 19:56 vẫn có.
+- Toàn bộ: Core 510, Media 277, tách lời 8 — đều qua.
+
+**Chưa kiểm chứng:** chưa nghe/xem bằng app bản dựng cuối (chỉ đọc file dự án và xem ảnh từ video gốc); các pha chiếu lại khác ngoài 2 pha được chọn chỉ nằm trong gợi ý, chưa xem lại hết.
+

@@ -224,6 +224,10 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.22.10** Goals placed by `loudestCall` run call−60…call+8 (VSC's 0-1: GOAL graphic ~50 s after the ball went in). A lone replay graphic
+(end−start < 4 s; a small corner logo is often seen once) gives a replayed moment from 24 s before it to 4 s after (it may open or close the
+replay). Not replayed set pieces in many-camera broadcasts stay suggestions (VSC 97:24 corner; the crowd sound did not rise: no extra signal found).
+
 **0.22.9 Pro broadcasts.** Core `BoardWatch` (ScoreReader.swift; `TextFrame` keeps Core free of CoreGraphics): team-name pair on one row →
 gap anchored on the median of 5 sightings → 48×12 picture per look → stroke columns (vertical brightness change), two widest runs = the
 digits → per side a lasting change (3 of 4 next looks, old look not back twice within 5 min; bits at the 10/90 % midpoint) = a goal for that

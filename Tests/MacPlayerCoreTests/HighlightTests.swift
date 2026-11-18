@@ -416,13 +416,13 @@ struct SetPieceTests {
     }
 
     @Test func dangerousSetPiecesAreKeptAndTheRestartAfterAGoalIsNot() {
-        // A free kick at 68 s, an attack and a goal at 128 s (the score read at 150 s), the restart at 168 s, a weak free kick at 248 s.
-        var s = play(stops: [(60, 8, 0.15), (160, 8, 0.15), (240, 8, 0.06)], weak: [240], attacks: [128])
+        // A free kick at 38 s, an attack and a goal at 128 s (the score read at 150 s), the restart at 168 s, a weak free kick at 248 s.
+        var s = play(stops: [(30, 8, 0.15), (160, 8, 0.15), (240, 8, 0.06)], weak: [240], attacks: [128])
         s.periods = [MatchPeriod(kickoff: 0, end: 299)]
         s.goals = [ScoreChange(from: (0, 0), to: (0, 1), lastOld: 140, firstNew: 150)]
         let m = HighlightFinder.moments(s)
         let pieces = m.filter(\.setPiece)
-        #expect(pieces.contains { $0.event == .setPiece && $0.start < 68 && $0.end > 75 }, "the free kick at 68 s, with its setting up and outcome: \(pieces)")
+        #expect(pieces.contains { $0.event == .setPiece && $0.start < 38 && $0.end > 45 }, "the free kick at 38 s, with its setting up and outcome: \(pieces)")
         #expect(!pieces.contains { $0.start > 150 && $0.start < 175 }, "the restart after the goal is not a set piece")
         #expect(pieces.contains { $0.start > 235 && $0.event == nil }, "a weak one is only a suggestion")
     }
@@ -576,6 +576,36 @@ struct GoalCallTests {
         let goal = HighlightFinder.moments(s).first { $0.goal == "0-1" }
         #expect(goal.map { $0.start <= 212 && $0.end >= 236 && $0.end <= 240 } == true, "the attack, the goal and the call, not only the cheering: \(String(describing: goal))")
         #expect(HighlightFinder.loudestCall(HighlightSignals(start: 0, step: 0.2, motion: [Double](repeating: 0, count: 500), loudness: [Double](repeating: -20, count: 500)), from: 0, to: 100) == nil, "no call in a steady sound")
+    }
+
+    @Test func aLateCallStillHasTheLiveGoal() {
+        // The VSC case: the ball goes in at 600 s, a replay plays, and the "GOAL" call comes 50 s later, at 650 s.
+        let n = 4000
+        var s = HighlightSignals(start: 0, step: 0.2, motion: (0..<n).map { 0.03 + 0.008 * sin(Double($0) * 1.3) },
+                                 loudness: (0..<n).map { -25 + 2 * sin(Double($0) * 0.7) })
+        for i in 0..<n where s.time(i) >= 650 && s.time(i) < 653 { s.loudness[i] = -4 }
+        s.goals = [ScoreChange(from: (0, 0), to: (0, 1), lastOld: 640, firstNew: 655)]
+        let goal = HighlightFinder.moments(s).first { $0.goal == "0-1" }
+        #expect(goal.map { $0.start <= 595 && $0.end >= 656 } == true, "the live goal 50 s before the call is in: \(String(describing: goal))")
+    }
+
+    @Test func aLoneReplayGraphicKeepsTheLiveActionBeforeIt() {
+        // A replay graphic seen only once (at 300 s; the broadcast's logo is small, so its other showing was missed): the action
+        // shown again happened up to ~20 s before it.
+        let n = 2500
+        var s = HighlightSignals(start: 0, step: 0.2, motion: (0..<n).map { 0.03 + 0.008 * sin(Double($0) * 1.3) },
+                                 loudness: (0..<n).map { _ in -25 })
+        let field: [UInt8] = (0..<432).map { i in UInt8([90, 110, 70][i % 3] + (i / 3) % 7) }
+        let green: [UInt8] = (0..<432).map { i in UInt8([20, 220, 60][i % 3]) }
+        let shown = [100.0, 200.0, 300.0, 400.0]
+        s.thumbs = (0..<n).map { i in shown.contains { s.time(i) >= $0 && s.time(i) < $0 + 1.2 } ? green : field }
+        for g in shown { for i in 0..<n where s.time(i) >= g && s.time(i) < g + 1.2 { s.motion[i] = 0.4 } }
+        let lone = HighlightFinder.replays(s).filter { $0.end - $0.start < 4 }
+        #expect(!lone.isEmpty, "\(HighlightFinder.replays(s))")
+        let m = HighlightFinder.moments(s).filter(\.replayed)
+        for r in lone {
+            #expect(m.contains { $0.start <= r.start - 20 && $0.end >= r.start + 2 && $0.end <= r.start + 5 }, "24 s before a lone graphic to 4 s after: \(r) \(m)")
+        }
     }
 }
 
