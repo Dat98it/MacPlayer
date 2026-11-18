@@ -31,7 +31,7 @@ Tài liệu này đi theo thứ tự bạn thường dùng: mở app → xem →
 
 **Yêu cầu:** macOS 15 trở lên. App mới được kiểm thử trên máy Apple Silicon (M1, M2, M3…); máy Intel chưa được thử.
 
-1. Mở file `MacPlayer-0.22.10.dmg` (hoặc giải nén file `.zip`).
+1. Mở file `MacPlayer-0.22.11.dmg` (hoặc giải nén file `.zip`).
 2. Kéo **MacPlayer** vào thư mục **Applications**.
 3. Lần đầu mở, macOS có thể chặn vì app chưa được Apple kiểm duyệt (notarize). Chuột phải vào MacPlayer ▸ **Mở**, hoặc vào **Cài đặt hệ thống ▸ Quyền riêng tư & Bảo mật ▸ Vẫn mở**.
 
@@ -353,7 +353,7 @@ App chấm pha thế nào:
 - **Pha được chiếu lại**: video có đoạn chiếu lại mở/đóng bằng cùng một hình chuyển cảnh (logo đài, cửa chuyển cảnh…) thì app nhận ra; bàn thắng là 25 giây ngay trước đoạn chiếu lại của nó (cả pha tấn công dẫn tới bàn thắng), **rồi cả đoạn chiếu lại** (tắt bằng ô **Kèm đoạn chiếu lại sau bàn thắng**), các pha khác được chiếu lại (biểu tượng ↺ cam) đứng ngay sau bàn thắng. Phần chiếu lại không bị lấy trùng.
 - Mỗi pha không kéo sang cảnh khác sau chỗ chuyển cảnh, và dài 2,5 đến 12 giây.
 
-Khi dựng, âm lượng từng pha được **cân bằng** về cùng một mức (đoạn loa sân quá to được hạ xuống, đoạn sân vắng được nâng lên tối đa +4 dB) và mỗi chỗ nối nhỏ dần/to dần 0,12 giây cho khỏi lụp bụp. Tiếng đã vỡ sẵn trong video gốc (loa quá to lúc quay) không khôi phục được, chỉ đỡ rè hơn.
+Khi dựng, âm lượng từng pha được **cân bằng** về cùng một mức (đoạn loa sân quá to được hạ xuống, đoạn sân vắng được nâng lên tối đa +4 dB, nhưng không bao giờ đến mức tiếng to nhất của đoạn bị vỡ) và mỗi chỗ nối nhỏ dần/to dần 0,12 giây cho khỏi lụp bụp. Tiếng đã vỡ sẵn trong video gốc (loa quá to lúc quay) không khôi phục được, chỉ đỡ rè hơn.
 
 Mẹo:
 

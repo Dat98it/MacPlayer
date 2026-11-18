@@ -1262,3 +1262,18 @@ Ghi nhận thêm: chữ luôn được vẽ trên mọi ảnh/lớp (thứ tự 
 
 **Chưa kiểm chứng:** chưa nghe/xem bằng app bản dựng cuối (chỉ đọc file dự án và xem ảnh từ video gốc); các pha chiếu lại khác ngoài 2 pha được chọn chỉ nằm trong gợi ý, chưa xem lại hết.
 
+
+## Bản 0.22.11 — Xem và đo bản highlight dựng xong; xem các pha chiếu lại trong gợi ý (18/11/2026)
+
+**Cách làm:** trên dự án thật "Dự án video VSC" (MacPlayer không chạy; sao lưu ngay trước, tạm đưa timeline về nguyên trận), bản debug của app tự Tìm highlight → Dựng highlight → **Xuất** (chính bộ dựng hình/tiếng của app, như khi xem) ra `vsc-highlight.mp4` trong thư mục tạm, rồi thoát; trả lại bản sao lưu — mã băm khớp e90901ef… (cả 3 lần chạy). File xuất: 1920×1080 60 fps H.264, AAC stereo 44,1 kHz, 8:42,6; giải mã trọn file không lỗi.
+
+**Lỗi tìm ra — vỡ tiếng:** đo tiếng bản xuất: 466 mẫu chạm 0 dBFS, đoạn "Pha nguy hiểm 2" lên +6 dB (đo trên bản trộn mono). Nguyên nhân: cân bằng âm lượng nâng đoạn nhỏ tới +4 dB mà không xét tiếng to nhất của đoạn (gốc có tiếng nổ −0,5 dBFS). **Sửa:** khi đọc tiếng, app ghi thêm đỉnh của từng 0,05 s; mức tăng không bao giờ làm đỉnh của đoạn vượt −2 dBFS. Lần sửa đầu đo đỉnh trên bản trộn mono của AVFoundation, nhưng bản trộn đó là (L+R)/√2, đọc tiếng giống nhau ở hai kênh cao hơn đỉnh thật 3 dB (đo bằng âm thử và trên đoạn bàn 0-1: mono +3,3 dB, hai kênh +0,3 dB, ffmpeg 0,0 dB), nên các đoạn bị hạ oan. Bản cuối đọc hai kênh: độ to tính như cũ (khớp bản mono cũ trong 0,08 dB), đỉnh là đỉnh thật từng kênh.
+
+**Kết quả bản xuất cuối:** 0 mẫu chạm 0 dBFS; đỉnh từng đoạn −0,8 đến −6 dB; độ to trung bình mỗi đoạn −21,5 đến −23,3 dB (đo trên hai kênh), riêng "Pha nguy hiểm 2" −26,8 dB (đoạn có tiếng nổ chạm 0 dBFS nên không được nâng). Chỗ nối 11 chỗ: không có bước nhảy mẫu (có fade 0,12 s). Hình đầu/cuối mỗi đoạn đúng tên: Ra sân, tung đồng xu cuối Đội hình, bảng "HIỆP 1 0-0"/"HIỆP 2 0-2" cuối Bắt đầu hiệp, các bàn từ pha tấn công tới ăn mừng, bảng "KẾT THÚC 1-3" cuối Hết trận. Hai pha nguy hiểm (24:44, 30:20) xem 2 s/khung: pha tấn công/dứt điểm trực tiếp rồi logo và chiếu lại.
+
+**Các pha chiếu lại trong "Gợi ý thêm"** (xem 1 s/khung): 40:25–40:53 pha dứt điểm trước khung thành + chiếu lại; 77:36–78:04 pha tấn công dài + chiếu lại đường chuyền, dứt điểm; 102:15–102:43 cầu thủ trắng bị phạm lỗi nằm sân, trọng tài cầm thẻ tiến tới, rồi chiếu lại. Cả ba đúng là pha đài chiếu lại, khung đúng (có diễn biến trực tiếp). Chúng là gợi ý vì phần dành cho pha bóng (sau các mốc và 4 bàn) còn khoảng 1 phút = 2 pha. Thẻ ở pha 102:15 chỉ thấy trên tay trọng tài, không có chữ trên hình, nên app không đặt nhãn thẻ (giới hạn đã biết).
+
+**Kiểm thử:** test mới `EvenSoundTests.aRaisedClipNeverClips`, `SoundClipBuildTests.eachFrameKeepsItsLoudestSample`, `aStereoSoundsPeaksAreItsOwnNotTheMonoMixs`. Toàn bộ: Core 511, Media 279, tách lời 8 — đều qua. Trận FC98 chạy lại: 7 bàn, đá phạt 15:52/19:56 như cũ; "Hết hiệp 1" kết thúc 2704 thay vì 2709 s — khoảng nghỉ ≈0,35 s giữa hai chữ ở 2703,8 s nằm sát ngưỡng 0,4 s, lưới 0,2 s lúc tính thành lặng lúc không (dump cũ ngày 17/11 cũng thấy 2 bước lặng ở đó), không do bản này.
+
+**Chưa kiểm chứng:** tai người nghe bản xuất (máy chỉ đo được mức, đỉnh, chỗ nối); nội dung lời bình luận viên ở 2704–2709 s trận FC98 (nhận dạng giọng tiếng Việt bị chặn trên máy này).
+

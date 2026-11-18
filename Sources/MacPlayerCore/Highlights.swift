@@ -27,6 +27,8 @@ public struct HighlightSignals: Equatable, Sendable {
     /// How many people stood in the picture while each set piece was set up (by its kick time, source seconds; 0.22.5): a free kick
     /// or a corner near the goal has the wall and the players waiting for the ball; a goal kick or a throw-in has a few.
     public var kickCrowd: [Double: Int] = [:]
+    /// The loudest sample of each step, dBFS (0.22.11); empty when not measured. `evenGain` keeps a clip's peak under -2 dBFS with it.
+    public var peaks: [Double] = []
     public init(start: Double, step: Double, motion: [Double], loudness: [Double] = [], people: [Double?] = [], personSpeed: [Double] = [],
                 goals: [ScoreChange] = [], thumbs: [[UInt8]] = []) {
         self.start = start; self.step = step; self.motion = motion; self.loudness = loudness; self.people = people; self.personSpeed = personSpeed
@@ -500,7 +502,12 @@ public enum HighlightFinder {
         // The average power, not the average of dB (loud moments count as loud).
         let power = s.loudness[a..<b].reduce(0) { $0 + pow(10, $1 / 10) } / Double(b - a)
         guard power > 0 else { return nil }
-        return min(4, max(-9, target - 10 * log10(power)))
+        var gain = min(4, max(-9, target - 10 * log10(power)))
+        // Never louder than the file can hold (0.22.11): a raised clip whose crowd already peaked near 0 dBFS came out clipped,
+        // heard as crackling (the VSC match: +4 dB on a clip peaking at -0.5 dB). 2 dB of room, as the peaks are measured on an
+        // 8 kHz mono mix, which can read a little under the real ones.
+        if s.peaks.count == s.count, let top = s.peaks[a..<b].max() { gain = min(gain, -2 - top) }
+        return gain
     }
 
     /// Scores as shares of the best one, and the list in timeline order.

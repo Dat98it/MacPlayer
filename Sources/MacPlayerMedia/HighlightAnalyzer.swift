@@ -117,9 +117,13 @@ public enum HighlightAnalyzer {
         try Task.checkCancellation()
 
         // The sound, as dB per sample.
-        var loud: [Double] = []
-        if let r = try? await AudioAnalysis.rms(asset: asset, range: range, frameSeconds: 0.05), !r.frames.isEmpty {
+        var loud: [Double] = [], peaks: [Double] = []
+        if let r = try? await AudioAnalysis.levels(asset: asset, range: range, frameSeconds: 0.05), !r.frames.isEmpty {
             let per = max(1, Int((step / 0.05).rounded()))
+            peaks = (0..<video.motion.count).map { i in
+                let a = min(r.peaks.count, i * per), b = min(r.peaks.count, a + per)
+                return b > a ? 20 * log10(Double(max(r.peaks[a..<b].max() ?? 0, 1e-4))) : -80
+            }
             loud = (0..<video.motion.count).map { i in
                 let a = min(r.frames.count, i * per), b = min(r.frames.count, a + per)
                 guard b > a else { return -80 }
@@ -129,7 +133,7 @@ public enum HighlightAnalyzer {
         }
         var signals = HighlightSignals(start: start, step: step, motion: video.motion, loudness: loud, people: video.people, personSpeed: video.speed,
                                 goals: video.goals, thumbs: video.thumbs)
-        signals.periods = video.periods; signals.marks = video.marks
+        signals.periods = video.periods; signals.marks = video.marks; signals.peaks = peaks
         // Before the first kick-off, a closer look for teams lined up (a second, short pass).
         if let first = video.periods.first {
             var times: [Double] = []

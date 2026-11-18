@@ -476,7 +476,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                             var hs = EditorSession.HighlightSettings(); if f.count > 1 { hs.withReplays = f[1] != "noreplay" }
                             s.findHighlights(hs)
                             for _ in 0..<2400 where s.highlightProgress != nil { try? await Task.sleep(nanoseconds: 250_000_000) }
-                            print("DEV_DO highlights \(s.highlights.count), chosen \(s.highlights.filter(\.chosen).count): \(s.highlights.filter { $0.chosen }.map { String(format: "%@%@%.1f–%.1f(%.2f)", $0.chosen ? "*" : "", $0.event.map { $0.rawValue + ":" } ?? "", $0.timeline.start.seconds, $0.timeline.end.seconds, $0.score) }.joined(separator: " "))")
+                            print("DEV_DO highlights \(s.highlights.count), chosen \(s.highlights.filter(\.chosen).count): \(s.highlights.map { String(format: "%@%@%@%.1f–%.1f(%.2f)", $0.chosen ? "*" : "", $0.replayed ? "↺" : "", $0.event.map { $0.rawValue + ":" } ?? "", $0.timeline.start.seconds, $0.timeline.end.seconds, $0.score) }.joined(separator: " "))")
                         case "makehighlight":
                             s.makeHighlight(toBeat: true)
                             print("DEV_DO made: \(s.project.timeline.count) clips, \(String(format: "%.2f", s.project.timeline.reduce(0) { $0 + $1.duration.seconds })) s: \(s.project.timeline.map { String(format: "%@ %.1f–%.1f", String($0.name.prefix(28)), $0.sourceStart.seconds, $0.sourceEnd.seconds) })")
@@ -508,7 +508,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                             req.options.mode = .exact
                             if let (jobs, _) = try? s.planExport(req) {
                                 s.env.exports.enqueue(jobs)
-                                for _ in 0..<2400 {
+                                for _ in 0..<7200 {
                                     try? await Task.sleep(nanoseconds: 250_000_000)
                                     guard let j = s.env.exports.queue.jobs.first(where: { $0.id == jobs[0].id }) else { break }
                                     if case .succeeded = j.state { print("DEV_DO exported \(j.outputPath)"); break }
@@ -519,6 +519,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                         case "pastestyle": s.pasteStyle(toAll: f.count > 1 && f[1] == "all")
                         case "lang": LanguageState.shared.set(AppLanguage(rawValue: f[1]) ?? .system)
                         case "wait": try? await Task.sleep(nanoseconds: UInt64((Double(f[1]) ?? 1) * 1e9))
+                        case "quit": NSApp.terminate(nil)   // saves and quits as ⌘Q does, once the steps before it are done
                         default: break
                         }
                         try? await Task.sleep(nanoseconds: 1_000_000_000)

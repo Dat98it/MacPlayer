@@ -11,6 +11,37 @@ import MacPlayerCore
         try TestSound.write(TestSound.samples(seconds: seconds, tones: [.init(from: 0, to: seconds, amp: amp, freq: freq)], noise: 0), name: name)
     }
 
+    @Test func eachFrameKeepsItsLoudestSample() async throws {
+        // 2 s at 0.1, then 1 s at 0.8, then 1 s at 0.1 (0.22.11: the highlight keeps a clip's peak under 0 dBFS with these).
+        let url = try TestSound.write(TestSound.samples(seconds: 4, tones: [.init(from: 0, to: 2, amp: 0.1, freq: 330), .init(from: 2, to: 3, amp: 0.8, freq: 330), .init(from: 3, to: 4, amp: 0.1, freq: 330)], noise: 0), name: "peaks.wav")
+        let r = try await AudioAnalysis.levels(asset: AVURLAsset(url: url), frameSeconds: 0.5)
+        #expect(r.peaks.count == 8)
+        #expect(r.peaks[1] < 0.2 && r.peaks[2] < 0.2, "\(r.peaks)")
+        #expect(r.peaks[4] > 0.6 && r.peaks[5] > 0.6, "\(r.peaks)")
+        #expect(r.peaks[7] < 0.2, "\(r.peaks)")
+    }
+
+    @Test func aStereoSoundsPeaksAreItsOwnNotTheMonoMixs() async throws {
+        // The same tone in both channels at 0.5: the mono mix reads it 3 dB higher; the peaks must be the real 0.5, the levels the
+        // mono mix as before (0.22.11).
+        let tone = TestSound.samples(seconds: 2, tones: [.init(from: 0, to: 2, amp: 0.5, freq: 330)], noise: 0)
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("macplayer-stereo-\(UUID().uuidString.prefix(6)).wav")
+        do {   // the file is finished when it is let go
+            let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 2, interleaved: false)!
+            let file = try AVAudioFile(forWriting: url, settings: format.settings, commonFormat: .pcmFormatFloat32, interleaved: false)
+            let buf = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(tone.count))!
+            buf.frameLength = AVAudioFrameCount(tone.count)
+            buf.floatChannelData![0].update(from: tone, count: tone.count); buf.floatChannelData![1].update(from: tone, count: tone.count)
+            try file.write(from: buf)
+        }
+        let r = try await AudioAnalysis.levels(asset: AVURLAsset(url: url), frameSeconds: 0.5)
+        #expect(r.peaks.count == 4 && r.frames.count == 4, "\(r)")
+        #expect(r.peaks.allSatisfy { abs($0 - 0.5) < 0.03 }, "\(r.peaks)")
+        // The levels are those of the one-channel read used before (measured with it on this very file: 0.379 a frame).
+        #expect(r.frames.allSatisfy { abs($0 - 0.379) < 0.01 }, "\(r.frames)")
+        #expect(abs(r.peak - 0.707) < 0.03, "\(r.peak)")
+    }
+
     private func clip(_ url: URL, at start: Double, for length: Double, kind: SoundKind = .music, _ f: (inout SoundClip) -> Void = { _ in }) -> SoundClip {
         var c = SoundClip(name: url.lastPathComponent, path: url.path, kind: kind, start: MediaTime(seconds: start, timescale: 600), duration: MediaTime(seconds: length, timescale: 600))
         f(&c); return c

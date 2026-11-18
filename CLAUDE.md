@@ -224,6 +224,12 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.22.11** `HighlightSignals.peaks` (dBFS per step) from `AudioAnalysis.levels` (rms + per-frame peaks; reads 2 channels when the
+sound has them, frames = (L+R)/√2 = AVFoundation's own mono mix, measured equal to 0.08 dB; the mono mix reads a sound alike in both
+channels 3 dB over its real peak); `evenGain` ≤ −2 − peak. The 0.22.10 VSC export had 466 samples at full scale (+4 dB on a clip peaking
+at −0.5 dB); now none. Debug: `highlight` prints all suggestions (* chosen, ↺ replayed), `export` waits 30 min, new step `quit`.
+FC98 half-time end flips between 2704 and 2709 s with the 0.2 s grid (a ~0.35 s pause between words at 2703.8): seen in old dumps too.
+
 **0.22.10** Goals placed by `loudestCall` run call−60…call+8 (VSC's 0-1: GOAL graphic ~50 s after the ball went in). A lone replay graphic
 (end−start < 4 s; a small corner logo is often seen once) gives a replayed moment from 24 s before it to 4 s after (it may open or close the
 replay). Not replayed set pieces in many-camera broadcasts stay suggestions (VSC 97:24 corner; the crowd sound did not rise: no extra signal found).

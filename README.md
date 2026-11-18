@@ -2,7 +2,7 @@
 
 Xem và chỉnh sửa **video lẫn ảnh**: cắt đoạn, ghép nhiều video, chỉnh màu chuyên nghiệp (đường cong, bánh xe màu, HSL, LUT), tách nền và mặt nạ, chuyển cảnh và keyframe, hiệu ứng giọng, chữ và hình dán, rồi xuất ngay trên Mac. Mọi xử lý diễn ra trên máy; không có tài khoản, không thu thập dữ liệu. Từ 0.15 app chỉ dùng mạng khi bạn tự dán một link video/ảnh để xem (Tệp ▸ Mở link…), ngoài ra không kết nối đi đâu.
 
-> **Trạng thái: bản 0.22.10 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). **Hướng dẫn sử dụng đầy đủ: [docs/huong-dan-su-dung.md](docs/huong-dan-su-dung.md).** Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
+> **Trạng thái: bản 0.22.11 miễn phí (MIT), ký ad-hoc, chưa notarize.** Cài đặt và chia sẻ: [MacPlayer-Cai-dat-va-chia-se.md](MacPlayer-Cai-dat-va-chia-se.md). **Hướng dẫn sử dụng đầy đủ: [docs/huong-dan-su-dung.md](docs/huong-dan-su-dung.md).** Không có thanh toán/cấp phép/tự cập nhật. Xem [docs/bao-cao-ban-giao.md](docs/bao-cao-ban-giao.md) để biết chính xác cái gì đã làm, đã kiểm thử và chưa làm.
 
 ## Yêu cầu
 
@@ -150,6 +150,7 @@ Mở một dự án video là thấy ngay bố cục quen thuộc của các app
 - **0.22.6:** pha đá phạt được đài chiếu lại mang tên **Đá phạt** (trước là Pha nguy hiểm), bắt đầu từ lúc chuẩn bị, kèm đoạn chiếu lại.
 - **0.22.7:** bắt được đá phạt nguy hiểm quay từ xa (lúc chuẩn bị cầu thủ vẫn đi lại, cú đá làm hình đổi ít): ví dụ 15:56 của trận FC98–FC 2K3. Mỗi pha đá phạt bắt đầu 8 giây trước cú đá.
 - **0.22.8:** bắt cả phạt góc/đá phạt khi Vision không thấy người trong cả hình ban đêm (ví dụ phạt góc 19:58); mọi pha đá phạt đông người đều được giữ (bỏ giới hạn 6 pha).
+- **0.22.11:** highlight dựng xong không còn vỡ tiếng: khi cân bằng âm lượng, app không tăng đoạn nào quá mức để đỉnh vượt −2 dBFS (đo đỉnh thật từng kênh). Đã xuất bản highlight trận VSC bằng app và đo: 0 mẫu chạm 0 dBFS (bản trước 466 mẫu).
 - **0.22.10:** bàn thắng trận truyền hình có cả cú ghi bàn trực tiếp khi đài báo GOAL muộn (clip bắt đầu 60 giây trước chữ GOAL); các pha đài chiếu lại có cả diễn biến trực tiếp trước logo chiếu lại. Đã xem lại từng giây 4 bàn và các pha nguy hiểm trận VSC.
 - **0.22.9 — Trận truyền hình chuyên nghiệp:** bắt bàn thắng cả khi bảng tỉ số để mỗi chữ số trong ô riêng (theo dõi hình hai ô giữa tên hai đội); định vị bàn thắng theo tiếng hô/âm thanh GOAL khi không có cặp chiếu lại; không cắt đôi hiệp khi bảng bị che; video nhiều máy quay chỉ giữ pha cố định được đài chiếu lại hoặc dẫn tới bàn thắng. Thử trên trận VSC 113 phút: 4/4 bàn, 2 hiệp đúng, không còn đá phạt nhầm.
 - **0.18.0 — Tách lời để lấy nhạc nền:** mở bài hát hoặc video rồi bấm **Tách lời**, hoặc chọn **Tệp ▸ Tách lời…**. Trong dự án, nút nằm ở bảng **Âm thanh** của đoạn hoặc bài nhạc. Chọn **Tách và lưu nhạc nền…** để lưu file `.m4a` mới (AAC stereo 256 kb/s). Có tiến trình, hủy được; đóng cửa sổ hoặc thoát app cũng hủy và dọn file dở. File gốc không bị thay đổi. Mô hình UVR MDX-Net Inst HQ 3 chạy bằng Core ML trên máy, đi kèm app; không cần Python, tài khoản hay tải bài hát lên mạng. Xử lý từng đoạn nên không cần giữ cả bài dài trong bộ nhớ. Chất lượng phụ thuộc bản phối: có thể còn một chút giọng hát hoặc giảm một số nhạc cụ.

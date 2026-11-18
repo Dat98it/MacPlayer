@@ -280,6 +280,15 @@ struct EvenSoundTests {
         #expect(abs((HighlightFinder.evenGain(s, from: 160, to: 190) ?? 0) - 4) < 0.01, "at most +4 dB")
         #expect(HighlightFinder.evenGain(HighlightSignals(start: 0, step: 0.2, motion: [0, 0, 0]), from: 0, to: 0.6) == nil)
     }
+
+    @Test func aRaisedClipNeverClips() {
+        // Quiet on average (-26 dB) but the crowd peaks at -0.5 dBFS (the VSC match): +4 dB would push it past 0 dBFS.
+        let n = 500
+        var s = HighlightSignals(start: 0, step: 0.2, motion: Array(repeating: 0.01, count: n), loudness: Array(repeating: -26, count: n))
+        s.peaks = (0..<n).map { $0 == 300 ? -0.5 : -12 }
+        #expect(abs((HighlightFinder.evenGain(s, from: 50, to: 70) ?? 0) + 1.5) < 0.01, "peak -0.5 dB: at most -1.5 dB, so it stays under -2 dBFS")
+        #expect(abs((HighlightFinder.evenGain(s, from: 0, to: 40) ?? 0) - 4) < 0.01, "peaks of -12 dB leave room for +4 dB")
+    }
 }
 
 struct PartialMatchTests {
