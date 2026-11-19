@@ -1277,3 +1277,41 @@ Ghi nhận thêm: chữ luôn được vẽ trên mọi ảnh/lớp (thứ tự 
 
 **Chưa kiểm chứng:** tai người nghe bản xuất (máy chỉ đo được mức, đỉnh, chỗ nối); nội dung lời bình luận viên ở 2704–2709 s trận FC98 (nhận dạng giọng tiếng Việt bị chặn trên máy này).
 
+
+
+## Bản 0.22.12 — Highlight gọn hơn, giữ đúng phần đọc đội hình (18/11/2026)
+
+**Yêu cầu:** bỏ Hết hiệp 1 và Bắt đầu hiệp 2; bàn thắng VSC bắt đầu quá sớm; cảnh ra sân bị lấy nhầm làm đội hình nên thiếu phần đọc tên.
+
+**Tái hiện:** dùng bản sao của “Dự án video VSC.macplayer”, tham chiếu đúng video gốc 28 SPORT – Đại Nam FC trên ổ Lexar. Chỉ trong bản sao, đưa timeline về nguyên trận để chạy lại Tìm highlight → Dựng highlight như lúc nhập video. Mỗi lần chạy app đều có `--sandbox`; không ghi vào dự án/video thật, không đăng ký dự án thử trong thư viện của người dùng. Bản 0.22.11 tạo 12 đoạn, 522,6 s: đội hình 1254–1319,6 s (chưa tới bảng đội hình), bốn đoạn bàn thắng đều 68 s, còn hai mốc giữa trận.
+
+**Nguyên nhân và sửa:**
+
+- Bỏ sự kiện Hết hiệp 1 và khai cuộc hiệp 2, giữ khai cuộc đầu trận và hết trận. Các pha thường cũng giới hạn trong thời gian thi đấu, tránh lấy tiếng còi/tiếng reo lúc nghỉ làm một pha hay.
+- Bỏ khoảng đệm một phút trước tiếng hô bàn thắng, thay bằng 12 s trước và 8 s sau. Nhận định ở báo cáo 0.22.10 rằng pha 36:45 là bàn thắng có tiếng GOAL chậm là sai: đó là cơ hội trước bàn thắng thật. Đối chiếu lại hình từng giây và lời bình chạy cục bộ bằng [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper): pha 4825 s được bình luận là chưa có bàn thắng; bàn 1-2 đến ở khoảng 4880 s; pha 4995 s bị bọc lót, bàn 1-3 đến khoảng 5018 s. Với bàn đầu, quả treo/đánh đầu nằm khoảng 2251–2258 s. Một số đoạn nhận dạng tiếng kém bị lặp, không dùng các đoạn đó làm bằng chứng.
+- `LineupReader` nhận tiêu đề bảng đội hình tiếng Việt/Anh trong lượt OCR sẵn có. Media xem kỹ vùng đó mỗi 2 s; bảng chữ được ưu tiên hơn người xếp hàng trong cảnh ra sân. Giữ hai bảng và đoạn chuyển ở giữa. Bình luận viên đọc tên sau khi bảng biến mất: giữ thêm phần tiếng (tối đa 30 s, có thể dừng ở khoảng lặng 8 s), nối liên tục vào khai cuộc nếu cần. Nhận dạng tiếng chỉ dùng để kiểm tra, không thêm Python/model/đường mạng vào app.
+
+**Luồng app sau sửa, toàn bộ trận thật:** 24 đoạn, 458 s (7:38). Đội hình 1378–1415 s, khai cuộc nối ngay 1415–1436 s, không mất những tên cuối được đọc sau khi bảng thứ hai biến mất. Bốn bàn: 2242–2262, 2652–2672, 4868–4888, 5006–5026 s; mỗi đoạn 20 s. Không còn hai mốc giữa trận trong danh sách. Có thêm các pha hay riêng vì ngân sách highlight được dành lại cho diễn biến bóng đá.
+
+**Kiểm thử:** kiểm thử hồi quy đã thất bại trước sửa cho thời điểm đội hình, mốc giữa trận và đoạn dẫn bàn thắng; sau sửa nhóm highlight 44 bài qua. Toàn bộ **800 bài** qua (513 Core + 279 Media + 8 tách lời, model chạy riêng). Bản dịch: 0 thiếu, 0 sai tham số. Ảnh cửa sổ xác nhận chữ Việt mới đủ chỗ.
+
+**Video xuất từ chính app:** 1920×1080, 60 fps, H.264 + AAC stereo 44,1 kHz; hình 458 s, tiếng 458,000522 s. Giải mã toàn bộ không lỗi; 40.396.672 mẫu âm thanh, đỉnh 0,9234, **0 mẫu chạm full scale**. Đối chiếu 7 khung hình của hai bảng đội hình, đoạn đọc tên sau bảng và bốn bàn thắng với video nguồn: sai khác trung bình 0,29–1,30/255, khớp vị trí nguồn trên timeline. SHA-256, dung lượng và thời điểm sửa của dự án/video gốc đều giữ nguyên.
+
+**Bàn giao:** đã đóng gói DMG/ZIP, kiểm SHA-256 với hướng dẫn, xác minh chữ ký ad-hoc và cài 0.22.12 (build 54) vào `/Applications/MacPlayer.app`; bản 0.22.11 cũ được giữ trong Thùng rác. Tạo hai file mới cạnh dự án gốc: `Dự án video VSC - Highlight 0.22.12.macplayer` và `VSC - Highlight 0.22.12.mp4` (7:38), không ghi đè file có sẵn. Không commit/push trong lượt này.
+
+**Giới hạn:** đây vẫn là nhận diện từ tín hiệu hình/tiếng, cần xem lại danh sách trước khi dựng; nhận bảng đội hình phụ thuộc chữ trên hình. Khi không đọc được bảng, vẫn dùng cách tìm người xếp hàng cũ. Chưa kiểm thử trên Intel.
+
+
+## Bản 0.22.13 — Giữ trọn đoạn chiếu lại sau bàn thắng (18/11/2026)
+
+**Tái hiện:** dự án VSC người bảo trì vừa dựng lại có bốn bàn dừng ở 2262, 2672, 4888 và 5026 s. Video gốc còn các đoạn chiếu lại tương ứng khoảng 2276–2292, 2688–2702, 4897–4914 và 5037–5066 s. Dùng bản sao dự án và video nguồn chỉ đọc; kiểm lại bằng ảnh theo thời gian và tín hiệu của đúng file nguồn đã lưu ở lần kiểm trước. Kiểm thử mới mô phỏng logo nhỏ trên nền sân khác nhau, hai mặt logo khác nhau lúc mở/đóng và đi qua cả bước dựng timeline; đã thất bại trước sửa.
+
+**Nguyên nhân:** nhánh bàn thắng theo tiếng hô dừng cố định sau 8 s và không gắn phần chiếu lại đến sau đó; bộ tìm logo so cả khung hình (nền sân lấn át logo nhỏ) rồi trả về ngay sau mẫu đầu tiên, bỏ sót các mặt xoay khác ở hiệu ứng đóng. Tìm được bàn thắng không đồng nghĩa đã kiểm tra được phần kết của đoạn chiếu lại.
+
+**Sửa:** vẫn giữ 12 s dẫn trước tiếng hô; tìm cặp mở/đóng của đoạn chiếu lại đầu tiên sau bàn thắng (tối đa 60 s, không lấn vào bàn kế). Khi bật tùy chọn, kéo đuôi tới hết cặp đó cộng 1,2 s để hiệu ứng đóng kết thúc hẳn. Tắt tùy chọn thì giữ pha trực tiếp ngắn. Logo được so thêm ở giữa hình bằng chính thumbnail đã có và biến đổi cục bộ; thu thập đủ các mặt xoay rồi mới ghép cặp. Giữ cách so cả khung cho chuyển cảnh toàn màn hình. Không thêm lượt giải mã hay mô hình. Các gói chiếu lại trước trận/giữa hiệp không trở thành pha hay của trận.
+
+**Kiểm thử:** toàn bộ **803 bài qua** (516 Core + 279 Media + 8 tách lời). Ba bài mới kiểm tra logo nhỏ xoay, giữ đuôi qua bước dựng/tắt tùy chọn và bỏ gói tóm tắt trước trận/giữa hiệp; có trường hợp bảng tỉ số đổi hơn 15 s trước khi chiếu lại. Bản dịch 0 thiếu, 0 sai tham số.
+
+**Luồng app trên bản sao VSC:** Tìm → Dựng → Xuất toàn bộ, dùng sandbox và video nguồn chỉ đọc. Kết quả **14 đoạn, 478,2 s (7:58)**. Bốn bàn 2242–2293,2; 2652–2703,2; 4868–4915,4; 5006–5067,2 s. Điểm bắt đầu không đổi so với 0.22.12; điểm kết thúc qua hết phần chiếu lại. Khi tắt tùy chọn trên cùng tín hiệu VSC, bốn bàn trở lại đúng 20 s. Đội hình vẫn nối liên tục 1378–1436 s, không có hai mốc giữa trận.
+
+**Bản xuất:** H.264 1920×1080 60 fps, AAC stereo 44,1 kHz, thời lượng 478,200295 s. Đối chiếu **17 khung hình** ở các góc chiếu lại và 0,1 s trước cuối mỗi đoạn với nguồn: sai khác trung bình tối đa 1,23/255. Ảnh cuối của cả bốn đoạn đều đã chuyển trở về hình trực tiếp với bảng tỉ số, không bị cắt giữa logo. SHA-256, dung lượng và thời điểm sửa của dự án/video gốc giữ nguyên. Giải mã toàn bộ không lỗi; 42.178.432 mẫu âm thanh, đỉnh 0,9552, 0 mẫu chạm full scale. Đã xác minh mã băm DMG/ZIP, chữ ký ad-hoc và cài **0.22.13 (build 55)** vào `/Applications/MacPlayer.app`, giữ bản 0.22.12 trong Thùng rác. Bàn giao hai file mới cạnh bản gốc: `Dự án video VSC - Highlight 0.22.13.macplayer` và `VSC - Highlight 0.22.13.mp4`. Không ghi đè các file cũ, không commit/push trong lượt này.

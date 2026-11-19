@@ -224,13 +224,29 @@ save, an Advanced disclosure; buttons pinned at the bottom. Export sizes limit t
 `screencapture -l <n>` (a sheet does not draw into `cacheDisplay`).
 **0.14.1** The library's Text tab shows one group at a time (`TextLibrarySection`: Styles / Presets / Shapes / Stickers, own tab buttons that
 share the panel's width — a `.segmented` Picker asked for more width than the panel and pushed the column out; `MACPLAYER_TEXT_SECTION` for snapshots).
+**0.22.13** Complete goal replays: `replays` matches whole-frame wipes plus the central 6×3 part of the 16×9 thumb for floating
+logos, using local motion too. Collects all brief recurring logo faces, merges sightings, then pairs openings/exits (the old first
+template lost rotating-logo exits). Goal-call lead stays 12 s; the first paired replay after the call (up to 60 s, before another
+goal's lead-in) extends the tail when `withReplays`, with 1.2 s for the exit animation. Disabling replays keeps the short live moment.
+Pregame/half-time recap replays do not become ordinary chances. No new media pass or model. Real VSC read-only copies and signal
+replay harness: `~/AI-Coding-Stack/overlay/MacPlayer/replay-20261118`.
+
+**0.22.12** Highlight: only the opening kick-off and full time, no half-time or second-half kick-off; ordinary action is also confined
+to play (not the break/restart). Goal-call lead-in is 12 s, not 60 s: the earlier VSC attempts were missed chances, confirmed against
+the commentary, not goals with a late GOAL sting. `LineupReader.isTable` recognises Vietnamese/English team-sheet headings in the
+existing OCR pass; `HighlightAnalyzer.lineupBoards` refines those neighbourhoods every 2 s. `HighlightSignals.lineupBoards` overrides
+the earlier row-based ceremony. Both tables stay together; up to 30 s of the spoken tail is kept (8 s sustained quiet can end it),
+split continuously at the opening kick-off if the reading runs into play. Without a table, row-based detection stays as before.
+Real-project tests run on copies under `~/AI-Coding-Stack/overlay/MacPlayer/highlight-20261118`, with `--sandbox`; originals stay read-only.
+
 **0.22.11** `HighlightSignals.peaks` (dBFS per step) from `AudioAnalysis.levels` (rms + per-frame peaks; reads 2 channels when the
 sound has them, frames = (L+R)/√2 = AVFoundation's own mono mix, measured equal to 0.08 dB; the mono mix reads a sound alike in both
 channels 3 dB over its real peak); `evenGain` ≤ −2 − peak. The 0.22.10 VSC export had 466 samples at full scale (+4 dB on a clip peaking
 at −0.5 dB); now none. Debug: `highlight` prints all suggestions (* chosen, ↺ replayed), `export` waits 30 min, new step `quit`.
 FC98 half-time end flips between 2704 and 2709 s with the 0.2 s grid (a ~0.35 s pause between words at 2703.8): seen in old dumps too.
 
-**0.22.10** Goals placed by `loudestCall` run call−60…call+8 (VSC's 0-1: GOAL graphic ~50 s after the ball went in). A lone replay graphic
+**0.22.10** Added call−60…call+8; superseded by 0.22.12 (the earlier VSC attempt was not the goal; do not restore that minute of padding).
+A lone replay graphic
 (end−start < 4 s; a small corner logo is often seen once) gives a replayed moment from 24 s before it to 4 s after (it may open or close the
 replay). Not replayed set pieces in many-camera broadcasts stay suggestions (VSC 97:24 corner; the crowd sound did not rise: no extra signal found).
 

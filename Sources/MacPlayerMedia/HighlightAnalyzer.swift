@@ -47,7 +47,7 @@ public enum HighlightAnalyzer {
         guard range.duration.seconds > step * 3 else { return HighlightSignals(start: start, step: step, motion: []) }
         let cancelled = Flag()
         let box = Box((asset, track, comp))
-        let video: (motion: [Double], people: [Double?], speed: [Double], goals: [ScoreChange], thumbs: [[UInt8]], periods: [MatchPeriod], marks: [WordMark]) = try await withTaskCancellationHandler {
+        let video: (motion: [Double], people: [Double?], speed: [Double], goals: [ScoreChange], thumbs: [[UInt8]], periods: [MatchPeriod], marks: [WordMark], tables: [Double]) = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { cont in
                 // Reading blocks its thread: its own, never the shared pool.
                 DispatchQueue.global(qos: .userInitiated).async {
@@ -69,6 +69,7 @@ public enum HighlightAnalyzer {
                         var clock = ClockReader()
                         var spotter = WordSpotter()
                         var thumbs: [[UInt8]] = []
+                        var tables: [Double] = []
                         var lastRead = -Double.infinity
                         while let sb = out.copyNextSampleBuffer() {
                             if cancelled.isSet { reader.cancelReading(); throw CancellationError() }
@@ -87,6 +88,7 @@ public enum HighlightAnalyzer {
                                 let boxes = wordBoxes(pb)
                                 let w = boxes.map { (text: $0.text, x: $0.box.midX, y: $0.box.midY) }
                                 board.add(w, at: t); clock.add(w, at: t); spotter.add(w, at: t)
+                                if LineupReader.isTable(boxes.map(\.text)) { tables.append(t) }
                                 watch.add(boxes, at: t) { grid(pb, in: $0, cols: $1, rows: $2) }
                             }
                             if t - lastLook >= peopleEvery - step / 2 {
@@ -109,7 +111,7 @@ public enum HighlightAnalyzer {
                         let periods = clock.periods()
                         var goals = board.changes()
                         if goals.isEmpty { goals = watch.goals(fromNil: periods.first?.kickoffSeen ?? false) }
-                        cont.resume(returning: (motion, people, speed, goals, thumbs, periods, spotter.events.map { WordMark(kind: $0.kind, time: $0.time) }))
+                        cont.resume(returning: (motion, people, speed, goals, thumbs, periods, spotter.events.map { WordMark(kind: $0.kind, time: $0.time) }, tables))
                     } catch { cont.resume(throwing: error) }
                 }
             }
@@ -136,6 +138,8 @@ public enum HighlightAnalyzer {
         signals.periods = video.periods; signals.marks = video.marks; signals.peaks = peaks
         // Before the first kick-off, a closer look for teams lined up (a second, short pass).
         if let first = video.periods.first {
+            let boards = video.tables.filter { first.kickoffSeen && $0 < first.kickoff && $0 >= first.kickoff - 600 }
+            signals.lineupBoards = try await lineupBoards(asset: asset, near: boards, from: range.start.seconds, to: first.kickoff, readEvery: readEvery)
             var times: [Double] = []
             // Only where it can be: before a kick-off the video shows.
             var t = max(range.start.seconds, first.kickoff - 600)
@@ -231,6 +235,29 @@ public enum HighlightAnalyzer {
 
     /// For tests: replaces the row count. Given a frame, returns how many people stand in one row.
     nonisolated(unsafe) public static var rowCounter: ((CGImage) -> Int)?
+
+    /// OCR already found a table during the main pass. Refine only its neighbourhood every 2 s, preserving both teams' tables
+    /// without paying for another OCR pass over the whole pregame. Source time stays clamped to the clip and first kick-off.
+    static func lineupBoards(asset: AVAsset, near looks: [Double], from: Double, to: Double, readEvery: Double) async throws -> [Double] {
+        guard let a = looks.min(), let b = looks.max() else { return [] }
+        let gen = AVAssetImageGenerator(asset: asset)
+        gen.appliesPreferredTrackTransform = true
+        gen.maximumSize = CGSize(width: 960, height: 960)
+        gen.requestedTimeToleranceBefore = CMTime(seconds: 0.1, preferredTimescale: 600)
+        gen.requestedTimeToleranceAfter = CMTime(seconds: 0.1, preferredTimescale: 600)
+        var out: [Double] = [], t = max(from, a - readEvery)
+        while t < min(to, b + readEvery) {
+            try Task.checkCancellation()
+            if let img = try? await gen.image(at: CMTime(seconds: t, preferredTimescale: 600)).image {
+                let req = VNRecognizeTextRequest()
+                req.recognitionLevel = .accurate; req.usesLanguageCorrection = false
+                try? VNImageRequestHandler(cgImage: img, options: [:]).perform([req])
+                if LineupReader.isTable((req.results ?? []).compactMap { $0.topCandidates(1).first?.string }) { out.append(t) }
+            }
+            t += 2
+        }
+        return out
+    }
 
     /// The times among `times` when at least `atLeast` people stand in a row. Small people far off are found by looking at six
     /// overlapping parts of a 960 px picture (the whole picture at once finds none of a lined-up team at night).

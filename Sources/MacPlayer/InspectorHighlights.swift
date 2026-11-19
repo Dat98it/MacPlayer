@@ -11,7 +11,7 @@ struct HighlightCard: View {
 
     var body: some View {
         ToolCard(title: L("Highlight"), icon: "flame") {
-            Text(L("Finds the goals, the other parts of a match (walk-out, line-ups, kick-offs, cards, whistles) and the best action, and works out the length by itself. Look the list over, then make the highlight. Everything is looked at on this Mac."))
+            Text(L("Finds the goals, walk-out, team line-ups, opening kick-off, cards, full time and the best action. Leaves out the half-time break and second-half kick-off. Look the list over, then make the highlight. Everything is looked at on this Mac."))
                 .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
             Toggle(L("Add the broadcast's replay after goals"), isOn: Binding(get: { settings.value.withReplays }, set: { v in
                 settings.value.withReplays = v

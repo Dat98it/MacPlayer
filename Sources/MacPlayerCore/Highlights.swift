@@ -24,6 +24,8 @@ public struct HighlightSignals: Equatable, Sendable {
     public var marks: [WordMark] = []
     /// When people stood in a row (two teams lined up) before the first kick-off or after the final whistle (0.22.2), source seconds.
     public var lineups: [Double] = []
+    /// Pregame line-up tables read on the picture, sampled every 2 s. A table takes precedence over people standing in a row.
+    public var lineupBoards: [Double] = []
     /// How many people stood in the picture while each set piece was set up (by its kick time, source seconds; 0.22.5): a free kick
     /// or a corner near the goal has the wall and the players waiting for the ball; a goal kick or a throw-in has a few.
     public var kickCrowd: [Double: Int] = [:]
@@ -170,41 +172,61 @@ public enum HighlightFinder {
     public static func replays(_ s: HighlightSignals) -> [(start: Double, end: Double)] {
         let n = s.count
         guard s.thumbs.count == n, n > 50 else { return [] }
-        func distance(_ a: [UInt8], _ b: [UInt8]) -> Int { var d = 0; for i in a.indices { d += abs(Int(a[i]) - Int(b[i])) }; return d / max(1, a.count) }
-        // The samples with the most change (the top 2 %, at least a clear change) are where a graphic may be.
-        let sorted = s.motion.sorted()
-        let high = max(0.08, sorted[min(n - 1, Int(Double(n) * 0.98))])
-        let candidates = (0..<n).filter { s.motion[$0] >= high }
-        guard candidates.count >= 4 else { return [] }
-        let apart = Int(3 / s.step)
-        // Candidates that match the most others (seen elsewhere), best first.
-        let matches = candidates.map { c in candidates.filter { abs($0 - c) > apart && distance(s.thumbs[c], s.thumbs[$0]) < 15 }.count }
-        var tried = Set<Int>()
-        for k in candidates.indices.sorted(by: { matches[$0] > matches[$1] }) where matches[k] >= 3 {
-            let ref = s.thumbs[candidates[k]]
-            if tried.contains(where: { distance(s.thumbs[$0], ref) < 15 }) { continue }
-            tried.insert(candidates[k])
-            // Every showing of it.
-            var shows: [(a: Int, b: Int)] = []
-            for i in 0..<n where distance(s.thumbs[i], ref) < 20 {
-                if let l = shows.last, i - l.b <= Int(1 / s.step) { shows[shows.count - 1].b = i } else { shows.append((i, i)) }
-            }
-            // A graphic is brief every time; a view that stays is not one.
-            guard shows.count >= 4, shows.allSatisfy({ Double($0.b - $0.a) * s.step <= 2.5 }) else { continue }
-            var out: [(start: Double, end: Double)] = []
-            var i = 0
-            while i < shows.count {
-                let open = s.time(shows[i].a)
-                if i + 1 < shows.count {
-                    let gap = s.time(shows[i + 1].a) - open
-                    if gap >= 4 && gap <= 40 { out.append((open, s.time(shows[i + 1].b) + s.step)); i += 2; continue }
-                }
-                out.append((open, s.time(shows[i].b) + s.step))
-                i += 1
-            }
-            return out
+        guard let size = s.thumbs.first?.count, size > 0, s.thumbs.allSatisfy({ $0.count == size }) else { return [] }
+        func distance(_ a: [UInt8], _ b: [UInt8]) -> Int {
+            var d = 0; for i in a.indices { d += abs(Int(a[i]) - Int(b[i])) }; return d / a.count
         }
-        return []
+        let high = max(0.08, s.motion.sorted()[min(n - 1, Int(Double(n) * 0.98))])
+        var appearances: [(start: Double, end: Double)] = []
+        func scan(_ pictures: [[UInt8]], match: Int, showing: Int, localChange: Bool) {
+            // Floating logos change little of the whole picture. Their own motion is a better candidate signal; the background
+            // differs at every showing. Whole-frame matching remains for full-screen replay wipes.
+            let change = localChange ? [0.0] + (1..<n).map { Double(distance(pictures[$0], pictures[$0 - 1])) / 255 } : []
+            let localHigh = localChange ? max(0.08, change.sorted()[min(n - 1, Int(Double(n) * 0.98))]) : .infinity
+            let candidates = (0..<n).filter { s.motion[$0] >= high || (localChange && change[$0] >= localHigh) }
+            guard candidates.count >= 4 else { return }
+            let apart = max(1, Int(3 / s.step))
+            let matches = candidates.map { c in candidates.filter { abs($0 - c) > apart && distance(pictures[c], pictures[$0]) < match }.count }
+            var tried: [Int] = []
+            for k in candidates.indices.sorted(by: { matches[$0] > matches[$1] }) where matches[k] >= 3 {
+                let ref = pictures[candidates[k]]
+                if tried.contains(where: { distance(pictures[$0], ref) < match }) { continue }
+                tried.append(candidates[k])
+                var shows: [(a: Int, b: Int)] = []
+                for i in 0..<n where distance(pictures[i], ref) < showing {
+                    if let l = shows.last, Double(i - l.b) * s.step <= 1 { shows[shows.count - 1].b = i } else { shows.append((i, i)) }
+                }
+                // A stable view of the pitch or a close-up stays; a transition is brief every time.
+                guard shows.count >= 4, shows.allSatisfy({ Double($0.b - $0.a) * s.step <= 2.5 }) else { continue }
+                appearances += shows.map { (s.time($0.a), s.time($0.b) + s.step) }
+                // Keep looking: a rotating logo has different faces at opening/closing. The first template alone loses exits.
+            }
+        }
+        scan(s.thumbs, match: 15, showing: 20, localChange: false)
+        if size == 16 * 9 * 3 {
+            let middle = s.thumbs.map { p -> [UInt8] in
+                var out: [UInt8] = []
+                for y in 3..<6 { for x in 5..<11 { out += p[(y * 16 + x) * 3..<(y * 16 + x + 1) * 3] } }
+                return out
+            }
+            scan(middle, match: 10, showing: 14, localChange: true)
+        }
+        // Merge sightings of the same animation before pairing, so its different faces are not separate replay boundaries.
+        var shows: [(start: Double, end: Double)] = []
+        for a in appearances.sorted(by: { $0.start < $1.start }) {
+            if let l = shows.last, a.start - l.end <= 1.5 { shows[shows.count - 1].end = max(l.end, a.end) }
+            else { shows.append(a) }
+        }
+        shows.removeAll { $0.end - $0.start > 3.5 }
+        var out: [(start: Double, end: Double)] = [], i = 0
+        while i < shows.count {
+            if i + 1 < shows.count {
+                let gap = shows[i + 1].start - shows[i].start
+                if gap >= 4 && gap <= 40 { out.append((shows[i].start, shows[i + 1].end)); i += 2; continue }
+            }
+            out.append(shows[i]); i += 1
+        }
+        return out
     }
 
     /// The loudest 2 s between `from` and `to` (source seconds) when it stands far above the rest (at least 12 dB over the middle
@@ -271,12 +293,14 @@ public enum HighlightFinder {
         // 1.2 s before a replay's graphic is recognised: it fades in about half a second before.
         var replays = replays(s)
         let shownAgain = replays
+        // Recognition sees one face of a turning/fading logo, not necessarily the last frame of its exit animation.
+        let replayExit = 1.2
         var inReplay = Array(repeating: false, count: n)
         for r in replays {
-            let a = max(0, Int((r.start - s.start) / s.step)), b = min(n - 1, Int((r.end - s.start) / s.step))
+            let a = max(0, Int((r.start - s.start) / s.step)), b = min(n - 1, Int((r.end + replayExit - s.start) / s.step))
             if a <= b { for i in a...b { inReplay[i] = true } }
         }
-        // The parts of a match: walking out, each kick-off and the whistle at its end (from the match clock), cards and VAR checks
+        // The parts of a match: walking out, the opening kick-off and the final whistle, cards and VAR checks
         // (from words on the picture). Each always worth more than any action.
         func event(_ kind: MatchEventKind, _ a: Double, _ b: Double, detail: String? = nil) {
             let start = max(first, a), end = min(last, b)
@@ -285,17 +309,16 @@ public enum HighlightFinder {
         }
         // After a whistle the commentator speaks: quiet is 20 dB under the talk around the whistle; never into the next kick-off;
         // without sound, 6 s.
-        func talkEnds(after e: Double, before next: Double, firstPhrase: Bool) -> Double {
-            guard s.loudness.count == n else { return min(e + 6, next) }
+        func talkEnds(after e: Double) -> Double {
+            guard s.loudness.count == n else { return e + 6 }
             func at(_ t: Double) -> Int { max(0, min(n - 1, Int((t - s.start) / s.step))) }
             let around = s.loudness[at(e - 5)...at(e + 10)].sorted()
             let talk = around[around.count / 2]
             var quiet = 0
-            // At half-time only the first sentence (the whistle, "end of the first half"): it ends at the first pause between words
-            // (0.4 s); the score read after it is left out. At full time, until the talk stops (2 s): the final result is in.
-            let pause = firstPhrase ? 0.4 : 2.0
-            var t = e + (firstPhrase ? 2 : 3)
-            let limit = min(last, e + (firstPhrase ? 15 : 40), next)
+            // Keep the result read out after full time; pauses between words are not the end.
+            let pause = 2.0
+            var t = e + 3
+            let limit = min(last, e + 40)
             while t < limit {
                 if s.loudness[at(t)] < talk - 20 { quiet += 1; if Double(quiet) * s.step >= pause - 1e-9 { return max(e + 4, t - Double(quiet - 1) * s.step) } } else { quiet = 0 }
                 t += s.step
@@ -304,12 +327,37 @@ public enum HighlightFinder {
         }
         // A video may start late (no walk-out, no kick-off: a stream that began after it) or stop early (a stream cut before the
         // whistle): what is not in it is simply not there, and the rest is found as usual.
+        let firstTables = s.periods.first.map { p in
+            s.lineupBoards.filter { p.kickoffSeen && $0 >= first && $0 < p.kickoff && $0 > p.kickoff - 900 }.sorted()
+        } ?? []
+        // The commentator may still be naming the second team after its table disappears. Keep that tail continuously into the
+        // opening kick-off; a gap between the two cuts would swallow names. With no speech recognition, allow up to 30 s, ending
+        // at a sustained quiet if one is present (pauses between names can last several seconds).
+        var tableTalkEnd: Double?
+        if let a = firstTables.first, let b = firstTables.last {
+            tableTalkEnd = min(last, b + 30)
+            if s.loudness.count == n {
+                func at(_ t: Double) -> Int { max(0, min(n - 1, Int((t - s.start) / s.step))) }
+                let level = s.loudness[at(a)...at(b)].sorted()
+                let usual = level[level.count / 2]
+                var quiet = 0, t = b + 2
+                while t < min(last, b + 38) {
+                    if s.loudness[at(t)] < usual - 20 {
+                        quiet += 1
+                        if Double(quiet) * s.step >= 8 - 1e-9 { tableTalkEnd = max(b + 2, t - Double(quiet - 1) * s.step); break }
+                    } else { quiet = 0 }
+                    t += s.step
+                }
+            }
+        }
         let lastPeriod = s.periods.count - 1
         for (k, p) in s.periods.enumerated() {
-            if p.kickoffSeen && p.kickoff >= first - 2 { event(.kickoff, p.kickoff - 5, p.kickoff + 8) }
+            if k == 0 && p.kickoffSeen && p.kickoff >= first - 2 {
+                event(.kickoff, max(p.kickoff - 5, min(p.kickoff, tableTalkEnd ?? -.infinity)), max(p.kickoff + 8, tableTalkEnd ?? -.infinity))
+            }
             // The whistle is in the video only if the video goes on after the clock stopped (else the stream ended during play).
-            if k < lastPeriod || p.end <= last - 20 {
-                event(k == lastPeriod ? .fullTime : .halfTime, p.end - 10, talkEnds(after: p.end, before: k < lastPeriod ? s.periods[k + 1].kickoff - 6 : .infinity, firstPhrase: k < lastPeriod))
+            if k == lastPeriod && p.end <= last - 20 {
+                event(.fullTime, p.end - 10, talkEnds(after: p.end))
             }
         }
         // Before the first kick-off, the times the teams stood in a row make runs (looks under 6 s apart): the first is the walk out
@@ -322,8 +370,15 @@ public enum HighlightFinder {
         if let p0 = s.periods.first, p0.kickoffSeen {
             let k = p0.kickoff
             let before = runs(s.lineups.filter { $0 < k - 10 && $0 > k - 900 })
-            if let w = before.first { event(.walkout, w.a - 3, min(w.a + 25, k - 6, before.count > 1 ? before[1].a - 1.5 : .infinity)) }
-            if before.count > 1 {
+            let tables = firstTables
+            if let w = before.first {
+                event(.walkout, w.a - 3, min(w.a + 25, k - 6, tables.first.map { $0 - 2 } ?? (before.count > 1 ? before[1].a - 1.5 : .infinity)))
+            }
+            if let a = tables.first, let end = tableTalkEnd {
+                // Both teams' tables belong together, including the transition and the reading between them. They are stronger
+                // evidence than a row of players during the walk-out; do not end at a pause between names or at k - 10.
+                event(.lineup, a - 2, min(k, end))
+            } else if before.count > 1 {
                 // The line-up runs on after the last look of the row (the camera goes along the players, the handshakes, the toss):
                 // until the loudspeaker falls silent (6 s at least 20 dB under its level while the teams stood there: the reader's pauses
                 // between names last 2–4 s), else a minute on;
@@ -357,22 +412,26 @@ public enum HighlightFinder {
         // Goals first. With replays, the goal is the action just before the replay nearest to the moment the new score was first read
         // (from 90 s before the old score was last read: the scoreboard is put right by hand, at times a minute late): 25 s, so the
         // attack that led to it, the shot and the cheering are in. Without, the most exciting moment of the 90 s before the new score was read.
-        for g in s.goals {
+        let goalCalls = s.goals.map { loudestCall(s, from: $0.firstNew - 120, to: $0.firstNew + 5) }
+        for (gi, g) in s.goals.enumerated() {
             var start: Double, end: Double
-            // Only a replay seen to open and close (a pair of the graphic) places a goal: a lone graphic may be another one (a
-            // broadcast's logo before a goal it then replays: the goal came after it).
-            if let k = replays.indices.filter({ replays[$0].end - replays[$0].start >= 4 && replays[$0].start >= g.lastOld - 90 && replays[$0].start <= g.firstNew + 15 })
+            if let call = goalCalls[gi] {
+                // The live goal and the replay have separate boundaries: a short lead-in must not also shorten the replay's tail.
+                start = call - 12; end = call + 8
+                let next = goalCalls.dropFirst(gi + 1).compactMap { $0 }.min() ?? .infinity
+                if let k = replays.indices.filter({ replays[$0].end - replays[$0].start >= 4
+                    && replays[$0].start >= call - 2 && replays[$0].start <= min(call + 60, next - 12) && replays[$0].end + replayExit <= next - 12 })
+                    .min(by: { replays[$0].start < replays[$1].start }) {
+                    end = withReplays ? max(end, replays[k].end + replayExit) : min(end, replays[k].start - 1.2)
+                    replays.remove(at: k)
+                }
+            // Without a call, a paired replay places the goal. A lone graphic may belong to a previous chance.
+            } else if let k = replays.indices.filter({ replays[$0].end - replays[$0].start >= 4 && replays[$0].start >= g.lastOld - 90 && replays[$0].start <= g.firstNew + 15 })
                 .min(by: { abs(replays[$0].start - g.firstNew) < abs(replays[$1].start - g.firstNew) }) {
                 start = replays[k].start - 1.2 - 25
                 // With the replay: the whole of it after the goal, so a viewer who missed the action sees all of it again.
-                end = withReplays ? replays[k].end : replays[k].start - 1.2
+                end = withReplays ? replays[k].end + replayExit : replays[k].start - 1.2
                 replays.remove(at: k)
-            } else if let call = loudestCall(s, from: g.firstNew - 120, to: g.firstNew + 5) {
-                // No replay to go by (0.22.9): the goal is called. A broadcast's commentator and its goal sound (the "GOAL" graphic
-                // as the score changes) make the loudest moment by far around a goal: right after the ball went in, or up to about
-                // 50 s later, once the cheering and a replay have been shown (0.22.10: a late call left out the live goal at 40 s).
-                // From 60 s before the call (the attack and the shot are in either way, and the replay when there is one) to 8 s after.
-                start = call - 60; end = call + 8
             } else {
                 let a = max(0, Int(((g.firstNew - 90) - s.start) / s.step)), b = min(n - 1, Int(((g.firstNew - 3) - s.start) / s.step))
                 // The goal is the last of the most exciting moments before the board changed (an earlier one, as exciting, came
@@ -391,10 +450,15 @@ public enum HighlightFinder {
         // wall and the ball being placed are in; the replay stays after it.
         let kicks = setPieceKicks(s)
         for r in replays {
+            // Better logo recognition also sees pregame/half-time recap packages. They are not live chances from this match.
+            // Goal replays have already been attached above, including a goal just before the whistle.
+            guard s.periods.isEmpty || s.periods.enumerated().contains(where: {
+                r.start >= $0.element.kickoff + ($0.offset == 0 ? 0 : 8) && r.start < $0.element.end
+            }) else { continue }
             // A lone graphic (seen once, 0.22.10) may open the replay or close it: from 24 s before it (the action, live, either
             // way) to 4 s after.
             let lone = r.end - r.start < 4
-            let end = min(last, lone ? (withReplays ? r.start + 4 : r.start - 1.2) : (withReplays ? r.end : r.start - 1.2))
+            let end = min(last, lone ? (withReplays ? r.start + 4 : r.start - 1.2) : (withReplays ? r.end + replayExit : r.start - 1.2))
             var start = max(first, r.start - 1.2 - (lone ? 22.8 : 12))
             let kick = kicks.last { $0 >= start - 2 && $0 < r.start - 1 }
             if let k = kick {
@@ -443,6 +507,10 @@ public enum HighlightFinder {
             let peak = sc[p]
             guard peak > threshold else { break }
             let t = s.time(p) + s.step / 2
+            // Leaving out the two half-time events also means leaving out their cheers/whistles as ordinary action. Keep action
+            // within a period of play; after the first half, skip the opening 8 s (the restart the highlight no longer needs).
+            let period = s.periods.enumerated().first { t >= $0.element.kickoff + ($0.offset == 0 ? 0 : 8) && t < $0.element.end }
+            guard s.periods.isEmpty || period != nil else { continue }
             guard !inReplay[p], !taken.contains(where: { t >= $0.start && t <= $0.end }) else { continue }
             // Only the top of a rise counts: the tail of an action that was already taken is not an action of its own.
             let reach = max(1, Int(minGap / s.step))
@@ -463,6 +531,7 @@ public enum HighlightFinder {
             if let c = cutTimes.filter({ $0 > start && $0 <= t }).max() { start = c }
             if let c = cutTimes.filter({ $0 > t && $0 < end }).min() { end = c }
             start = max(first, start); end = min(last, end)
+            if let p = period { start = max(start, p.element.kickoff + (p.offset == 0 ? 0 : 8)); end = min(end, p.element.end) }
             // Not into a moment already taken, nor into a replay.
             for o in taken {
                 if o.end > start && o.end <= t { start = o.end }
@@ -516,8 +585,8 @@ public enum HighlightFinder {
         return items.map { var x = $0; x.score = best > 0 ? max(0, $0.score / best) : 0; return x }.sorted { $0.timeline.start < $1.timeline.start }
     }
 
-    /// The highlight chosen with no setting to make (0.22.3): every part of the match (walk-out, line-up, kick-offs, goals, cards,
-    /// substitutions, whistles); the whole highlight about a tenth of what was looked at (`seconds`; 30 s…8 min); what the parts leave
+    /// The highlight chosen with no setting to make: the walk-out, line-up, opening kick-off, goals, cards, substitutions and full
+    /// time; the whole highlight about a tenth of what was looked at (`seconds`; 30 s…8 min); what the parts leave
     /// goes to the play itself (at least 2 % of the video, up to a minute, so a match full of goals still shows a few chances): first
     /// what the broadcast replayed (it chose them), then clear action (at least half as exciting as the best moment), best first.
     public static func autoChoose(_ items: inout [HighlightFound], seconds: Double) {

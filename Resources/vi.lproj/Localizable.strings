@@ -1804,7 +1804,7 @@
 "Find highlight" = "Tìm highlight";
 "Looking for the highlight…" = "Đang tìm highlight…";
 "Looks at every clip (or the selected ones) and chooses the highlight" = "Xem mọi đoạn (hoặc các đoạn đang chọn) rồi tự chọn highlight";
-"Finds the goals, the other parts of a match (walk-out, line-ups, kick-offs, cards, whistles) and the best action, and works out the length by itself. Look the list over, then make the highlight. Everything is looked at on this Mac." = "Tự tìm bàn thắng, các mốc của trận (ra sân, đội hình, bắt đầu hiệp, thẻ phạt, hết hiệp, hết trận) và các pha hay nhất, tự tính độ dài phù hợp. Xem lại danh sách rồi bấm Dựng highlight. Mọi thứ được xem ngay trên máy này.";
+"Finds the goals, walk-out, team line-ups, opening kick-off, cards, full time and the best action. Leaves out the half-time break and second-half kick-off. Look the list over, then make the highlight. Everything is looked at on this Mac." = "Tự tìm bàn thắng, ra sân, đội hình hai đội, khai cuộc, thẻ phạt, hết trận và các pha hay. Bỏ phần hết hiệp 1 và bắt đầu hiệp 2. Xem lại danh sách rồi bấm Dựng highlight. Mọi thứ được xem ngay trên máy này.";
 "Highlight ready: %d moments, %@. Look it over, then make it." = "Đã chọn xong highlight: %d đoạn, %@. Xem lại rồi bấm Dựng highlight.";
 "%d moments: the highlight will be %@ long." = "%d đoạn: highlight sẽ dài %@.";
 "More suggestions (%d)" = "Gợi ý thêm (%d)";

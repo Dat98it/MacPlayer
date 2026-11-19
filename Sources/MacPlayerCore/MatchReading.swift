@@ -1,5 +1,22 @@
 import Foundation
 
+/// Recognises an actual line-up graphic, rather than mistaking the walk-out/handshakes for the announced team sheets.
+public enum LineupReader {
+    public static func isTable(_ texts: [String]) -> Bool {
+        let words = texts.map {
+            $0.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+                .uppercased().replacingOccurrences(of: "Đ", with: "D")
+        }
+        let title = words.joined(separator: " ")
+        let tokens = Set(title.split(whereSeparator: { !$0.isLetter }).map(String.init))
+        let starters = title.contains("CHINH THUC") || title.contains("STARTING") || title.contains("STARTERS")
+        let bench = title.contains("DU BI") || tokens.contains("SUBSTITUTES") || tokens.contains("SUBS")
+        let lineup = title.contains("DOI HINH") || title.contains("LINE-UP") || title.contains("LINE UP") || title.contains("LINEUP")
+        let numbers = words.filter { Int($0.trimmingCharacters(in: .whitespaces)).map { (1...99).contains($0) } ?? false }.count
+        return (starters && bench) || ((starters || lineup) && numbers >= 5)
+    }
+}
+
 // MARK: The match clock and words on the picture (0.22.2)
 
 /// A stretch of play read from the match clock on a scoreboard: when the clock started running (kick-off) and when it stopped

@@ -195,8 +195,8 @@ struct ReplayTests {
         s.goals = [ScoreChange(from: (0, 0), to: (0, 1), lastOld: 90, firstNew: 130)]
         let m = HighlightFinder.moments(s)
         let goal = m.first { $0.goal == "0-1" }
-        #expect(goal.map { abs($0.end - 116.6) < 0.3 && abs($0.start - 73.8) < 0.3 } == true, "25 s before the replay, and the replay: \(String(describing: goal))")
-        #expect(m.contains { $0.replayed && $0.goal == nil && abs($0.end - 209.4) < 0.3 }, "the other replay gives a moment too")
+        #expect(goal.map { $0.end >= 117.6 && $0.end <= 119 && abs($0.start - 73.8) < 0.3 } == true, "the whole replay and exit animation: \(String(describing: goal))")
+        #expect(m.contains { $0.replayed && $0.goal == nil && $0.end >= 210.4 && $0.end <= 212 }, "the other replay also keeps its exit")
         #expect(m.filter { $0.start < 116 && $0.end > 101 }.count == 1, "nothing else inside a replay")
         let short = HighlightFinder.moments(s, withReplays: false).first { $0.goal == "0-1" }
         #expect(short.map { abs($0.end - 98.8) < 0.3 } == true, "without replays the goal ends before the replay")
@@ -262,13 +262,13 @@ struct MatchReadingTests {
         for i in 0..<n where (q.time(i) >= 92 && q.time(i) < 95) || (q.time(i) >= 100 && q.time(i) < 108) { q.loudness[i] = -60 }
         let lq = HighlightFinder.moments(q).first { $0.event == .lineup }
         #expect(lq.map { abs($0.end - 100) < 0.3 } == true, "a 3 s pause between names is not the end: \(String(describing: lq))")
-        #expect(m.filter { $0.event == .kickoff }.count == 2 && one(.halfTime) != nil && one(.fullTime) != nil && !m.contains { $0.start > 566 })
+        #expect(m.filter { $0.event == .kickoff }.count == 1 && one(.halfTime) == nil && one(.fullTime) != nil && !m.contains { $0.start > 566 })
         #expect(one(.yellowCard).map { $0.start < 200 && $0.end > 200 } == true, "the foul before the card graphic")
         #expect(one(.substitution).map { $0.start < 450 && $0.end > 455 } == true)
         var found = m.map { HighlightFound(clipID: UUID(), source: TimeSpan(start: MediaTime(seconds: $0.start), end: MediaTime(seconds: $0.end)),
                                           timeline: TimeSpan(start: MediaTime(seconds: $0.start), end: MediaTime(seconds: $0.end)), score: $0.score, event: $0.event) }
         HighlightFinder.choose(&found, target: 10)
-        #expect(found.filter(\.chosen).count >= 7, "every part of the match is kept, whatever the length")
+        #expect(found.filter(\.chosen).count == 6, "the opening, goals/cards and full time stay; the half-time break is left out")
     }
 }
 
@@ -355,14 +355,57 @@ struct WhistleTalkTests {
         return s
     }
 
-    @Test func halfTimeKeepsOnlyTheFirstSentence() {
-        let half = HighlightFinder.moments(signals(halfAndFull: true)).first { $0.event == .halfTime }
-        #expect(half.map { abs($0.start - 290) < 0.01 && abs($0.end - 304) < 0.3 } == true, "\(String(describing: half))")
+    @Test func theBreakAndSecondKickoffAreLeftOutEvenWhenTheyAreLoud() {
+        var s = signals(halfAndFull: true)
+        for i in 0..<s.count where (s.time(i) >= 301 && s.time(i) < 310) || (s.time(i) >= 398 && s.time(i) < 406) {
+            s.motion[i] = 0.15; s.loudness[i] = -2
+        }
+        let m = HighlightFinder.moments(s)
+        #expect(!m.contains { $0.event == .halfTime })
+        #expect(m.filter { $0.event == .kickoff }.count == 1)
+        #expect(!m.contains { $0.start < 408 && $0.end > 300 }, "the break must not come back as ordinary action: \(m)")
     }
 
     @Test func fullTimeKeepsTheResultReadOut() {
         let full = HighlightFinder.moments(signals(halfAndFull: false)).first { $0.event == .fullTime }
         #expect(full.map { abs($0.end - 316) < 0.3 } == true, "the 0.4 s pause is not the end: \(String(describing: full))")
+    }
+}
+
+struct BroadcastLineupTests {
+    @Test func tableHeadingsAreReadInVietnameseAndEnglish() {
+        #expect(LineupReader.isTable(["CHÍNH THỨC", "DỰ BỊ", "28 SPORT"]))
+        #expect(LineupReader.isTable(["Starting XI", "Substitutes"]))
+        #expect(LineupReader.isTable(["Đội hình", "1", "4", "5", "7", "9"]))
+        #expect(!LineupReader.isTable(["TRỰC TIẾP", "CÚP BÓNG ĐÁ", "28 SPORT", "ĐẠI NAM FC"]))
+        #expect(!LineupReader.isTable(["Starting soon", "7", "2026"]))
+        #expect(!LineupReader.isTable(["Starting soon", "Subscribe"]))
+    }
+    @Test func theActualTablesReplaceTheEarlierCeremonyAndKeepBothTeams() {
+        // VSC's measured layout: walk-out and handshakes at 20:25–21:00, tables at 23:00–23:26,
+        // separated by a 4 s transition. The old row-based line-up ended at 21:59, missing both tables.
+        let n = 7200
+        var s = HighlightSignals(start: 0, step: 0.2, motion: Array(repeating: 0.01, count: n), loudness: Array(repeating: -20, count: n))
+        s.periods = [MatchPeriod(kickoff: 1415, end: 1439)]
+        s.lineups = [1225, 1227, 1229, 1231, 1255, 1257, 1259, 1261]
+        s.lineupBoards = Array(stride(from: 1380.0, through: 1394, by: 2)) + Array(stride(from: 1400.0, through: 1406, by: 2))
+        // A short pause between the teams must not cut the reading off.
+        for i in s.loudness.indices where s.time(i) >= 1395 && s.time(i) < 1399 { s.loudness[i] = -60 }
+        let c = TimelineClip(sourceID: UUID(), sourceStart: .zero, sourceEnd: MediaTime(seconds: 1440), name: "Match")
+        var found = HighlightFinder.normalize(HighlightFinder.found(in: c, clipStart: .zero, signals: s))
+        HighlightFinder.autoChoose(&found, seconds: 1440)
+        let lineup = found.filter { $0.event == .lineup }
+        #expect(lineup.count == 1)
+        #expect(lineup.first.map { $0.source.start.seconds <= 1378 && $0.source.end.seconds >= 1408 } == true, "\(lineup)")
+        let opening = found.first { $0.event == .kickoff }
+        #expect(opening.map { $0.source.end.seconds >= 1426 && $0.source.start == lineup.first?.source.end } == true,
+                "the last names are read after the table, continuously into kick-off: \(String(describing: opening))")
+        var p = Project(name: "Match", kind: .video); p.timeline = [c]
+        let names = Dictionary(uniqueKeysWithValues: found.map { ($0.id, $0.event?.rawValue ?? "play") })
+        TimelineCuts.keepHighlights(&p, found, clips: [c.id], ripple: true, names: names)
+        let kept = p.timeline.first { $0.name == "lineup" }
+        #expect(kept.map { $0.sourceStart.seconds <= 1378 && $0.sourceEnd.seconds >= 1408 } == true)
+        if let kept { #expect(p.timeline.first { $0.name == "walkout" }.map { $0.sourceEnd <= kept.sourceStart } == true) }
     }
 }
 
@@ -573,6 +616,61 @@ struct RealClockLooksTests {
 }
 
 struct GoalCallTests {
+    private func smallLogoBroadcast() -> HighlightSignals {
+        let n = 2300
+        var s = HighlightSignals(start: 0, step: 0.2, motion: Array(repeating: 0.01, count: n), loudness: Array(repeating: -25, count: n))
+        let openings = [100.0, 200, 300, 400], closings = [116.0, 218, 330, 416]
+        // The logo floats over different camera views, with different faces of the rotating logo at its opening and closing.
+        // Whole-picture matching and stopping at the first matching face both lose the closing transition.
+        s.thumbs = (0..<n).map { i in
+            let t = s.time(i), view = Int(t / 7) % 5
+            var pic = (0..<432).map { k in UInt8([45 + view * 18, 100 + view * 18, 35 + view * 18][k % 3]) }
+            let open = openings.contains { t >= $0 && t < $0 + 1.2 }, close = closings.contains { t >= $0 && t < $0 + 1.2 }
+            if open || close {
+                for y in 3..<6 { for x in 5..<11 { for c in 0..<3 {
+                    pic[(y * 16 + x) * 3 + c] = UInt8((x + y) % 2 == 0 ? (open ? [20, 80, 230][c] : [230, 120, 20][c]) : [240, 240, 240][c])
+                } } }
+            }
+            return pic
+        }
+        for i in 0..<n where s.time(i) >= 85 && s.time(i) < 88 { s.loudness[i] = -4 }
+        // The board changes early; the replay starts more than 15 s later (VSC's 0-2 used to miss that association too).
+        s.goals = [ScoreChange(from: (0, 0), to: (0, 1), lastOld: 80, firstNew: 84)]
+        return s
+    }
+
+    @Test func aSmallRotatingLogoOverDifferentPicturesFindsBothReplayTransitions() {
+        let r = HighlightFinder.replays(smallLogoBroadcast())
+        for (a, b) in [(100.0, 116.0), (200, 218), (300, 330), (400, 416)] {
+            #expect(r.contains { abs($0.start - a) < 0.3 && $0.end >= b + 1 }, "both faces of the floating logo: \(r)")
+        }
+    }
+
+    @Test func aGoalKeepsItsShortLeadInAndTheWholeLaterReplayOnlyWhenRequested() {
+        let s = smallLogoBroadcast()
+        let c = TimelineClip(sourceID: UUID(), sourceStart: .zero, sourceEnd: MediaTime(seconds: 460), name: "Match")
+        let with = HighlightFinder.found(in: c, clipStart: .zero, signals: s, withReplays: true)
+        let short = HighlightFinder.found(in: c, clipStart: .zero, signals: s, withReplays: false)
+        let a = with.first { $0.goal == "0-1" }, b = short.first { $0.goal == "0-1" }
+        #expect(a.map { $0.source.start.seconds >= 72 && $0.source.start.seconds <= 75 && $0.source.end.seconds >= 118 } == true,
+                "short lead-in, all replay angles and the exit transition: \(String(describing: a))")
+        #expect(b.map { $0.source.start == a?.source.start && $0.source.end.seconds < 99 } == true, "the toggle actually omits the replay")
+        var p = Project(name: "Match", kind: .video); p.timeline = [c]
+        if var a {
+            a.chosen = true
+            TimelineCuts.keepHighlights(&p, [a], clips: [c.id], ripple: true)
+            #expect(p.timeline.last.map { $0.sourceEnd.seconds >= 118 } == true, "making the highlight keeps the tail too")
+        }
+    }
+
+    @Test func pregameAndHalfTimeRecapReplaysDoNotReturnToTheHighlight() {
+        var s = smallLogoBroadcast(); s.goals = []
+        s.periods = [MatchPeriod(kickoff: 150, end: 250), MatchPeriod(kickoff: 350, end: 450)]
+        let replayed = HighlightFinder.moments(s).filter(\.replayed)
+        #expect(replayed.count == 2, "only the replays at 200 and 400 s are during play: \(replayed)")
+        #expect(replayed.allSatisfy { ($0.start > 180 && $0.end < 240) || ($0.start > 380 && $0.end < 440) })
+    }
+
     @Test func withoutAReplayTheGoalIsWhereItIsCalled() {
         // A broadcast with no replay graphic: the ball goes in at 220 s, the call (commentator and goal sound, -4 dB against
         // -25 dB) at 230 s, the scoreboard changes at 250 s; celebrations (close-ups, much motion) until 290 s.
@@ -583,19 +681,21 @@ struct GoalCallTests {
         for i in 0..<n where s.time(i) >= 250 && s.time(i) < 290 { s.motion[i] = 0.12 }
         s.goals = [ScoreChange(from: (0, 0), to: (0, 1), lastOld: 240, firstNew: 250)]
         let goal = HighlightFinder.moments(s).first { $0.goal == "0-1" }
-        #expect(goal.map { $0.start <= 212 && $0.end >= 236 && $0.end <= 240 } == true, "the attack, the goal and the call, not only the cheering: \(String(describing: goal))")
+        #expect(goal.map { $0.start <= 218 && $0.start >= 215 && $0.end >= 236 && $0.end <= 240 } == true, "the goal at 220 s and the call, with a short lead-in: \(String(describing: goal))")
         #expect(HighlightFinder.loudestCall(HighlightSignals(start: 0, step: 0.2, motion: [Double](repeating: 0, count: 500), loudness: [Double](repeating: -20, count: 500)), from: 0, to: 100) == nil, "no call in a steady sound")
     }
 
-    @Test func aLateCallStillHasTheLiveGoal() {
-        // The VSC case: the ball goes in at 600 s, a replay plays, and the "GOAL" call comes 50 s later, at 650 s.
+    @Test func anEarlierChanceIsNotMistakenForTheGoal() {
+        // A chance at 600 s, then the actual goal/call at 650 s. The old VSC diagnosis assumed an earlier attempt was the goal
+        // and added 60 s before every call, making viewers sit through unrelated attacks and replays.
         let n = 4000
         var s = HighlightSignals(start: 0, step: 0.2, motion: (0..<n).map { 0.03 + 0.008 * sin(Double($0) * 1.3) },
                                  loudness: (0..<n).map { -25 + 2 * sin(Double($0) * 0.7) })
         for i in 0..<n where s.time(i) >= 650 && s.time(i) < 653 { s.loudness[i] = -4 }
+        for i in 0..<n where s.time(i) >= 600 && s.time(i) < 610 { s.motion[i] = 0.12 }
         s.goals = [ScoreChange(from: (0, 0), to: (0, 1), lastOld: 640, firstNew: 655)]
         let goal = HighlightFinder.moments(s).first { $0.goal == "0-1" }
-        #expect(goal.map { $0.start <= 595 && $0.end >= 656 } == true, "the live goal 50 s before the call is in: \(String(describing: goal))")
+        #expect(goal.map { $0.start >= 635 && $0.start <= 640 && $0.end >= 656 } == true, "short lead-in to the actual goal; the earlier chance stays out: \(String(describing: goal))")
     }
 
     @Test func aLoneReplayGraphicKeepsTheLiveActionBeforeIt() {
